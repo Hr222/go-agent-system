@@ -22,7 +22,7 @@
 .storageHint { display: flex; align-items: center; gap: 7px; margin-top: auto; padding: 13px 8px 0; color: #a0abbc; border-top: 1px solid #edf0f5; font-size: 10px; }
 .storageHint strong { color: #71819a; }
 .chatWorkspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
-.errorMessage { margin-top: 8px; padding: 8px 10px; color: #b54747; background: #fff2f0; border: 1px solid #ffd9d3; border-radius: 6px; font-size: 10px; line-height: 1.5; }
+.errorMessage { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; padding: 8px 10px; color: #b54747; background: #fff2f0; border: 1px solid #ffd9d3; border-radius: 6px; font-size: 10px; line-height: 1.5; }.retryButton { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; padding: 4px 7px; color: #a33d3d; background: #fff; border: 1px solid #efb8ae; border-radius: 5px; cursor: pointer; font-size: 10px; }.retryButton:hover { background: #fff8f7; border-color: #d8897e; }.retryButton:disabled { cursor: not-allowed; opacity: .55; }
 .chatHeader { display: flex; align-items: center; justify-content: space-between; min-height: 72px; padding: 0 28px; border-bottom: 1px solid #edf0f5; }
 .agentIdentity, .chatHeaderActions, .composerTools, .sectionTitle, .parameterRow { display: flex; align-items: center; }
 .agentIdentity { gap: 10px; }

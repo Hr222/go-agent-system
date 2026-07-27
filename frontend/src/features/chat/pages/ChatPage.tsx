@@ -49,6 +49,7 @@ export function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [inputValue, setInputValue] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [failedRequest, setFailedRequest] = useState<string | null>(null);
   const chatMutation = useChat();
   const isThinking = chatMutation.isPending;
   const messageStreamRef = useRef<HTMLDivElement>(null);
@@ -63,6 +64,7 @@ export function ChatPage() {
     setMessages([]);
     setInputValue("");
     setErrorMessage(null);
+    setFailedRequest(null);
   };
 
   const handleConversationSelect = (conversationId: string) => {
@@ -70,6 +72,7 @@ export function ChatPage() {
     setMessages(conversationId === "tender-response" ? initialMessages : []);
     setInputValue("");
     setErrorMessage(null);
+    setFailedRequest(null);
   };
 
   const handleSend = async (suggestion?: string) => {
@@ -83,6 +86,7 @@ export function ChatPage() {
     ]);
     setInputValue("");
     setErrorMessage(null);
+    setFailedRequest(null);
 
     try {
       const result = await chatMutation.mutateAsync(content);
@@ -97,9 +101,11 @@ export function ChatPage() {
           request: content,
         },
       ]);
+      setFailedRequest(null);
     } catch (error) {
       const apiError = error as { message?: string };
       setErrorMessage(apiError.message ?? "LLM 请求失败，请稍后重试。");
+      setFailedRequest(content);
     }
   };
 
@@ -221,7 +227,14 @@ export function ChatPage() {
               </button>
             </div>
           </div>
-          {errorMessage && <div className={styles.errorMessage} role="alert">{errorMessage}</div>}
+          {errorMessage && (
+            <div className={styles.errorMessage} role="alert">
+              <span>{errorMessage}</span>
+              <button className={styles.retryButton} type="button" onClick={() => handleSend(failedRequest ?? undefined)} disabled={isThinking || !failedRequest}>
+                <RotateCcw size={12} /> 重试
+              </button>
+            </div>
+          )}
         </footer>
       </section>
 

@@ -8,10 +8,13 @@
 
 前端不直接依赖 GLM、LangChain 或 LangGraph 的具体实现，只依赖后端提供的业务接口。
 
+本文档描述长期工程架构，不记录某个阶段的完成进度、验收结果或当前是否已经实现。阶段范围、实施状态和验收证据分别记录在 `docs/` 下对应的工作进度文档中。
+
 ## 2. 前端职责
 
 | 职责 | 说明 |
 |---|---|
+| LLM Chat 界面 | 提供独立的通用 LLM 对话入口，展示消息、加载状态、错误和重试 |
 | Agent 工作台 | 提供 Agent 选择、任务创建、任务状态和结果展示 |
 | 知识库界面 | 管理知识库、上传文档、查看处理状态和执行检索 |
 | Tender Agent | 提供投标书相关任务入口和结果预览 |
@@ -27,6 +30,9 @@
 | GLM 调用 | 后端 LLM 层 |
 | LangChain 组装 | 后端应用或编排层 |
 | LangGraph 编排 | 后续后端 Agent 编排层 |
+| Function Calling / MCP | 后端 Agent Runtime 和协议适配层 |
+| Agent / SubAgent 协作 | 后端 Agent Runtime |
+| 会话记忆和上下文持久化 | 后端 Conversation 能力 |
 | 文档解析和向量化 | 后端知识库能力 |
 | 投标书业务规则 | 后端 Tender Agent |
 | 数据库访问 | 后端基础设施层 |
@@ -41,7 +47,7 @@
 | JavaScript 标准 | ES2022 | 使用现代 ES8+ 语法 |
 | UI 组件库 | Ant Design 5 | 支持企业级工作台和文档管理 |
 | 图标 | lucide-react | 保持现代、简洁的视觉风格 |
-| 路由 | React Router | 管理 Agent、知识库和任务页面 |
+| 路由 | React Router | 管理 Chat、Agent、知识库和任务页面 |
 | HTTP 客户端 | Axios | 统一请求、错误、超时和上传进度 |
 | 服务端状态 | TanStack React Query | 缓存、轮询、重试和请求状态 |
 | 表单校验 | Ant Design Form + Zod | 兼顾交互和运行时校验 |
@@ -65,6 +71,8 @@
 | 后端接口 | 保持现有接口能力，新增功能需先明确契约 |
 | UI 改造 | 采用渐进式改造，避免一次性重写 |
 
+现有 Mock 页面是正式系统界面的 UI 基线，不是需要整体废弃的临时产品页面。后续只替换其 Mock Data、Mock Action 和状态来源，逐步接入 Hook、业务 API 与真实后端状态。
+
 ## 5. 前端分层结构
 
 ```text
@@ -77,6 +85,11 @@ frontend/
     ├── layouts/
     │   └── AgentWorkspaceLayout.tsx
     ├── features/
+    │   ├── chat/
+    │   │   ├── pages/
+    │   │   ├── hooks/
+    │   │   ├── api/
+    │   │   └── types.ts
     │   ├── knowledge-base/
     │   │   ├── pages/
     │   │   ├── components/
@@ -106,12 +119,16 @@ frontend/
     └── main.tsx
 ```
 
-现有的上传、检索和结果组件应迁移到对应的业务模块中，而不是继续全部集中在 `App.tsx`。
+现有的上传、检索、Chat 和结果组件应归属对应的业务模块，而不是继续全部集中在 `App.tsx`。
+
+当前 `features/mock-workspace/` 承载的工作台页面属于正式界面基线。它可以在不改变用户界面的前提下逐步拆分到 `features/agent/*` 或其他业务模块中；目录名称不改变其产品定位。
 
 ## 6. 模块关系
 
 ```text
-Agent Workspace
+Application Workspace
+├── LLM Chat
+│   └── Generic Chat
 ├── Knowledge Base
 │   ├── Knowledge Base List
 │   ├── Document Upload
@@ -121,11 +138,15 @@ Agent Workspace
     └── Tender Agent
         ├── Task Creation
         ├── Task Status
-        ├── Knowledge Base Selection
+        ├── Optional Knowledge Base Selection
         └── Tender Skeleton Preview
 ```
 
 知识库属于平台共享能力，不放入 `tender` 模块内部。
+
+LLM Chat 是独立的通用能力入口，不属于任何一个 Agent。Agent 是否以对话方式参与交互，由后端 Agent Runtime 和具体产品用例决定；不要求每个 Agent 都提供一套 Chat 页面。
+
+知识库选择不是所有 Agent 的固定前置步骤，是否展示和如何使用必须以后端 Agent 契约为准。
 
 后续扩展财务或风控 Agent 时，保持以下结构：
 
@@ -183,20 +204,22 @@ Backend API
 
 | 页面 | 路由 | 主要能力 |
 |---|---|---|
+| 通用 LLM Chat | `/chat` | 发送消息、展示模型响应、加载状态、错误和重试 |
 | Agent 工作台 | `/agents` | 查看 Agent 列表和运行状态 |
 | Tender Agent | `/agents/tender` | 创建投标书处理任务 |
 | Tender 任务详情 | `/agents/tender/tasks/:taskId` | 查看任务进度和结果 |
+| Tender 骨架预览 | `/agents/tender/tasks/:taskId/skeleton` | 查看和下载章节骨架结果 |
 | 知识库首页 | `/knowledge-bases` | 查看知识库列表 |
-| 知识库详情 | `/knowledge-bases/:id` | 管理知识库文档 |
-| 文档上传 | `/knowledge-bases/:id/documents/upload` | 上传和处理文件 |
-| 知识库检索 | `/knowledge-bases/:id/search` | 执行检索并查看结果 |
+| 知识库详情 | `/knowledge-bases/:knowledgeBaseId` | 管理知识库文档 |
+| 文档上传 | `/knowledge-bases/:knowledgeBaseId/documents/upload` | 上传和处理文件 |
+| 知识库检索 | `/knowledge-bases/:knowledgeBaseId/search` | 执行检索并查看结果 |
 | Workflow | `/workflow` | 预留入口，暂不实现复杂编排 |
 
-## 10. 知识库 UI 改造范围
+## 10. 知识库前端边界
 
-当前已有知识库入库能力，本阶段重点是把临时界面改造成正式产品页面。
+知识库是平台共享能力。前端负责知识库管理、文档处理状态和检索交互，不负责文档解析、向量化、索引构建或持久化实现。
 
-| 功能 | 改造目标 |
+| 能力 | 前端边界 |
 |---|---|
 | 知识库列表 | 展示名称、描述、文档数量、更新时间和状态 |
 | 创建知识库 | 提供正式表单和校验 |
@@ -209,9 +232,9 @@ Backend API
 | 检索页面 | 统一搜索输入、结果卡片和来源文档展示 |
 | 空状态 | 为无知识库、无文档、无检索结果提供引导 |
 
-## 11. Tender Agent UI 范围
+## 11. Agent 前端边界
 
-F1 阶段的 Tender Agent 只实现基础任务闭环。
+Agent 前端模块负责具体 Agent 的用户入口、参数收集、任务状态和结果展示；不负责 Agent 编排、工具执行或模型调用。
 
 ```text
 选择或上传文件
@@ -220,30 +243,18 @@ F1 阶段的 Tender Agent 只实现基础任务闭环。
     ↓
 查询任务状态
     ↓
-生成投标书章节骨架
+生成 Agent 结果
     ↓
-预览章节结构
+预览结果
     ↓
-下载骨架文档
+下载结果
 ```
 
-| 功能 | F1 是否实现 |
-|---|---:|
-| Tender Agent 入口 | 是 |
-| 选择知识库 | 是 |
-| 上传招标文件 | 是 |
-| 创建异步任务 | 是 |
-| 任务状态展示 | 是 |
-| 错误和重试 | 是 |
-| 投标书章节骨架 | 是 |
-| 骨架预览 | 是 |
-| 骨架下载 | 是 |
-| 完整投标书正文生成 | 否 |
-| 多 Agent 协作 | 否 |
-| LangGraph Workflow 画布 | 否 |
-| 完整 Chat 工作台 | 预留 |
+具体 Agent 可以采用同步响应、异步任务、流式事件或其他后端契约。Tender 的文件、任务、章节骨架等属于 Tender 自身的业务模型，不应上升为所有 Agent 的统一前端模型。
 
-前端只面向任务接口，不直接绑定 GLM、LangChain 或 LangGraph。
+前端只面向 Agent/Application API，不直接绑定 GLM、LangChain、LangGraph、Function Calling 或 MCP。
+
+通用 `/chat` 与 Agent 任务界面保持独立。只有当具体 Agent 的产品用例需要对话式交互时，才由后端提供相应 Agent 会话契约，前端再增加对应界面；不为每个 Agent 默认复制 Chat 能力。
 
 ## 12. UI 视觉方向
 
@@ -276,40 +287,40 @@ AetherFlow 作为视觉参考，但不直接复制其导出代码。
 | 导入 | 避免跨业务模块直接引用内部文件 |
 | 模块边界 | 业务模块通过公共 API 或 shared 层交互 |
 
-## 14. F1 验收标准
+## 14. 架构约束检查
 
-| 验收项 | 标准 |
+| 检查项 | 约束 |
 |---|---|
-| 工程 | 使用现有 `frontend`，没有新建前端包 |
-| 请求 | 所有 API 通过 Axios Client |
-| 知识库 | 可以完成创建、查看和管理 |
-| 文档 | 可以上传、查看状态、失败重试和删除 |
-| 检索 | 可以完成查询并展示来源 |
-| Agent | 可以创建 Tender 任务 |
-| 任务 | 可以展示处理中、完成和失败状态 |
-| 结果 | 可以展示投标书章节骨架 |
-| 视觉 | 页面整体统一为 AetherFlow 风格 |
-| 代码 | TypeScript 严格检查通过 |
-| 兼容性 | 不破坏现有后端接口和已有能力 |
+| 工程 | 使用现有 `frontend`，不新建第二套前端工程 |
+| 模块 | Chat、知识库和 Agent 按业务能力独立组织 |
+| 请求 | 页面不直接创建 Axios 请求，统一经过 Hook、业务 API 和 HTTP Client |
+| 依赖 | 前端不依赖 LLM Provider、LangChain、LangGraph、Function Calling 或 MCP 的实现细节 |
+| Agent | 前端展示 Agent 契约，不承担 Agent Runtime 编排和工具执行 |
+| 知识库 | 作为平台共享能力存在，不被某个 Agent 私有化 |
+| Mock | Mock 仅替代数据和行为，不代表正式 UI 页面需要废弃 |
+| 演进 | 新能力通过稳定 API 契约接入，优先渐进式替换现有实现 |
 
-## 15. 非目标
+## 15. 架构范围外的实现细节
 
-F1 阶段暂不包含以下内容：
+以下内容不属于前端架构的实现职责：
 
 | 内容 | 原因 |
 |---|---|
-| 重做知识库后端 | 当前已有入库能力 |
-| 更换 GLM 客户端 | 属于后端 LLM 层 |
-| 前端接入 LangChain | LangChain 属于后端调用和编排 |
-| LangGraph 编排画布 | 等多 Agent 需求明确 |
-| 完整投标书生成 | F1 只验收结构骨架 |
-| 移动端专门适配 | 当前以桌面工作台为主 |
-| 新建独立前端包 | 项目已有 `frontend` 工程 |
+| LLM Provider 和模型客户端 | 属于后端 LLM 层 |
+| LangChain / LangGraph 实现 | 属于后端适配或 Agent Runtime |
+| Function Calling / MCP 执行 | 属于后端 Agent 协议和能力层 |
+| Agent / SubAgent 编排 | 属于后端 Agent Runtime |
+| 文档解析、向量化和数据库访问 | 属于后端知识库和基础设施层 |
+| 会话历史、上下文记忆和持久化 | 属于后端 Conversation 能力 |
 
-## 16. 实施结论
+## 16. 与工作进度文档的关系
 
-F1 的前端目标确定为：
+本文件只定义长期前端架构。以下内容必须记录在阶段工作进度文档中，而不应反向改变整体架构：
 
-> 在现有 `frontend` 工程内，使用 React + TypeScript + Ant Design 5，基于 Axios 和 TanStack Query，完成 AetherFlow 风格的 Agent 工作台、正式知识库 UI，以及 Tender Agent 的基础任务闭环。
+- 某个页面或 API 当前是否已经实现
+- F1/F2 的工作范围、切片顺序和完成状态
+- 前后端联调记录、测试结果和验收证据
+- 当前使用真实数据还是 Mock Data
+- 尚未实现的 Agent、任务或结果能力
 
-前端作为独立应用层存在，知识库作为平台共享能力，Tender 作为 Agent 下的业务模块。前端通过稳定 API 与后端交互，不感知后端具体使用的 LLM、LangChain 或 LangGraph 实现。
+前端作为独立应用层存在，Chat、知识库和 Agent 是并列的前端业务能力入口；知识库作为平台共享能力，Tender 作为 Agent 下的业务模块。前端通过稳定 API 与后端交互，不感知后端具体使用的 LLM、LangChain、LangGraph、Function Calling 或 MCP 实现。
