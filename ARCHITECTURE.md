@@ -8,6 +8,8 @@
 - Function Calling、MCP 等是 Agent 能力的外部接入协议，不是 LLM 层职责。
 - 对话入口不等于 Agent；原始 LLM 对话和 Agent 对话是两种不同的应用用例。
 - 上下文记忆属于独立的 Conversation 能力，不应隐含在 LLM Adapter 或具体 Agent 中。
+- Conversation 与 Task Management 都是独立的应用能力模块，与 LLM、Agent、Knowledge 和 Ingestion 同级。
+- Task Management 负责任务生命周期，不负责模型调用、会话上下文或 Agent 业务编排。
 
 ## 总体结构图
 
@@ -25,6 +27,8 @@ flowchart LR
     subgraph Applications["Applications 应用模块层"]
         direction TB
         Llm["LLM Capability<br/>Chat / Structured Output / Embedding"]
+        Conversation["Conversation Capability<br/>History / Context"]
+        Task["Task Management<br/>Lifecycle / Status / Retry"]
         AgentRuntime["Agent Runtime<br/>Orchestration / SubAgents"]
         AgentCapabilities["Agent Capabilities<br/>Tender / Finance / Risk"]
         Online["Online Application<br/>RAG Facade / Decision"]
@@ -33,6 +37,8 @@ flowchart LR
         HttpAdapter --> Online
         HttpAdapter --> Ingestion
         HttpAdapter --> Llm
+        HttpAdapter --> Conversation
+        HttpAdapter --> Task
         AgentAdapter --> AgentRuntime
         AgentRuntime --> AgentCapabilities
     end
@@ -52,6 +58,8 @@ flowchart LR
         direction TB
         Ports["Business Ports<br/>Read / Write / Publication"]
         LlmPorts["LLM Ports<br/>Chat / Structured / Embedding"]
+        ConversationPorts["Conversation Ports<br/>Messages / Context / Persistence"]
+        TaskPorts["Task Ports<br/>Lifecycle / Status / Retry"]
     end
 
     subgraph Persistence["Persistence 持久化与基础设施层"]
@@ -64,16 +72,22 @@ flowchart LR
         Write --> Ports
         Publish --> Ports
         Llm --> LlmPorts
+        Conversation --> ConversationPorts
+        Task --> TaskPorts
         AgentRuntime --> LlmPorts
         AgentCapabilities --> LlmPorts
         Ports -.实现.-> Repositories
         LlmPorts -.实现.-> Providers
+        ConversationPorts -.实现.-> Repositories
+        TaskPorts -.实现.-> Repositories
         Repositories --> Storage
     end
 
     Composition["Composition Root<br/>ApplicationContainer"]
 
     Composition -.->|组装| Llm
+    Composition -.->|组装| Conversation
+    Composition -.->|组装| Task
     Composition -.->|组装| AgentRuntime
     Composition -.->|组装| Online
     Composition -.->|组装| Ingestion
@@ -89,9 +103,9 @@ flowchart LR
     classDef composition fill:#f5f5f5,stroke:#666,color:#333;
 
     class Http,HttpAdapter,AgentAdapter interface;
-    class Llm,AgentRuntime,Online,Ingestion application;
+    class Llm,Conversation,Task,AgentRuntime,Online,Ingestion application;
     class Query,Write,Publish knowledge;
-    class Ports,LlmPorts port;
+    class Ports,LlmPorts,ConversationPorts,TaskPorts port;
     class Repositories,Providers,Storage infrastructure;
     class Composition composition;
 ```
@@ -111,6 +125,11 @@ app/
 │   │   └── contracts.py                   # LLM 请求、结果和失败契约
 │   │
 │   ├── conversation/                      # 会话、上下文和消息生命周期
+│   │   ├── application/
+│   │   ├── domain/
+│   │   └── ports/
+│   │
+│   ├── task/                              # 任务生命周期、状态和重试
 │   │   ├── application/
 │   │   ├── domain/
 │   │   └── ports/
@@ -205,6 +224,8 @@ app/
 │   ├── root.py
 │   ├── llm.py
 │   ├── agent.py
+│   ├── conversation.py
+│   ├── task.py
 │   ├── online.py
 │   ├── knowledge.py
 │   └── ingestion.py
@@ -224,6 +245,9 @@ flowchart TB
     LlmApplication["modules/llm/application"]
     LlmPorts["modules/llm/ports"]
     Conversation["modules/conversation"]
+    ConversationPorts["modules/conversation/ports"]
+    TaskManagement["modules/task"]
+    TaskPorts["modules/task/ports"]
     AgentRuntime["modules/agent/runtime"]
     AgentCapabilities["modules/agent/*"]
     Online["modules/online"]
@@ -238,12 +262,15 @@ flowchart TB
 
     HTTP --> LlmApplication
     HTTP --> Conversation
+    HTTP --> TaskManagement
     HTTP --> AgentRuntime
     HTTP --> Online
     HTTP --> Ingestion
     AgentProtocols --> AgentRuntime
 
     LlmApplication --> LlmPorts
+    Conversation --> ConversationPorts
+    TaskManagement --> TaskPorts
     AgentRuntime --> LlmPorts
     AgentRuntime --> AgentCapabilities
     AgentCapabilities --> LlmPorts
@@ -253,6 +280,8 @@ flowchart TB
     KnowledgeQuery --> Ports
     KnowledgeWrite --> Ports
     Ports -.实现.-> Repositories
+    ConversationPorts -.实现.-> Repositories
+    TaskPorts -.实现.-> Repositories
     LlmPorts -.实现.-> LlmAdapters
     Repositories --> Storage
     Ingestion -.依赖端口.-> Providers
@@ -278,6 +307,18 @@ flowchart LR
         Chat["Chat Application"]
         LlmPort["Chat / Structured LLM Port"]
         LlmAdapter["GLM / LangChain Adapter"]
+    end
+
+    subgraph ConversationCapability["Conversation 能力层"]
+        ConversationApplication["Conversation Application"]
+        ConversationPort["Message / Context Port"]
+        ConversationRepository["Conversation Repository"]
+    end
+
+    subgraph TaskCapability["Task Management 能力层"]
+        TaskApplication["Task Application"]
+        TaskPort["Task Lifecycle Port"]
+        TaskRepository["Task Repository"]
     end
 
     subgraph Agent["Agent 应用与运行时"]
@@ -316,6 +357,8 @@ flowchart LR
     PublicationHttp["HTTP Publication Route"]
 
     HTTP --> Chat
+    HTTP --> ConversationApplication
+    HTTP --> TaskApplication
     HTTP --> AgentHttp
     HTTP --> HttpAdapter
     HTTP --> PublicationHttp
@@ -323,6 +366,10 @@ flowchart LR
     MCP --> AgentProtocol
 
     Chat --> LlmPort
+    ConversationApplication --> ConversationPort
+    ConversationPort --> ConversationRepository
+    TaskApplication --> TaskPort
+    TaskPort --> TaskRepository
     AgentHttp --> Runtime
     AgentProtocol --> Runtime
     Runtime --> LlmPort
@@ -420,6 +467,16 @@ MCP 请求或响应
 ### Conversation 与上下文
 
 会话管理是独立的 Conversation 能力。它负责会话 ID、消息历史、上下文裁剪、持久化和恢复；LLM Adapter 只接收本次调用所需的消息或 Prompt，不自行保存上下文。Agent Runtime 也不应隐式承担长期会话存储。
+
+Conversation 可以为普通 Chat 或 Agent 交互提供上下文，但是否启用上下文由具体应用用例决定。当前 `modules/llm` 的单轮 Chat 不创建会话、不读取历史，也不依赖 Conversation 模块。
+
+### Task Management 与任务生命周期
+
+Task Management 是与 Conversation 同级的独立能力模块。它负责任务 ID、任务状态、状态转换、失败、重试、幂等和持久化；它不负责 LLM 调用、会话历史、上下文组装或 Agent 业务编排。
+
+Tender Agent 如果未来需要异步处理，可以通过明确的 Task Application / Port 使用任务能力，但不能把任务状态查询直接塞入 `modules/llm` 或某个 Agent 内部。Task Management 是否参与某个 Agent 用例，应由上层 Application 通过契约决定。
+
+当前 `complete-llm-chat-acceptance` Change 不包含 Conversation 或 Task Management。后续这两类能力必须分别建立独立的 OpenSpec Change 和验收契约。
 
 ## HTTP 交互契约与适配边界
 

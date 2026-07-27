@@ -296,6 +296,8 @@ python -m app.scripts.run_knowledge_base_audit
 
 - `ARCHITECTURE.md`：当前架构基准
 - `agent.md`：协作与工程开发约定
+- `openspec/README.md`：OpenSpec 需求变更、规格和验收约定
+- `openspec/config.yaml`：OpenSpec 项目上下文与 artifact 规则
 - `docs/当前阶段与下一阶段计划.md`：整体阶段规划与 Phase 3 交接边界
 - `docs/第三阶段工作计划.md`：Phase 3 详细工作计划与验收标准
 - `docs/第三阶段 - 前端改造工作.md`：Phase 3 前端知识库与 Tender Agent 改造计划和进度
