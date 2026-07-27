@@ -1,0 +1,32 @@
+schema: spec-driven
+
+context: |
+  Project: Go Agent System. The repository name is historical; the current implementation is Python backend plus React/TypeScript frontend.
+  Backend: Python 3.11+, FastAPI-style HTTP interfaces, PostgreSQL and pgvector, Docker for local infrastructure.
+  Frontend: React 18, TypeScript strict mode, Vite, Ant Design, Axios, TanStack React Query.
+  Architecture references: agent.md, ARCHITECTURE.md, FRONTEND_ARCHITECTURE.md, and the current Phase 3 documents under docs/.
+  Backend dependency direction: interfaces -> application/modules -> domain and ports -> infrastructure implementations. Concrete adapters are assembled in app/composition/.
+  Module boundaries: online, knowledge, ingestion, llm, conversation, task management, and agent capabilities remain separate. Conversation owns history and context; Task Management owns task lifecycle and status. Agent adapters must call application capabilities and must not access repositories or SDKs directly.
+  Product focus: explainable, evidence-grounded knowledge retrieval and tender-agent application capabilities. The current phase does not imply a complete multi-agent platform.
+  Language: Write proposals, specifications, scenarios, and user-facing explanations in Chinese unless an external contract or technical identifier requires English.
+  Brownfield adoption: Describe only the behavior changed by the current change. Do not backfill the whole existing codebase into OpenSpec.
+
+rules:
+  proposal:
+    - State the problem, intended outcome, scope, non-goals, affected capabilities, and compatibility or migration impact.
+    - Identify whether the change affects HTTP contracts, persistence, state transitions, external providers, security, or sensitive data.
+    - Keep the proposal focused on one coherent change that can be reviewed and verified.
+  specs:
+    - Describe observable business or product behavior, not internal class structure or framework choices.
+    - Use concrete WHEN and THEN scenarios, including validation failures, provider failures, retries, and insufficient evidence where relevant.
+    - For RAG or decision behavior, require source traceability and define what happens when evidence is insufficient.
+    - Keep delta specs scoped to the current change; do not copy existing architecture or phase plans into a spec.
+  design:
+    - Align all module placement and dependency direction with agent.md and ARCHITECTURE.md.
+    - Identify application contracts, ports, adapters, persistence changes, composition-root wiring, and frontend/backend boundaries when affected.
+    - Document error mapping, idempotency, state transitions, observability, security, rollback, and data migration considerations when applicable.
+    - Do not introduce LangGraph, SubAgent orchestration, or other complex frameworks unless the change has a concrete requirement for them.
+  tasks:
+    - Link implementation tasks to requirements or scenarios whenever practical.
+    - Include backend tests, architecture-boundary tests, frontend tests or build checks, and manual verification when the change affects those areas.
+    - Every task must have an observable completion condition; do not mark work complete without evidence.
