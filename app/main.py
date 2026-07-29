@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from time import perf_counter
 
 from fastapi import FastAPI, Request
 
 from app.composition.runtime import inspect_knowledge_base_schema
+from app.interfaces.http.dependencies import get_stateless_application_container
 from app.interfaces.http.router import api_router
 from app.shared.config import settings
 from app.shared.logging import configure_logging, get_logger
@@ -16,7 +18,7 @@ logger = get_logger("app.main")
 
 def create_app() -> FastAPI:
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
+    async def lifespan(application: FastAPI):
         # 应用启动时只做轻量表结构检查，不主动创建或修改数据库结构。
         logger.info(
             "启动 FastAPI 应用 name=%s version=%s log_level=%s",
@@ -36,7 +38,13 @@ def create_app() -> FastAPI:
             )
         else:
             logger.info("知识库表结构检查通过。")
+        application.state.llm_stream_slots = asyncio.Semaphore(
+            settings.llm_stream_max_concurrency
+        )
+        application.state.llm_active_streams = 0
         yield
+        get_stateless_application_container().close()
+        get_stateless_application_container.cache_clear()
         logger.info("关闭 FastAPI 应用 name=%s", settings.app_name)
 
     application = FastAPI(
@@ -46,6 +54,8 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
         lifespan=lifespan,
     )
+    application.state.llm_stream_slots = asyncio.Semaphore(settings.llm_stream_max_concurrency)
+    application.state.llm_active_streams = 0
 
     @application.middleware("http")
     async def log_requests(request: Request, call_next):
@@ -91,9 +101,9 @@ def create_app() -> FastAPI:
     @application.get("/", tags=["system"])
     async def root() -> dict[str, str]:
         return {
-            "message": "投标文档助手接口",
-            "phase": "rag-mvp",
-            "frontend": "/frontend",
+            "message": "Go Agent System API",
+            "phase": "phase-3-f1",
+            "frontend": "http://127.0.0.1:5426",
         }
 
     application.include_router(api_router, prefix=settings.api_v1_prefix)

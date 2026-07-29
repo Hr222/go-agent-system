@@ -19,7 +19,8 @@ import {
   Workflow,
 } from "lucide-react";
 
-import { useChat } from "../hooks/useChat";
+import { useChatStream } from "../hooks/useChatStream";
+import { useDeltaRenderQueue } from "../hooks/useDeltaRenderQueue";
 import styles from "./ChatPage.module.css";
 
 type ChatRole = "user" | "assistant";
@@ -32,6 +33,7 @@ type ChatMessage = {
   citations?: string[];
   metrics?: string;
   request?: string;
+  status?: "connecting" | "streaming" | "completed" | "cancelled" | "failed";
 };
 
 const initialMessages: ChatMessage[] = [];
@@ -50,8 +52,9 @@ export function ChatPage() {
   const [inputValue, setInputValue] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [failedRequest, setFailedRequest] = useState<string | null>(null);
-  const chatMutation = useChat();
-  const isThinking = chatMutation.isPending;
+  const chatStream = useChatStream();
+  const deltaQueue = useDeltaRenderQueue();
+  const isThinking = chatStream.isActive || deltaQueue.isRendering;
   const messageStreamRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -88,25 +91,73 @@ export function ChatPage() {
     setErrorMessage(null);
     setFailedRequest(null);
 
+    const assistantId = `assistant-${Date.now()}`;
+    const startedAt = performance.now();
+    setMessages((current) => [
+      ...current,
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        timestamp: `今天 ${now}`,
+        request: content,
+        status: "connecting",
+      },
+    ]);
+    deltaQueue.start((delta) => {
+      setMessages((current) => current.map((message) => (
+        message.id === assistantId ? { ...message, content: `${message.content}${delta}` } : message
+      )));
+    });
+
+    let completed = false;
+
     try {
-      const result = await chatMutation.mutateAsync(content);
-      setMessages((current) => [
-        ...current,
-        {
-          id: `assistant-${Date.now()}`,
-          role: "assistant",
-          content: result.answer,
-          timestamp: `今天 ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`,
-          metrics: `${result.model} · ${result.durationMs}ms${result.totalTokens === null ? "" : ` · ${result.totalTokens} tokens`}`,
-          request: content,
+      await chatStream.send(content, {
+        onDelta: (delta) => {
+          setMessages((current) => current.map((message) => (
+            message.id === assistantId ? { ...message, status: "streaming" } : message
+          )));
+          deltaQueue.enqueue(delta);
         },
-      ]);
-      setFailedRequest(null);
+        onComplete: (result) => {
+          completed = true;
+          deltaQueue.settle(() => {
+            const tokens = result.usage.total_tokens;
+            setMessages((current) => current.map((message) => (
+              message.id === assistantId
+                ? {
+                  ...message,
+                  status: "completed",
+                  metrics: `${result.model} · ${Math.round(performance.now() - startedAt)}ms${tokens === null || tokens === undefined ? "" : ` · ${tokens} tokens`}`,
+                }
+                : message
+            )));
+            setFailedRequest(null);
+          });
+        },
+      });
+      if (!completed) {
+        deltaQueue.settle(() => {
+          setMessages((current) => current.map((message) => (
+            message.id === assistantId ? { ...message, status: "cancelled" } : message
+          )));
+        });
+      }
     } catch (error) {
       const apiError = error as { message?: string };
       setErrorMessage(apiError.message ?? "LLM 请求失败，请稍后重试。");
       setFailedRequest(content);
+      deltaQueue.settle(() => {
+        setMessages((current) => current.map((message) => (
+          message.id === assistantId ? { ...message, status: "failed" } : message
+        )));
+      });
     }
+  };
+
+  const handleCancel = () => {
+    chatStream.cancel();
   };
 
   const handleCopy = async (content: string) => {
@@ -186,12 +237,6 @@ export function ChatPage() {
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} onCopy={handleCopy} onRetry={() => handleSend(message.request ?? message.content)} />
           ))}
-          {isThinking && (
-            <div className={styles.assistantRow}>
-              <div className={styles.messageAvatar}><Bot size={16} /></div>
-              <div className={styles.thinkingBubble}><span /><span /><span /><em>正在请求模型</em></div>
-            </div>
-          )}
         </div>
 
         <footer className={styles.composerArea}>
@@ -222,9 +267,13 @@ export function ChatPage() {
                 <button type="button" title="添加工作流" aria-label="添加工作流"><Workflow size={16} /></button>
                 <span className={styles.composerHint}>Enter 发送 · Shift + Enter 换行</span>
               </div>
-              <button className={styles.sendButton} type="button" title="发送消息" aria-label="发送消息" onClick={() => handleSend()} disabled={isThinking || !inputValue.trim()}>
-                <Send size={16} />
-              </button>
+              {isThinking ? (
+                <button className={styles.cancelButton} type="button" onClick={handleCancel}>取消</button>
+              ) : (
+                <button className={styles.sendButton} type="button" title="发送消息" aria-label="发送消息" onClick={() => handleSend()} disabled={!inputValue.trim()}>
+                  <Send size={16} />
+                </button>
+              )}
             </div>
           </div>
           {errorMessage && (
@@ -289,8 +338,11 @@ function MessageBubble({ message, onCopy, onRetry }: { message: ChatMessage; onC
       <div className={styles.messageAvatar}><Bot size={16} /></div>
       <div className={styles.assistantMessageGroup}>
         <div className={styles.assistantMessage}>
-          <div className={styles.assistantLabel}>LLM 助手 <span>已完成</span></div>
-          <p>{message.content}</p>
+          <div className={styles.assistantLabel}>
+            LLM 助手 <span>{statusLabel(message.status)}</span>
+            {message.status === "streaming" && <i className={styles.streamingCaret} aria-label="正在输出" />}
+          </div>
+          <p>{message.content || (message.status === "connecting" ? "正在连接模型…" : message.status === "streaming" ? "正在输出…" : "")}</p>
           {message.citations && <div className={styles.citations}>{message.citations.map((citation) => <button key={citation} type="button"><FileText size={13} />{citation}</button>)}</div>}
         </div>
         <div className={styles.messageActions}>
@@ -303,4 +355,12 @@ function MessageBubble({ message, onCopy, onRetry }: { message: ChatMessage; onC
       </div>
     </div>
   );
+}
+
+function statusLabel(status: ChatMessage["status"]): string {
+  if (status === "connecting") return "正在连接";
+  if (status === "streaming") return "正在输出";
+  if (status === "cancelled") return "已取消";
+  if (status === "failed") return "生成失败";
+  return "已完成";
 }

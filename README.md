@@ -223,6 +223,13 @@ npm run dev
 | 文档入库 | POST | `/api/v1/kb/policy-pipeline/ingest` |
 | 暂存文件入库 | POST | `/api/v1/kb/policy-pipeline/ingest-upload` |
 | 知识版本发布 | POST | `/api/v1/kb/publication/activate` |
+| 流式单轮 LLM 对话 | POST | `/api/v1/llm/chat/stream` |
+
+### 流式 LLM 部署
+
+流式接口使用 SSE。反向代理需关闭缓冲、保持 HTTP/1.1 连接，并将超时设为不低于 `LLM_STREAM_TOTAL_TIMEOUT_SECONDS`。可将 `docker/nginx/llm-streaming.conf` 并入对应的 Nginx `server` 块。
+
+生产环境可通过以下参数调整流的容量与超时：`LLM_STREAM_MAX_CONCURRENCY`、`LLM_STREAM_FIRST_TOKEN_TIMEOUT_SECONDS`、`LLM_STREAM_IDLE_TIMEOUT_SECONDS`、`LLM_STREAM_TOTAL_TIMEOUT_SECONDS` 和 `LLM_STREAM_HEARTBEAT_SECONDS`。应用日志记录请求标识、阶段、耗时、事件数及活跃流数，不记录 Prompt 或增量文本。
 
 ## 测试与质量检查
 
@@ -298,10 +305,9 @@ python -m app.scripts.run_knowledge_base_audit
 - `agent.md`：协作与工程开发约定
 - `openspec/README.md`：OpenSpec 需求变更、规格和验收约定
 - `openspec/config.yaml`：OpenSpec 项目上下文与 artifact 规则
-- `docs/当前阶段与下一阶段计划.md`：整体阶段规划与 Phase 3 交接边界
-- `docs/第三阶段工作计划.md`：Phase 3 详细工作计划与验收标准
-- `docs/第三阶段 - 前端改造工作.md`：Phase 3 前端知识库与 Tender Agent 改造计划和进度
-- `docs/第三阶段- 后端F1工作进度.md`：Phase 3 后端 F1 实现进度和验收证据
+- `docs/go agent system - 系统看板.md`：项目阶段状态、平台方向与后续能力看板
+- `docs/第三阶段工作计划.md`：Phase 3 前后端联合执行蓝本与验收标准
+- `docs/第三阶段- 前后端联合工作进度.md`：Phase 3 前后端实现、测试、联调与验收记录
 - `docs/Phase3业务扩展风险与技术债参考.md`：Phase 3 扩展风险与技术债参考
 - `sql/README-policy-schema.md`：知识库表结构设计
 - `tools/ocr/README.md`：OCR 与样本分类工具说明

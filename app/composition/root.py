@@ -24,7 +24,7 @@ from app.composition.knowledge import (
     build_write_capability,
     build_write_repository,
 )
-from app.composition.llm import build_chat_llm
+from app.composition.llm import build_chat_llm, build_streaming_chat_llm
 from app.composition.online import (
     build_decision_service,
     build_policy_decision_application_service,
@@ -57,7 +57,8 @@ from app.modules.knowledge.application.knowledge_base import KnowledgeBaseServic
 from app.modules.knowledge.application.management_service import KnowledgeManagementService
 from app.modules.knowledge.application.write_capability import KnowledgeBaseWriteCapability
 from app.modules.llm.application.chat import ChatApplication
-from app.modules.llm.contracts import ChatLlmPort, StructuredLlmPort
+from app.modules.llm.application.streaming_chat import StreamingChatApplication
+from app.modules.llm.contracts import ChatLlmPort, StreamingChatLlmPort, StructuredLlmPort
 from app.modules.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.modules.online.application.data_acquisition import (
     ChecklistDataProviderRegistry,
@@ -105,6 +106,7 @@ class ApplicationContainer:
         answer_service: RagAnswerGenerator | None = None,
         tender_structured_llm: StructuredLlmPort | None = None,
         chat_llm: ChatLlmPort | None = None,
+        streaming_chat_llm: StreamingChatLlmPort | None = None,
         openai_client_factory: OpenAICompatibleClientFactory | None = None,
     ) -> None:
         self.session = session
@@ -118,6 +120,8 @@ class ApplicationContainer:
         self._tender_structured_llm = tender_structured_llm
         self._chat_llm = chat_llm
         self._chat_application: ChatApplication | None = None
+        self._streaming_chat_llm = streaming_chat_llm
+        self._streaming_chat_application: StreamingChatApplication | None = None
         self._openai_client_factory = openai_client_factory
         self._persistence_gateway: PolicyPersistenceGateway | None = None
         self._write_repository: KnowledgeWriteRepository | None = None
@@ -161,12 +165,29 @@ class ApplicationContainer:
             self._chat_application = ChatApplication(self._chat_llm)
         return self._chat_application
 
+    def streaming_chat_application(self) -> StreamingChatApplication:
+        """提供无数据库依赖的独立单轮 LLM 流式用例。"""
+
+        if self._streaming_chat_application is None:
+            if self._streaming_chat_llm is None:
+                self._streaming_chat_llm = build_streaming_chat_llm(
+                    self.openai_client_factory()
+                )
+            self._streaming_chat_application = StreamingChatApplication(
+                self._streaming_chat_llm
+            )
+        return self._streaming_chat_application
+
     def openai_client_factory(self) -> OpenAICompatibleClientFactory:
         """返回供 RAG 和 Agent 共享的 OpenAI-compatible Client Factory。"""
 
         if self._openai_client_factory is None:
             self._openai_client_factory = OpenAICompatibleClientFactory()
         return self._openai_client_factory
+
+    def close(self) -> None:
+        if self._openai_client_factory is not None:
+            self._openai_client_factory.close()
 
     def embedding_service(self) -> GiteeEmbeddingClient:
         if self._embedding_service is None:

@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from fastapi import Depends
 
 from app.composition import ApplicationContainer, get_db_session
@@ -20,6 +22,7 @@ def get_application_container(
     return ApplicationContainer(session)
 
 
+@lru_cache(maxsize=1)
 def get_stateless_application_container() -> ApplicationContainer:
     """为纯内存或文件系统能力提供无会话容器。"""
     return ApplicationContainer()

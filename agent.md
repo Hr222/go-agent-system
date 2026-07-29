@@ -12,7 +12,7 @@
 2. `ARCHITECTURE.md`
 3. `README.md`
 4. `openspec/config.yaml` 以及当前 change 下的 proposal、specs、design、tasks（如果存在）
-5. `docs/当前阶段与下一阶段计划.md`
+5. `docs/go agent system - 系统看板.md`
 6. `docs/` 下当前阶段对应的更具体计划文档（如果存在）
 
 如果具体阶段计划与总阶段计划存在差异，先识别差异，再按照更具体的当前阶段文档执行，并保持与架构基准一致。

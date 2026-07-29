@@ -55,3 +55,8 @@ class OpenAICompatibleClientFactory:
         if self.configuration.zhipu_max_tokens is not None:
             model_kwargs["max_tokens"] = self.configuration.zhipu_max_tokens
         return ChatOpenAI(**model_kwargs)
+
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None

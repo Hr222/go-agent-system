@@ -16,3 +16,19 @@ export type ChatResult = {
   durationMs: number;
   totalTokens: number | null;
 };
+
+export type ChatStreamMeta = {
+  requestId: string;
+  model: string;
+  promptVersion: string;
+};
+
+export type ChatStreamComplete = ChatStreamMeta & {
+  usage: ChatApiResponse["usage"];
+};
+
+export type ChatStreamHandlers = {
+  onMeta?: (meta: ChatStreamMeta) => void;
+  onDelta?: (content: string) => void;
+  onComplete?: (result: ChatStreamComplete) => void;
+};

@@ -1,32 +1,37 @@
 schema: spec-driven
 
 context: |
-  Project: Go Agent System. The repository name is historical; the current implementation is Python backend plus React/TypeScript frontend.
-  Backend: Python 3.11+, FastAPI-style HTTP interfaces, PostgreSQL and pgvector, Docker for local infrastructure.
-  Frontend: React 18, TypeScript strict mode, Vite, Ant Design, Axios, TanStack React Query.
-  Architecture references: agent.md, ARCHITECTURE.md, FRONTEND_ARCHITECTURE.md, and the current Phase 3 documents under docs/.
-  Backend dependency direction: interfaces -> application/modules -> domain and ports -> infrastructure implementations. Concrete adapters are assembled in app/composition/.
-  Module boundaries: online, knowledge, ingestion, llm, conversation, task management, and agent capabilities remain separate. Conversation owns history and context; Task Management owns task lifecycle and status. Agent adapters must call application capabilities and must not access repositories or SDKs directly.
-  Product focus: explainable, evidence-grounded knowledge retrieval and tender-agent application capabilities. The current phase does not imply a complete multi-agent platform.
-  Language: Write proposals, specifications, scenarios, and user-facing explanations in Chinese unless an external contract or technical identifier requires English.
-  Brownfield adoption: Describe only the behavior changed by the current change. Do not backfill the whole existing codebase into OpenSpec.
+  项目：Go Agent System。仓库名称沿用历史命名；当前实现是 Python 后端与 React/TypeScript 前端。
+  后端：Python 3.11 及以上、FastAPI 风格的 HTTP 接口、PostgreSQL、pgvector，以及用于本地基础设施的 Docker。
+  前端：React 18、开启严格模式的 TypeScript、Vite、Ant Design、Axios、TanStack React Query。
+  架构依据：agent.md、ARCHITECTURE.md、FRONTEND_ARCHITECTURE.md，以及 docs/ 下当前 Phase 3 的文档。
+  后端依赖方向：interfaces -> application/modules -> domain and ports -> infrastructure implementations。具体适配器统一在 app/composition/ 中组装。
+  模块边界：online、knowledge、ingestion、llm、conversation、task management 和 agent capabilities 保持独立。Conversation 负责历史消息与上下文；Task Management 负责任务生命周期与状态。Agent 适配器必须调用应用层能力，不得直接访问 Repository 或 SDK。
+  产品重点：可解释、可追溯证据的知识检索，以及投标 Agent 相关能力。当前阶段不代表已经具备完整的多 Agent 平台。
+  语言与表达：proposal、spec、design、tasks 以及面向用户的说明一律使用自然、准确的简体中文。不得把英文模板逐句直译成中文，不得为了显得正式而堆砌“应当进行”“实现了一个”等空泛表达。代码符号、接口路径、字段名、类名、库名、协议名和 OpenSpec 必需的结构标记可以保留英文。
+  中文术语：优先使用项目已有术语和业界通用译法；首次出现的必要英文术语可写成“中文（English）”，后续统一使用同一种叫法。不要在同一份文档中混用“任务管理/Task Management”“供应商/Provider”等多个译法。
+  Brownfield 规则：只描述当前 Change 实际要改变的行为，不要把整个现有代码库补写成 OpenSpec 规格。
 
 rules:
   proposal:
-    - State the problem, intended outcome, scope, non-goals, affected capabilities, and compatibility or migration impact.
-    - Identify whether the change affects HTTP contracts, persistence, state transitions, external providers, security, or sensitive data.
-    - Keep the proposal focused on one coherent change that can be reviewed and verified.
+    - 明确说明现状问题、预期结果、范围、非目标、受影响的能力，以及兼容性或迁移影响。
+    - 明确判断变更是否影响 HTTP 契约、持久化、状态流转、外部 Provider、安全或敏感数据。
+    - 一个 proposal 只围绕一项边界清晰、可以评审和验证的变更展开，不要把多个阶段目标拼成一个大 Change。
+    - 使用简洁的中文短句描述事实、原因和边界；不要写宣传语、空泛愿景或未经验证的完成结论。
   specs:
-    - Describe observable business or product behavior, not internal class structure or framework choices.
-    - Use concrete WHEN and THEN scenarios, including validation failures, provider failures, retries, and insufficient evidence where relevant.
-    - For RAG or decision behavior, require source traceability and define what happens when evidence is insufficient.
-    - Keep delta specs scoped to the current change; do not copy existing architecture or phase plans into a spec.
+    - 描述用户或外部系统能够观察到的业务行为，不要把内部类结构、文件路径或框架选型写成需求。
+    - 使用具体的 WHEN、THEN、AND 场景，覆盖输入校验失败、Provider 失败、重试、权限不足和证据不足等适用分支。
+    - 涉及 RAG 或业务判断时，必须定义来源追踪方式，以及证据不足时系统如何返回、提示或拒绝判断。
+    - Requirement 和 Scenario 的标题使用自然中文；保留 OpenSpec 要求的结构标记，不要把整句英文模板留在规格中。
+    - 增量规格只描述当前 Change 新增、修改或删除的行为，不要复制现有架构文档或阶段计划。
   design:
-    - Align all module placement and dependency direction with agent.md and ARCHITECTURE.md.
-    - Identify application contracts, ports, adapters, persistence changes, composition-root wiring, and frontend/backend boundaries when affected.
-    - Document error mapping, idempotency, state transitions, observability, security, rollback, and data migration considerations when applicable.
-    - Do not introduce LangGraph, SubAgent orchestration, or other complex frameworks unless the change has a concrete requirement for them.
+    - 模块归属和依赖方向必须与 agent.md、ARCHITECTURE.md 保持一致。
+    - 变更涉及相关内容时，说明应用层契约、Ports、Adapters、持久化、Composition Root 组装方式，以及前后端边界。
+    - 适用时说明错误映射、幂等性、状态流转、可观测性、安全、回滚和数据迁移方案；不适用时明确写“无”。
+    - 除非需求明确要求，否则不要引入 LangGraph、SubAgent 编排或其他复杂框架。
+    - 设计说明应解释关键取舍和影响，不要只罗列类名、目录名或实现步骤。
   tasks:
-    - Link implementation tasks to requirements or scenarios whenever practical.
-    - Include backend tests, architecture-boundary tests, frontend tests or build checks, and manual verification when the change affects those areas.
-    - Every task must have an observable completion condition; do not mark work complete without evidence.
+    - 尽可能把实现任务关联到对应的 Requirement 或 Scenario，让每项任务都能追溯到行为目标。
+    - 变更影响后端、架构边界、前端时，分别列出后端测试、架构边界测试、前端测试或构建检查，以及必要的人工验收。
+    - 每项任务都必须写明可观察的完成条件；没有验证证据时不得标记为完成。
+    - 任务应按可独立验证的工作切分，避免使用“完善功能”“处理相关问题”等无法验收的表述。
