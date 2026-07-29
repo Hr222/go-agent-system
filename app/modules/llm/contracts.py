@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
 
@@ -33,6 +34,24 @@ class ChatLlmPort(Protocol):
     """通用文本对话能力端口。"""
 
     def invoke(self, request: ChatLlmRequest) -> ChatLlmResult: ...
+
+
+@dataclass(slots=True, frozen=True)
+class ChatLlmStreamChunk:
+    """流式文本片段及可选的结束元数据。"""
+
+    content: str
+    model: str | None = None
+    prompt_version: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+
+
+class StreamingChatLlmPort(Protocol):
+    """单轮文本对话的异步流式能力端口。"""
+
+    def stream(self, request: ChatLlmRequest) -> AsyncIterator[ChatLlmStreamChunk]: ...
 
 
 @dataclass(slots=True, frozen=True)

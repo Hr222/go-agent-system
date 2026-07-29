@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
-from app.modules.llm.contracts import ChatLlmPort, ChatLlmRequest, ChatLlmResult
+from app.modules.llm.contracts import (
+    ChatLlmPort,
+    ChatLlmRequest,
+    ChatLlmResult,
+    ChatLlmStreamChunk,
+    StreamingChatLlmPort,
+)
 from app.shared.config import Settings, settings
 from app.shared.exceptions import ServiceNotConfiguredError, UpstreamServiceError
 
 
-class LangChainGlmChatLlm(ChatLlmPort):
+class LangChainGlmChatLlm(ChatLlmPort, StreamingChatLlmPort):
     """使用 GLM 的 LangChain 文本调用适配器。"""
 
     def __init__(
@@ -62,6 +69,35 @@ class LangChainGlmChatLlm(ChatLlmPort):
             output_tokens=usage[1],
             total_tokens=usage[2],
         )
+
+    def stream(self, request: ChatLlmRequest) -> AsyncIterator[ChatLlmStreamChunk]:
+        """使用 LangChain 原生异步流返回内部流式片段。"""
+
+        async def generate() -> AsyncIterator[ChatLlmStreamChunk]:
+            prompt = ChatPromptTemplate.from_messages(
+                [
+                    ("system", request.system_prompt),
+                    ("human", request.user_prompt),
+                ]
+            )
+
+            try:
+                async for response in self._chat_model.astream(prompt.format_messages()):
+                    usage = _message_usage(response)
+                    yield ChatLlmStreamChunk(
+                        content=_message_content(response),
+                        model=self.model or "unknown",
+                        prompt_version=request.prompt_version,
+                        input_tokens=usage[0],
+                        output_tokens=usage[1],
+                        total_tokens=usage[2],
+                    )
+            except Exception as exc:
+                raise UpstreamServiceError(
+                    f"GLM Chat 流式调用失败（Prompt 版本：{request.prompt_version}）：{exc}"
+                ) from exc
+
+        return generate()
 
 
 def _message_content(response: Any) -> str:

@@ -43,6 +43,21 @@ class Settings(BaseSettings):
     zhipu_timeout_seconds: float = Field(default=60.0, gt=0, alias="ZHIPU_TIMEOUT_SECONDS")
     zhipu_temperature: float = Field(default=0.0, ge=0, le=2, alias="ZHIPU_TEMPERATURE")
     zhipu_max_tokens: int | None = Field(default=None, gt=0, alias="ZHIPU_MAX_TOKENS")
+    llm_stream_max_concurrency: int = Field(
+        default=8, gt=0, alias="LLM_STREAM_MAX_CONCURRENCY"
+    )
+    llm_stream_first_token_timeout_seconds: float = Field(
+        default=30.0, gt=0, alias="LLM_STREAM_FIRST_TOKEN_TIMEOUT_SECONDS"
+    )
+    llm_stream_idle_timeout_seconds: float = Field(
+        default=20.0, gt=0, alias="LLM_STREAM_IDLE_TIMEOUT_SECONDS"
+    )
+    llm_stream_total_timeout_seconds: float = Field(
+        default=120.0, gt=0, alias="LLM_STREAM_TOTAL_TIMEOUT_SECONDS"
+    )
+    llm_stream_heartbeat_seconds: float = Field(
+        default=10.0, gt=0, alias="LLM_STREAM_HEARTBEAT_SECONDS"
+    )
     ocr_max_pages_per_batch: int = 4
     ocr_image_max_side: int = 1800
     ocr_request_interval_seconds: float = 10.0
