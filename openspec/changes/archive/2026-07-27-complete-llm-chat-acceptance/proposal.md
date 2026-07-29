@@ -28,4 +28,4 @@
 - 前端模块：`frontend/src/features/chat` 的 API 调用、加载态、错误态和重试行为。
 - 测试：补充 Application、HTTP、Infrastructure 和前端构建/人工验收证据。
 - 阶段范围：F1 仍为进行中；Tender Agent 及后续文件输入能力不在本 Change 内。
-- 参考基线：`agent.md`、`ARCHITECTURE.md`、`FRONTEND_ARCHITECTURE.md`、`docs/第三阶段- 后端F1工作进度.md` 和 `docs/第三阶段 - 前端改造工作.md`。
+- 参考基线：`agent.md`、`ARCHITECTURE.md`、`FRONTEND_ARCHITECTURE.md` 和 `docs/第三阶段- 前后端联合工作进度.md`。
