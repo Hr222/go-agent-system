@@ -4,7 +4,7 @@ import { AgentWorkspaceLayout } from "../layouts/AgentWorkspaceLayout";
 import { ChatPage } from "../features/chat/pages/ChatPage";
 import { KnowledgeBasePage } from "../features/knowledge-base/pages/KnowledgeBasePage";
 import { MockWorkspacePage } from "../features/mock-workspace/pages/MockWorkspacePage";
-import { TenderPage } from "../features/tender/pages/TenderPage";
+import { TenderPage } from "../features/agent/tender/pages/TenderPage";
 
 export const router = createBrowserRouter([
   {

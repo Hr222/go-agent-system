@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     tender_max_compression_ratio: float = Field(
         default=200.0, gt=0, alias="TENDER_MAX_COMPRESSION_RATIO"
     )
+    tender_chunk_threshold_bytes: int = Field(
+        default=4 * 1024 * 1024, gt=0, alias="TENDER_CHUNK_THRESHOLD_BYTES"
+    )
     tender_chunk_input_chars: int = Field(
         default=8_000, gt=128, alias="TENDER_CHUNK_INPUT_CHARS"
     )

@@ -80,7 +80,14 @@ class TenderApplication:
         self._validate_command(command)
         document = self.reader.read(file_name=command.file_name, content=command.content)
 
-        if self.boundary_llm is not None:
+        if len(document.content) > self.budget.chunk_threshold_bytes:
+            plan = self.planner.plan(document=document, budget=self.budget)
+            analysis, model, prompt_version = self._execute_chunked(
+                document=document,
+                plan=plan,
+                user_focus=command.user_focus,
+            )
+        elif self.boundary_llm is not None:
             analysis, model, prompt_version = self._execute_boundary_driven(
                 document=document,
                 user_focus=command.user_focus,

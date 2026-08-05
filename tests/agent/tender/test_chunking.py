@@ -180,6 +180,31 @@ def test_application_uses_local_extraction_then_bounded_global_merge() -> None:
     assert renderer.calls == 1
 
 
+def test_application_forces_chunked_analysis_above_threshold() -> None:
+    document = _document()
+    llm = ChunkedFakeLlm(document)
+    application = TenderApplication(
+        llm=llm,
+        boundary_llm=llm,
+        verify_llm=llm,
+        reader=FakeReader(document),
+        renderer=FakeRenderer(),
+        budget=TenderAnalysisBudget(
+            chunk_threshold_bytes=1,
+            chunk_input_chars=128,
+            max_merge_items=2,
+        ),
+    )
+
+    result = application.execute(
+        TenderGenerateSkeletonCommand(file_name="招标文件.docx", content=document.content)
+    )
+
+    assert result.analysis.package_type == "single_volume"
+    assert llm.calls[0][0] == "tender-chunk-v1-compact-format-20260731"
+    assert all(version != "tender-skeleton-v1-boundary-copy-20260804" for version, _ in llm.calls)
+
+
 def test_application_rejects_chunk_evidence_from_another_chunk() -> None:
     document = _document()
 

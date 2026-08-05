@@ -37,6 +37,7 @@ def build_tender_application(
         verify_llm=structured_llm,
         planner=TenderChunkPlanner(),
         budget=TenderAnalysisBudget(
+            chunk_threshold_bytes=settings.tender_chunk_threshold_bytes,
             chunk_input_chars=settings.tender_chunk_input_chars,
             merge_input_chars=settings.tender_merge_input_chars,
             max_output_chars=settings.tender_max_output_chars,

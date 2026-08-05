@@ -1,4 +1,4 @@
-import { axiosClient } from "../../../services/http/axiosClient";
+import { axiosClient } from "../../../../services/http/axiosClient";
 
 export type TenderSourceEvidence = {
   evidence_id: string;
