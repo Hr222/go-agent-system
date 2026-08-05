@@ -68,6 +68,11 @@ from app.interfaces.http.schemas.retrieval import (
     RetrievalSearchResponse,
     RetrievalStageDebug,
 )
+from app.interfaces.http.schemas.tender import (
+    TenderArtifactResponse,
+    TenderErrorResponse,
+    TenderGenerateSkeletonResponse,
+)
 
 __all__ = [
     "AnswerCitation",
@@ -122,6 +127,9 @@ __all__ = [
     "RetrievalSearchRequest",
     "RetrievalSearchResponse",
     "RetrievalStageDebug",
+    "TenderArtifactResponse",
+    "TenderErrorResponse",
+    "TenderGenerateSkeletonResponse",
     "SectionSplitItem",
     "SectionSplitResult",
 ]

@@ -1,6 +1,7 @@
 from app.composition import ApplicationContainer
 from app.infrastructure.llm.langchain_glm_adapter import LangChainGlmStructuredLlm
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
+from app.modules.agent.tender.application.service import TenderApplication
 from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
 from app.modules.online.application.ask_knowledge import AskKnowledgeUseCase
@@ -53,6 +54,20 @@ def test_application_container_accepts_tender_llm_test_double() -> None:
     container = ApplicationContainer(session=object(), tender_structured_llm=fake_llm)
 
     assert container.tender_structured_llm() is fake_llm
+
+
+def test_application_container_composes_tender_application_without_database() -> None:
+    class FakeTenderLlm:
+        def invoke(self, request: object, output_schema: object) -> object:
+            return object()
+
+    fake_llm = FakeTenderLlm()
+    container = ApplicationContainer(tender_structured_llm=fake_llm)
+
+    application = container.tender_application()
+
+    assert isinstance(application, TenderApplication)
+    assert application.llm is fake_llm
 
 
 def test_application_container_shares_openai_client_factory_with_rag() -> None:

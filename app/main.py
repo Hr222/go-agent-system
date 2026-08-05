@@ -7,6 +7,10 @@ from time import perf_counter
 from fastapi import FastAPI, Request
 
 from app.composition.runtime import inspect_knowledge_base_schema
+from app.interfaces.agent.tender_mcp import (
+    TENDER_MCP_MOUNT_PATH,
+    create_tender_mcp_server,
+)
 from app.interfaces.http.dependencies import get_stateless_application_container
 from app.interfaces.http.router import api_router
 from app.shared.config import settings
@@ -17,6 +21,12 @@ logger = get_logger("app.main")
 
 
 def create_app() -> FastAPI:
+    tender_mcp_server = create_tender_mcp_server(
+        lambda: get_stateless_application_container().tender_application()
+    )
+    tender_mcp_http_app = tender_mcp_server.streamable_http_app()
+    tender_mcp_session_manager = tender_mcp_server.session_manager
+
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         # 应用启动时只做轻量表结构检查，不主动创建或修改数据库结构。
@@ -42,7 +52,8 @@ def create_app() -> FastAPI:
             settings.llm_stream_max_concurrency
         )
         application.state.llm_active_streams = 0
-        yield
+        async with tender_mcp_session_manager.run():
+            yield
         get_stateless_application_container().close()
         get_stateless_application_container.cache_clear()
         logger.info("关闭 FastAPI 应用 name=%s", settings.app_name)
@@ -107,6 +118,7 @@ def create_app() -> FastAPI:
         }
 
     application.include_router(api_router, prefix=settings.api_v1_prefix)
+    application.mount(TENDER_MCP_MOUNT_PATH, tender_mcp_http_app)
     return application
 
 

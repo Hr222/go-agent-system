@@ -4,6 +4,7 @@ import { AgentWorkspaceLayout } from "../layouts/AgentWorkspaceLayout";
 import { ChatPage } from "../features/chat/pages/ChatPage";
 import { KnowledgeBasePage } from "../features/knowledge-base/pages/KnowledgeBasePage";
 import { MockWorkspacePage } from "../features/mock-workspace/pages/MockWorkspacePage";
+import { TenderPage } from "../features/tender/pages/TenderPage";
 
 export const router = createBrowserRouter([
   {
@@ -14,7 +15,7 @@ export const router = createBrowserRouter([
       { path: "dashboard", element: <MockWorkspacePage kind="dashboard" /> },
       { path: "chat", element: <ChatPage /> },
       { path: "agents", element: <MockWorkspacePage kind="agents" /> },
-      { path: "agents/tender", element: <MockWorkspacePage kind="tender" /> },
+      { path: "agents/tender", element: <TenderPage /> },
       { path: "agents/tender/tasks/:taskId", element: <MockWorkspacePage kind="task" /> },
       { path: "agents/tender/tasks/:taskId/skeleton", element: <MockWorkspacePage kind="skeleton" /> },
       { path: "workflow", element: <MockWorkspacePage kind="workflow" /> },
