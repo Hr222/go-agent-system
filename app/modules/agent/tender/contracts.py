@@ -124,6 +124,7 @@ class TenderDocumentResourceStats:
 class TenderAnalysisBudget:
     """分块、归并和请求级调用预算。"""
 
+    chunk_threshold_bytes: int = 4 * 1024 * 1024
     chunk_input_chars: int = 8_000
     merge_input_chars: int = 18_000
     max_output_chars: int = 16_000
