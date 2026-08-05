@@ -8,7 +8,7 @@
 
 当前策略是：
 
-- 已建立的 Chat 流式 Change 继续按 OpenSpec 的同步和归档流程收口。
+- 已建立的 Chat 流式 Change 已完成 OpenSpec 规格同步和归档。
 - 尚未完成的 Phase 3 Tender 垂直切片暂由两份阶段文档管理：总计划是联合蓝本，联合进度文档记录前后端执行明细和证据。
 - Phase 3 完成后，两份阶段文档一并删除；后续阶段的详细工作从 OpenSpec Explore/Change 开始管理，系统看板仅保留高层状态。
 
@@ -26,8 +26,8 @@
 | 内容 | 管理位置 | 当前状态 |
 | --- | --- | --- |
 | F1-A：通用 LLM 单轮技术验证 | 已归档的 `complete-llm-chat-acceptance` Change 与两份阶段文档中的实施证据 | 已完成。 |
-| Chat 流式与打字机展示 | `llm-chat-streaming`、`improve-chat-stream-visibility`、`add-chat-stream-pacing` | 实现与验证已完成，待按顺序同步规格和归档。 |
-| Tender 同步文件/RAG/LLM 前后端闭环 | 两份 Phase 3 阶段文档 | 未开始，是 Phase 3 剩余工作。 |
+| Chat 流式与打字机展示 | `llm-chat-streaming`、`improve-chat-stream-visibility`、`add-chat-stream-pacing` | 实现、验证、规格同步和归档已完成。 |
+| Tender 单 Agent 骨架生成闭环 | `tender-agent-v1-mcp-skeleton-generation` Change 与两份 Phase 3 阶段文档 | 已进入实现与验收；包含同步 HTTP、标准 MCP 能力适配和 V1 骨架文件生成。Agent Runtime、SubAgent 编排、Task Management、Conversation / Context Management 以及公司资料库填充仍属于后续阶段/V2。 |
 | Task Management | 后续独立阶段与 OpenSpec Change | 不属于 Phase 3。 |
 | Conversation / Context Management | 后续独立阶段与 OpenSpec Change | 不属于 Phase 3。 |
 | 多 Agent 编排 | 后续独立阶段与 OpenSpec Change | 不属于 Phase 3。 |

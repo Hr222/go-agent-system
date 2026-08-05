@@ -24,19 +24,20 @@ class RagAnswerGenerator:
     ) -> None:
         if client is not None:
             self.client = client
-            self.model = settings.zhipu_chat_model
+            self._provider_config = settings.llm_provider_config()
+            self.model = self._provider_config.model
             return
-
-        if not settings.zhipu_chat_model:
-            raise ServiceNotConfiguredError(
-                "未配置 ZHIPU_CHAT_MODEL，无法执行问答。"
-            )
 
         if client_factory is None:
             raise RuntimeError("RAG LLM Adapter 必须由 Composition Root 注入 Client Factory。")
+        if not client_factory.model:
+            raise ServiceNotConfiguredError(
+                f"未配置 {client_factory.provider.upper()} Chat 模型，无法执行问答。"
+            )
         self._client_factory = client_factory
+        self._provider_config = client_factory.provider_config
         self.client = self._client_factory.create_client()
-        self.model = settings.zhipu_chat_model
+        self.model = client_factory.model
 
     def answer(self, *, query: str, hits: list[KnowledgeSearchHit]) -> AnswerResult:
         if not hits:
@@ -79,9 +80,9 @@ class RagAnswerGenerator:
         ]
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            request_kwargs: dict[str, object] = {
+                "model": self.model,
+                "messages": [
                     {
                         "role": "system",
                         "content": (
@@ -99,9 +100,21 @@ class RagAnswerGenerator:
                         ),
                     },
                 ],
-            )
+            }
+            if self._provider_config.thinking is not None:
+                request_kwargs["extra_body"] = {
+                    "thinking": {"type": self._provider_config.thinking}
+                }
+            response = self.client.chat.completions.create(**request_kwargs)
         except Exception as exc:
-            raise UpstreamServiceError(f"GLM 问答请求失败：{exc}") from exc
+            provider_label = (
+                self._client_factory.provider.upper()
+                if hasattr(self, "_client_factory")
+                else "LLM"
+            )
+            raise UpstreamServiceError(
+                f"{provider_label} 问答请求失败：{exc}"
+            ) from exc
 
         message = response.choices[0].message
         content = message.content or ""

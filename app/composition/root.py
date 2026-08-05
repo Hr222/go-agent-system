@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.composition.agent import build_tender_structured_llm
+from app.composition.agent import build_tender_application, build_tender_structured_llm
 from app.composition.ingestion import (
     build_ingestion_service,
     build_ingestion_use_case,
@@ -48,6 +48,7 @@ from app.infrastructure.persistence.repositories.policy_persistence_gateway impo
 )
 from app.infrastructure.persistence.session import SessionLocal
 from app.interfaces.agent import FunctionCallingAdapter
+from app.modules.agent.tender.application.service import TenderApplication
 from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
 from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
@@ -118,6 +119,7 @@ class ApplicationContainer:
         self._data_provider_registry = data_provider_registry
         self._answer_service = answer_service
         self._tender_structured_llm = tender_structured_llm
+        self._tender_application: TenderApplication | None = None
         self._chat_llm = chat_llm
         self._chat_application: ChatApplication | None = None
         self._streaming_chat_llm = streaming_chat_llm
@@ -156,6 +158,13 @@ class ApplicationContainer:
             )
         return self._tender_structured_llm
 
+    def tender_application(self) -> TenderApplication:
+        """提供不依赖数据库会话的同步 Tender Agent 用例。"""
+
+        if self._tender_application is None:
+            self._tender_application = build_tender_application(self.tender_structured_llm())
+        return self._tender_application
+
     def chat_application(self) -> ChatApplication:
         """提供无数据库依赖的独立单轮 LLM Chat 用例。"""
 
@@ -182,7 +191,9 @@ class ApplicationContainer:
         """返回供 RAG 和 Agent 共享的 OpenAI-compatible Client Factory。"""
 
         if self._openai_client_factory is None:
-            self._openai_client_factory = OpenAICompatibleClientFactory()
+            self._openai_client_factory = OpenAICompatibleClientFactory(
+                provider=settings.llm_provider
+            )
         return self._openai_client_factory
 
     def close(self) -> None:

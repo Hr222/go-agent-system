@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
 
@@ -70,6 +70,8 @@ class StructuredLlmResult(Generic[StructuredModel]):
     value: StructuredModel
     model: str
     prompt_version: str
+    finish_reason: str | None = None
+    usage: Mapping[str, object] | None = None
 
 
 class StructuredLlmPort(Protocol):

@@ -28,7 +28,7 @@ proposal
                     └──> implementation → sync specs → archive
 ```
 
-当前学习分支已完成 `llm-chat-streaming` 及其两次体验迭代：`improve-chat-stream-visibility` 和 `add-chat-stream-pacing`。三份 Change 的代码、测试、构建和浏览器验收均已完成，下一步是按顺序同步 `llm-chat` 主规格并归档。
+当前学习分支已完成 `llm-chat-streaming` 及其两次体验迭代：`improve-chat-stream-visibility` 和 `add-chat-stream-pacing`。三份 Change 的代码、测试、构建、浏览器验收、主规格同步和归档均已完成，下一步转入 Tender Agent 的范围探索。
 
 ## 1. OpenSpec 是什么
 
@@ -1499,7 +1499,7 @@ Codex 使用 `.codex/skills/openspec-*` 形式。可以直接使用 `OpenSpec Ex
 ### 进行中
 
 - [ ] 按顺序同步 `llm-chat-streaming`、`improve-chat-stream-visibility` 和 `add-chat-stream-pacing` 到 `llm-chat` 主规格
-- [ ] 严格校验主规格，并使用 `openspec-archive-change` 归档上述三个 Change
+- [x] 严格校验主规格，并使用 `openspec-archive-change` 归档上述三个 Change
 
 ### 待完成
 

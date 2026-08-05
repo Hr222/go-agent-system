@@ -9,7 +9,8 @@ APP_ROOT = PROJECT_ROOT / "app"
 
 def _imported_modules(path: Path) -> set[str]:
     modules: set[str] = set()
-    for source_path in path.rglob("*.py"):
+    source_paths = [path] if path.is_file() else path.rglob("*.py")
+    for source_path in source_paths:
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -191,6 +192,33 @@ def test_http_ingestion_routes_use_application_use_cases() -> None:
         module.startswith("app.modules.ingestion.pipeline")
         for module in route_imports
     )
+
+
+def test_tender_application_and_ports_do_not_depend_on_protocol_or_adapters() -> None:
+    tender_root = APP_ROOT / "modules" / "agent" / "tender"
+    imported = _imported_modules(tender_root)
+    forbidden_prefixes = (
+        "fastapi",
+        "mcp",
+        "app.infrastructure",
+        "langchain",
+        "langgraph",
+        "python_docx",
+    )
+    assert not any(
+        module.startswith(forbidden)
+        for module in imported
+        for forbidden in forbidden_prefixes
+    )
+
+
+def test_tender_mcp_adapter_only_bridges_to_tender_application() -> None:
+    adapter_imports = _imported_modules(APP_ROOT / "interfaces" / "agent" / "tender_mcp.py")
+
+    assert "mcp.server.fastmcp" in adapter_imports
+    assert "app.modules.agent.tender.application.service" in adapter_imports
+    assert not any(module.startswith("app.infrastructure") for module in adapter_imports)
+    assert not any(module.startswith("app.modules.knowledge") for module in adapter_imports)
 
 
 def test_targeted_architecture_packages_exist_and_old_packages_are_gone() -> None:
