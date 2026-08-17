@@ -1,5 +1,5 @@
 import { Search } from "lucide-react";
-import { Alert, Card, Empty, Input, Space, Tag, Typography } from "antd";
+import { Alert, Button, Card, Empty, Input, Space, Tag, Typography } from "antd";
 
 import type {
   KnowledgeRetrievalMode,
@@ -7,8 +7,6 @@ import type {
   KnowledgeSearchResponse,
 } from "../types";
 import styles from "../pages/KnowledgeBasePage.module.css";
-
-const { Search: SearchInput } = Input;
 
 const retrievalModeOptions: Array<{ label: string; value: KnowledgeRetrievalMode }> = [
   { label: "精确向量", value: "exact" },
@@ -58,15 +56,28 @@ export function KnowledgeBaseSearchPanel({
       </div>
     </div>
     <Card className={styles.searchForm}>
-      <SearchInput
-        size="large"
-        enterButton="检索"
-        placeholder="例如：申请材料需要哪些证明文件？"
-        value={query}
-        onChange={(event) => onQueryChange(event.target.value)}
-        onSearch={onSearch}
-        loading={loading}
-      />
+      <div className={styles.searchBar}>
+        <Input
+          size="large"
+          className={styles.searchInput}
+          allowClear
+          prefix={<Search size={18} aria-hidden="true" />}
+          placeholder="例如：申请材料需要哪些证明文件？"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          onPressEnter={() => onSearch(query)}
+        />
+        <Button
+          className={styles.searchButton}
+          type="primary"
+          size="large"
+          icon={<Search size={17} />}
+          loading={loading}
+          onClick={() => onSearch(query)}
+        >
+          检索
+        </Button>
+      </div>
       <div className={styles.searchControls}>
         <Space className={styles.searchControlGroup}>
           <Typography.Text className={styles.searchControlLabel}>召回模式</Typography.Text>

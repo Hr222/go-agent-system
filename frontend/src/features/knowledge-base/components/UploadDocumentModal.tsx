@@ -103,7 +103,7 @@ export function UploadDocumentModal({
         <Form form={form} layout="vertical" initialValues={{ category: "业务制度" }} onFinish={handlePreview}>
           <Form.Item label="文档文件">
             <Dragger
-              accept=".pdf,.docx,.xlsx"
+              accept=".doc,.docx,.pdf,.png,.jpg,.jpeg,.bmp,.tif,.tiff,.webp"
               maxCount={1}
               beforeUpload={() => false}
               fileList={fileList}
@@ -111,7 +111,7 @@ export function UploadDocumentModal({
             >
               <p className="ant-upload-drag-icon"><InboxOutlined /></p>
               <p className="ant-upload-text">点击或拖拽文件到这里</p>
-              <p className="ant-upload-hint">支持 PDF、DOCX、XLSX，单个文件最大 50 MB</p>
+              <p className="ant-upload-hint">支持 DOC、DOCX、PDF 及常见图片扫描件，单个文件最大 50 MB</p>
             </Dragger>
           </Form.Item>
           <Form.Item

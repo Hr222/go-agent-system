@@ -50,6 +50,18 @@ def test_discard_upload_removes_staged_file(tmp_path: Path) -> None:
     assert not (service.upload_root / staged.upload_id).exists()
 
 
+def test_promote_upload_keeps_the_original_file_for_later_preview(tmp_path: Path) -> None:
+    service = PolicyUploadService(tmp_path)
+    upload = _upload("certificate.jpg", b"image-content")
+
+    staged = service.stage_upload(file_name=upload.filename, file_stream=upload.file)
+    promoted_path = Path(service.promote_upload(staged.upload_id))
+
+    assert promoted_path.read_bytes() == b"image-content"
+    assert promoted_path.parent == service.document_root / staged.upload_id
+    assert not (service.upload_root / staged.upload_id).exists()
+
+
 def test_cleanup_expired_removes_old_staged_files(tmp_path: Path) -> None:
     service = PolicyUploadService(tmp_path, retention_seconds=60)
     upload = _upload("policy.pdf", b"content")

@@ -94,7 +94,7 @@ async def ingest_policy_pipeline_upload(
 ) -> PolicyPipelineResponse:
     """根据暂存 ID 找回文件，入库成功后删除对应暂存目录。"""
     try:
-        source_path = upload_service.resolve_upload(request.upload_id)
+        source_path = upload_service.promote_upload(request.upload_id)
         response = pipeline_response(
             use_case.ingest(
                 pipeline_command(
@@ -108,10 +108,11 @@ async def ingest_policy_pipeline_upload(
                 )
             )
         )
-        upload_service.discard_upload(request.upload_id)
         return response
     except KnowledgeBaseSchemaUnavailableError as exc:
+        upload_service.discard_upload(request.upload_id)
         logger.exception("知识库表结构缺失，上传入库失败 upload_id=%s", request.upload_id)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except (FileNotFoundError, IsADirectoryError, RuntimeError, ValueError) as exc:
+        upload_service.discard_upload(request.upload_id)
         raise HTTPException(status_code=400, detail=str(exc)) from exc

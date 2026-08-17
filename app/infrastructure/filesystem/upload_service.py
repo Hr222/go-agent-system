@@ -39,7 +39,9 @@ class PolicyUploadService(UploadStoragePort):
     ) -> None:
         self.workspace_root = workspace_root.expanduser().resolve()
         self.upload_root = (self.workspace_root / "uploads").resolve()
+        self.document_root = (self.workspace_root / "documents").resolve()
         self.upload_root.mkdir(parents=True, exist_ok=True)
+        self.document_root.mkdir(parents=True, exist_ok=True)
         self.max_size_bytes = (
             settings.policy_upload_max_size_bytes
             if max_size_bytes is None
@@ -116,13 +118,32 @@ class PolicyUploadService(UploadStoragePort):
 
         return str(files[0])
 
-    def discard_upload(self, upload_id: str) -> None:
-        """删除已消费或已失败的上传暂存。"""
+    def promote_upload(self, upload_id: str) -> str:
+        """Move an accepted upload to durable storage before persisting its path."""
+        source_path = Path(self.resolve_upload(upload_id))
+        source_dir = self._resolve_upload_dir(upload_id)
+        target_dir = self._resolve_document_dir(upload_id)
+        target_dir.mkdir(parents=True, exist_ok=False)
+        target_path = target_dir / source_path.name
+
         try:
-            target_dir = self._resolve_upload_dir(upload_id)
+            source_path.replace(target_path)
+            source_dir.rmdir()
+        except Exception:
+            shutil.rmtree(target_dir, ignore_errors=True)
+            raise
+
+        return str(target_path)
+
+    def discard_upload(self, upload_id: str) -> None:
+        """Remove a staged upload or a promoted file when ingestion fails."""
+        try:
+            upload_dir = self._resolve_upload_dir(upload_id)
+            document_dir = self._resolve_document_dir(upload_id)
         except ValueError:
             return
-        shutil.rmtree(target_dir, ignore_errors=True)
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        shutil.rmtree(document_dir, ignore_errors=True)
 
     def cleanup_expired(self, *, now: datetime | None = None) -> int:
         """清理超过保留时间的上传暂存目录。"""
@@ -148,16 +169,23 @@ class PolicyUploadService(UploadStoragePort):
         return removed_count
 
     def _resolve_upload_dir(self, upload_id: str) -> Path:
+        return self._resolve_child_dir(self.upload_root, upload_id)
+
+    def _resolve_document_dir(self, upload_id: str) -> Path:
+        return self._resolve_child_dir(self.document_root, upload_id)
+
+    @staticmethod
+    def _resolve_child_dir(root: Path, upload_id: str) -> Path:
         # 先校验 ID 格式，再做真实路径归一化，形成两层目录越界防线。
         normalized_id = upload_id.strip()
         if not _UPLOAD_ID_PATTERN.fullmatch(normalized_id):
             raise ValueError("upload_id 格式无效。")
 
-        target_dir = (self.upload_root / normalized_id).resolve()
+        target_dir = (root / normalized_id).resolve()
         try:
-            target_dir.relative_to(self.upload_root)
+            target_dir.relative_to(root)
         except ValueError as exc:
             raise ValueError("upload_id 不在上传暂存目录内。") from exc
-        if target_dir.parent != self.upload_root:
+        if target_dir.parent != root:
             raise ValueError("upload_id 目录层级无效。")
         return target_dir

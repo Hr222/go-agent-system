@@ -1,8 +1,11 @@
 """知识库管理工作台 HTTP 接口。"""
 
+import mimetypes
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from app.interfaces.http.assemblers.knowledge_management import (
     categories_response,
@@ -81,3 +84,35 @@ async def get_management_document(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.api_route("/management/documents/{document_id}/content", methods=["GET", "HEAD"])
+async def get_management_document_content(
+    document_id: int,
+    service: KnowledgeManagementService = Depends(get_knowledge_management_service),
+) -> FileResponse:
+    """Return the registered original file without exposing its local path."""
+    try:
+        document = service.get_document(document_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not document.source_path:
+        raise HTTPException(status_code=404, detail="该文档未保留可预览的原文件。")
+
+    source_path = Path(document.source_path)
+    if not source_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="原文件不可用，请重新上传该文档后再预览。",
+        )
+
+    media_type, _ = mimetypes.guess_type(source_path.name)
+    return FileResponse(
+        path=source_path,
+        media_type=media_type or "application/octet-stream",
+        filename=document.file_name or source_path.name,
+        content_disposition_type="inline",
+    )

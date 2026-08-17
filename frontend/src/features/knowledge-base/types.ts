@@ -2,10 +2,23 @@ export type KnowledgeDocumentStatus = "ready" | "processing" | "failed";
 
 export type KnowledgeRetrievalMode = "exact" | "hnsw" | "hybrid";
 
+export type KnowledgeDocumentFileType =
+  | "PDF"
+  | "DOCX"
+  | "DOC"
+  | "XLSX"
+  | "XLS"
+  | "JPG"
+  | "PNG"
+  | "BMP"
+  | "TIF"
+  | "WEBP"
+  | "FILE";
+
 export type KnowledgeDocument = {
   id: number;
   name: string;
-  type: "PDF" | "DOCX" | "XLSX";
+  type: KnowledgeDocumentFileType;
   size: string;
   category: string;
   version: string;

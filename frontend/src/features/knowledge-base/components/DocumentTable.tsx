@@ -29,6 +29,7 @@ export function DocumentTable({ documents, search, statuses, category, categorie
           size="large"
           className={styles.documentSearch}
           prefix={<Search size={16} />}
+          allowClear
           placeholder="搜索文档名称..."
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
@@ -69,7 +70,12 @@ export function DocumentTable({ documents, search, statuses, category, categorie
 }
 
 function FileTypeBadge({ type }: { type: KnowledgeDocument["type"] }) {
-  return <span className={`${styles.fileType} ${styles[type.toLowerCase()]}`}>{type}</span>;
+  const tone = ["JPG", "PNG", "BMP", "TIF", "WEBP"].includes(type)
+    ? "image"
+    : type === "FILE"
+      ? "file"
+      : type.toLowerCase();
+  return <span className={`${styles.fileType} ${styles[tone]}`}>{type}</span>;
 }
 
 function StatusTag({ document }: { document: KnowledgeDocument }) {

@@ -11,11 +11,18 @@ import type {
   KnowledgeSearchResponse,
   KnowledgeRetrievalMode,
   KnowledgeUploadPreview,
+  KnowledgeDocumentFileType,
   ListKnowledgeDocumentsParams,
   UploadDocumentRequest,
 } from "../types";
 
 const useMock = appConfig.knowledgeBaseDataSource === "mock";
+
+export function getKnowledgeDocumentPreviewUrl(documentId: number): string | undefined {
+  if (useMock) return undefined;
+  const baseUrl = appConfig.apiBaseUrl.replace(/\/$/, "");
+  return `${baseUrl}/v1/kb/management/documents/${documentId}/content`;
+}
 
 type ApiManagementOverview = {
   document_count: number;
@@ -122,11 +129,21 @@ function formatDate(value: string | null): string {
 
 function mapDocument(document: ApiManagementDocument): KnowledgeDocument {
   const normalizedType = (document.file_type ?? "").replace(".", "").toUpperCase();
-  const type: KnowledgeDocument["type"] = normalizedType === "DOCX"
-    ? "DOCX"
-    : normalizedType === "XLSX"
-      ? "XLSX"
-      : "PDF";
+  const typeByExtension: Record<string, KnowledgeDocumentFileType> = {
+    PDF: "PDF",
+    DOCX: "DOCX",
+    DOC: "DOC",
+    XLSX: "XLSX",
+    XLS: "XLS",
+    JPG: "JPG",
+    JPEG: "JPG",
+    PNG: "PNG",
+    BMP: "BMP",
+    TIF: "TIF",
+    TIFF: "TIF",
+    WEBP: "WEBP",
+  };
+  const type = typeByExtension[normalizedType] ?? "FILE";
 
   return {
     id: document.document_id,
