@@ -1,5 +1,10 @@
 """平台能力目录领域契约。"""
 
+from app.modules.interaction.domain.agent_call import (
+    AgentCallError,
+    AgentCallResult,
+    StructuredAgentCall,
+)
 from app.modules.interaction.domain.candidate import (
     CapabilityCandidate,
     CapabilityCandidateIndexEntry,
@@ -26,6 +31,8 @@ from app.modules.interaction.domain.intent import (
 )
 
 __all__ = [
+    "AgentCallError",
+    "AgentCallResult",
     "CapabilityPrincipal",
     "CapabilityCandidate",
     "CapabilityCandidateIndexEntry",
@@ -41,5 +48,6 @@ __all__ = [
     "CapabilityType",
     "ConfirmationPolicy",
     "PlatformCapability",
+    "StructuredAgentCall",
     "validate_dispatch_key",
 ]

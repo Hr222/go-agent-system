@@ -6,6 +6,11 @@ from app.modules.interaction.application.chat_stream import InteractionChatStrea
 from app.modules.interaction.application.confirmation import ExplicitCapabilityConfirmation
 from app.modules.interaction.application.gateway import IntentInteractionGateway
 from app.modules.interaction.application.intent_recognition import StructuredIntentRecognition
+from app.modules.interaction.domain.agent_call import (
+    AgentCallError,
+    AgentCallResult,
+    StructuredAgentCall,
+)
 from app.modules.interaction.domain.capability import (
     CapabilityPrincipal,
     CapabilityType,
@@ -14,6 +19,8 @@ from app.modules.interaction.domain.capability import (
 )
 
 __all__ = [
+    "AgentCallError",
+    "AgentCallResult",
     "CapabilityPrincipal",
     "CapabilityType",
     "ConfirmationPolicy",
@@ -24,4 +31,5 @@ __all__ = [
     "IntentInteractionGateway",
     "InteractionChatStreamApplication",
     "StructuredIntentRecognition",
+    "StructuredAgentCall",
 ]
