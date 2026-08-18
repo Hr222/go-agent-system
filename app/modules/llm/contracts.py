@@ -2,11 +2,34 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
+from enum import Enum
 from typing import Generic, Protocol, TypeVar
 
 from pydantic import BaseModel
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
+
+
+class ChatLlmMessageRole(str, Enum):
+    """文本 Chat LLM 支持的模型中立消息角色。"""
+
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+@dataclass(slots=True, frozen=True)
+class ChatLlmMessage:
+    """传递给文本 Chat LLM 的一条有角色历史消息。"""
+
+    role: ChatLlmMessageRole
+    content: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.role, ChatLlmMessageRole):
+            raise ValueError("LLM 历史消息角色无效。")
+        if not isinstance(self.content, str) or not self.content.strip():
+            raise ValueError("LLM 历史消息内容不能为空。")
 
 
 @dataclass(slots=True, frozen=True)
@@ -16,6 +39,13 @@ class ChatLlmRequest:
     system_prompt: str
     user_prompt: str
     prompt_version: str
+    history_messages: tuple[ChatLlmMessage, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.history_messages, tuple) or not all(
+            isinstance(message, ChatLlmMessage) for message in self.history_messages
+        ):
+            raise ValueError("LLM 历史消息必须是有序的 ChatLlmMessage 元组。")
 
 
 @dataclass(slots=True, frozen=True)

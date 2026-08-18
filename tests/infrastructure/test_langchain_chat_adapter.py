@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLlm
-from app.modules.llm.contracts import ChatLlmRequest
+from app.modules.llm.contracts import ChatLlmMessage, ChatLlmMessageRole, ChatLlmRequest
 from app.shared.config import Settings
 from app.shared.exceptions import UpstreamServiceError
 
@@ -60,6 +60,38 @@ def test_langchain_chat_adapter_returns_text_and_usage() -> None:
     assert result.model == "glm-test"
     assert result.total_tokens == 10
     assert model.messages is not None
+    assert [(message.type, message.content) for message in model.messages] == [
+        ("system", "你是测试助手。"),
+        ("human", "回复连接状态。"),
+    ]
+
+
+def test_langchain_chat_adapter_preserves_history_roles_and_order() -> None:
+    model = FakeChatModel(FakeMessage())
+    adapter = LangChainGlmChatLlm(
+        configuration=Settings(zhipu_chat_model="glm-test"),
+        chat_model=model,
+    )
+    request = ChatLlmRequest(
+        system_prompt="运行时系统提示。",
+        user_prompt="当前用户问题。",
+        prompt_version="dialogue-basic-chat-v1",
+        history_messages=(
+            ChatLlmMessage(ChatLlmMessageRole.SYSTEM, "历史系统提示。"),
+            ChatLlmMessage(ChatLlmMessageRole.USER, "历史用户消息。"),
+            ChatLlmMessage(ChatLlmMessageRole.ASSISTANT, "历史助手消息。"),
+        ),
+    )
+
+    adapter.invoke(request)
+
+    assert [(message.type, message.content) for message in model.messages] == [
+        ("system", "运行时系统提示。"),
+        ("system", "历史系统提示。"),
+        ("human", "历史用户消息。"),
+        ("ai", "历史助手消息。"),
+        ("human", "当前用户问题。"),
+    ]
 
 
 def test_langchain_chat_adapter_maps_provider_failure() -> None:
@@ -108,6 +140,37 @@ def test_langchain_chat_adapter_streams_chunks_and_final_usage() -> None:
     import asyncio
 
     asyncio.run(scenario())
+
+
+def test_langchain_chat_adapter_streams_history_messages_in_order() -> None:
+    model = FakeStreamingChatModel([FakeMessage()])
+    adapter = LangChainGlmChatLlm(
+        configuration=Settings(zhipu_chat_model="glm-test"),
+        chat_model=model,
+    )
+    request = ChatLlmRequest(
+        system_prompt="运行时系统提示。",
+        user_prompt="当前用户问题。",
+        prompt_version="dialogue-basic-chat-v1",
+        history_messages=(
+            ChatLlmMessage(ChatLlmMessageRole.USER, "历史用户消息。"),
+            ChatLlmMessage(ChatLlmMessageRole.ASSISTANT, "历史助手消息。"),
+        ),
+    )
+
+    async def scenario() -> None:
+        _ = [chunk async for chunk in adapter.stream(request)]
+
+    import asyncio
+
+    asyncio.run(scenario())
+
+    assert [(message.type, message.content) for message in model.messages] == [
+        ("system", "运行时系统提示。"),
+        ("human", "历史用户消息。"),
+        ("ai", "历史助手消息。"),
+        ("human", "当前用户问题。"),
+    ]
 
 
 def test_langchain_chat_adapter_maps_streaming_provider_failure() -> None:

@@ -3,10 +3,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
 from app.modules.llm.contracts import (
+    ChatLlmMessage,
+    ChatLlmMessageRole,
     ChatLlmPort,
     ChatLlmRequest,
     ChatLlmResult,
@@ -50,15 +52,8 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
         )
 
     def invoke(self, request: ChatLlmRequest) -> ChatLlmResult:
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", request.system_prompt),
-                ("human", request.user_prompt),
-            ]
-        )
-
         try:
-            response = self._model_for_request().invoke(prompt.format_messages())
+            response = self._model_for_request().invoke(_request_messages(request))
         except Exception as exc:
             raise UpstreamServiceError(
                 f"{self.provider_label} Chat 调用失败"
@@ -78,16 +73,9 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
 
     def stream(self, request: ChatLlmRequest) -> AsyncIterator[ChatLlmStreamChunk]:
         async def generate() -> AsyncIterator[ChatLlmStreamChunk]:
-            prompt = ChatPromptTemplate.from_messages(
-                [
-                    ("system", request.system_prompt),
-                    ("human", request.user_prompt),
-                ]
-            )
-
             try:
                 async for response in self._model_for_request().astream(
-                    prompt.format_messages()
+                    _request_messages(request)
                 ):
                     usage = _message_usage(response)
                     yield ChatLlmStreamChunk(
@@ -125,6 +113,25 @@ def _message_content(response: Any) -> str:
             if isinstance(part, dict) and part.get("type") == "text"
         ).strip()
     return str(content or "")
+
+
+def _request_messages(request: ChatLlmRequest) -> list[SystemMessage | HumanMessage | AIMessage]:
+    messages: list[SystemMessage | HumanMessage | AIMessage] = [
+        SystemMessage(content=request.system_prompt)
+    ]
+    messages.extend(_history_message_to_langchain(message) for message in request.history_messages)
+    messages.append(HumanMessage(content=request.user_prompt))
+    return messages
+
+
+def _history_message_to_langchain(
+    message: ChatLlmMessage,
+) -> SystemMessage | HumanMessage | AIMessage:
+    if message.role is ChatLlmMessageRole.SYSTEM:
+        return SystemMessage(content=message.content)
+    if message.role is ChatLlmMessageRole.USER:
+        return HumanMessage(content=message.content)
+    return AIMessage(content=message.content)
 
 
 def _message_usage(response: Any) -> tuple[int | None, int | None, int | None]:
