@@ -45,6 +45,24 @@ def _called_class_names(path: Path) -> set[str]:
     return names
 
 
+def _literal_route_paths(path: Path) -> set[str]:
+    """读取路由声明中的字面量路径，避免仅按文件名判断接口边界。"""
+
+    route_paths: set[str] = set()
+    for source_path in (path if path.is_dir() else path.parent).rglob("*.py"):
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            if node.args and isinstance(node.args[0], ast.Constant) and isinstance(
+                node.args[0].value, str
+            ):
+                route_paths.add(node.args[0].value)
+    return route_paths
+
+
 def test_ingestion_and_knowledge_do_not_depend_on_online_module() -> None:
     assert not any(
         module.startswith("app.modules.online")
@@ -140,6 +158,7 @@ def test_all_domain_modules_do_not_depend_on_external_adapters() -> None:
         APP_ROOT / "modules" / "knowledge" / "domain",
         APP_ROOT / "modules" / "ingestion" / "domain",
         APP_ROOT / "modules" / "agent" / "tender" / "domain",
+        APP_ROOT / "modules" / "conversation" / "domain",
     )
 
     for domain_root in domain_roots:
@@ -149,6 +168,152 @@ def test_all_domain_modules_do_not_depend_on_external_adapters() -> None:
             for module in imported
             for forbidden in forbidden_prefixes
         ), f"Domain 不得依赖外部适配器：{domain_root}"
+
+
+def test_conversation_domain_does_not_depend_on_llm_or_agent() -> None:
+    imported = _imported_modules(APP_ROOT / "modules" / "conversation" / "domain")
+
+    forbidden_prefixes = (
+        "app.infrastructure",
+        "app.interfaces",
+        "app.modules.llm",
+        "app.modules.agent",
+        "fastapi",
+        "sqlalchemy",
+        "langchain",
+        "langgraph",
+    )
+    assert not any(
+        module.startswith(forbidden)
+        for module in imported
+        for forbidden in forbidden_prefixes
+    )
+
+
+def test_conversation_application_and_ports_do_not_depend_on_adapters() -> None:
+    imported = _imported_modules(APP_ROOT / "modules" / "conversation" / "application")
+    imported.update(_imported_modules(APP_ROOT / "modules" / "conversation" / "ports"))
+
+    forbidden_prefixes = (
+        "app.infrastructure",
+        "app.interfaces",
+        "app.modules.llm",
+        "app.modules.agent",
+        "fastapi",
+        "sqlalchemy",
+        "langchain",
+        "langgraph",
+    )
+    assert not any(
+        module.startswith(forbidden)
+        for module in imported
+        for forbidden in forbidden_prefixes
+    )
+
+
+def test_conversation_context_builder_is_independent_from_llm_and_persistence() -> None:
+    imported = _imported_modules(
+        APP_ROOT / "modules" / "conversation" / "domain" / "model_context.py"
+    )
+    imported.update(
+        _imported_modules(
+            APP_ROOT / "modules" / "conversation" / "application" / "context_builder.py"
+        )
+    )
+    imported.update(
+        _imported_modules(
+            APP_ROOT / "modules" / "conversation" / "ports" / "context_cost_port.py"
+        )
+    )
+
+    forbidden_prefixes = (
+        "app.infrastructure",
+        "app.interfaces",
+        "app.modules.llm",
+        "app.modules.agent",
+        "fastapi",
+        "sqlalchemy",
+        "langchain",
+        "langgraph",
+    )
+    assert not any(
+        module.startswith(forbidden)
+        for module in imported
+        for forbidden in forbidden_prefixes
+    )
+
+
+def test_dialogue_runtime_only_depends_on_conversation_and_llm_contracts() -> None:
+    imported = _imported_modules(APP_ROOT / "modules" / "dialogue")
+
+    forbidden_prefixes = (
+        "app.infrastructure",
+        "app.interfaces",
+        "app.modules.agent",
+        "app.modules.interaction",
+        "app.modules.task",
+        "fastapi",
+        "sqlalchemy",
+        "langchain",
+        "langgraph",
+    )
+    assert not any(
+        module.startswith(forbidden)
+        for module in imported
+        for forbidden in forbidden_prefixes
+    )
+
+
+def test_platform_capability_catalog_is_independent_of_dialogue_and_agent_runtime() -> None:
+    catalog_roots = (
+        APP_ROOT / "modules" / "interaction" / "domain" / "capability.py",
+        APP_ROOT / "modules" / "interaction" / "ports" / "capability_catalog.py",
+        APP_ROOT / "modules" / "interaction" / "application" / "catalog.py",
+    )
+    imported: set[str] = set()
+    for catalog_root in catalog_roots:
+        imported.update(_imported_modules(catalog_root))
+
+    forbidden_prefixes = (
+        "app.modules.dialogue",
+        "app.modules.agent.runtime",
+    )
+    assert not any(
+        module.startswith(forbidden)
+        for module in imported
+        for forbidden in forbidden_prefixes
+    )
+
+
+def test_dialogue_change_does_not_add_http_route() -> None:
+    route_paths = _literal_route_paths(APP_ROOT / "interfaces" / "http" / "routes")
+
+    assert not any("dialogue" in route_path.lower() for route_path in route_paths)
+
+
+def test_conversation_change_does_not_add_http_route() -> None:
+    route_paths = _literal_route_paths(APP_ROOT / "interfaces" / "http" / "routes")
+
+    assert not any("conversation" in route_path.lower() for route_path in route_paths)
+
+
+def test_conversation_history_repository_is_read_only() -> None:
+    source_path = (
+        APP_ROOT
+        / "infrastructure"
+        / "persistence"
+        / "repositories"
+        / "conversation_history_read_repository.py"
+    )
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    called_methods = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+
+    assert not called_methods & {"add", "commit", "delete", "flush", "execute"}
+    assert "with_for_update" not in called_methods
 
 
 def test_application_modules_do_not_depend_on_infrastructure() -> None:
