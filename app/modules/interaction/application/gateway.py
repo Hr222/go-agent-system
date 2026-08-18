@@ -105,7 +105,7 @@ class InMemoryPendingProposalStore(PendingProposalStorePort):
         with self._lock:
             self._purge_expired()
             self._entries[proposal.proposal_id] = (
-                proposal,
+                proposal.model_copy(deep=True),
                 subject,
                 self._clock() + self._ttl_seconds,
             )
@@ -125,7 +125,7 @@ class InMemoryPendingProposalStore(PendingProposalStorePort):
             if proposal_subject != subject:
                 return None
             del self._entries[proposal_id]
-            return proposal
+            return proposal.model_copy(deep=True)
 
     def _purge_expired(self) -> None:
         now = self._clock()
@@ -256,7 +256,7 @@ class IntentInteractionGateway:
 
     def recognize(self, command: GatewayRecognitionCommand) -> GatewayResult:
         permissions = command.principal.permission_tuple()
-        if not self._candidate_retrieval.index.is_ready:
+        if not self._candidate_retrieval.is_ready(permissions=permissions):
             index_result = self._candidate_retrieval.refresh(permissions=permissions)
             if index_result.status == "failed":
                 return GatewayResult(

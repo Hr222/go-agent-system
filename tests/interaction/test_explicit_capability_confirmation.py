@@ -4,11 +4,13 @@ import ast
 from pathlib import Path
 
 from app.modules.interaction.application.confirmation import ExplicitCapabilityConfirmation
+from app.modules.interaction.application.gateway import InMemoryPendingProposalStore
 from app.modules.interaction.domain.capability import PlatformCapability
+from app.modules.interaction.domain.confirmation import ConfirmationProposal
 from app.modules.interaction.domain.intent import IntentAssessment
 
 
-def _capability() -> PlatformCapability:
+def _capability(*, confirmation_policy: str = "always") -> PlatformCapability:
     return PlatformCapability(
         code="chat.create",
         capability_type="chat",
@@ -20,7 +22,7 @@ def _capability() -> PlatformCapability:
         },
         output_schema={"type": "object"},
         required_fields=("message",),
-        confirmation_policy="always",
+        confirmation_policy=confirmation_policy,  # type: ignore[arg-type]
         permission=(),
         enabled=True,
         timeout_seconds=120,
@@ -139,6 +141,41 @@ def test_invalid_assessments_or_inputs_cannot_create_a_confirmation_proposal() -
     assert incomplete_result.error_code == "NO_MATCHED_INTENT"
     assert invalid_input_result.status == "rejected"
     assert invalid_input_result.error_code == "INPUT_VALIDATION_FAILED"
+
+
+def test_never_confirmation_policy_cannot_create_a_proposal() -> None:
+    confirmation = ExplicitCapabilityConfirmation(
+        FakeCatalog(_capability(confirmation_policy="never")),  # type: ignore[arg-type]
+    )
+
+    result = confirmation.create_proposal(_matched_assessment())
+
+    assert result.status == "rejected"
+    assert result.error_code == "CONFIRMATION_NOT_REQUIRED"
+    assert result.proposal is None
+
+
+def test_pending_proposal_store_snapshots_saved_proposals_on_subject_mismatch() -> None:
+    proposal = ConfirmationProposal(
+        proposal_id="proposal-1",
+        capability_code="chat.create",
+        dispatch_key="llm.chat",
+        inputs={"message": "original"},
+        summary="Create a chat response.",
+        confirmation_prompt="批准后将开始处理该请求。",
+    )
+    store = InMemoryPendingProposalStore()
+    store.save(proposal, subject="owner")
+    proposal.inputs["message"] = "tampered"
+
+    assert store.consume("proposal-1", subject="other") is None
+
+    consumed = store.consume("proposal-1", subject="owner")
+
+    assert consumed is not None
+    assert consumed.inputs == {"message": "original"}
+    consumed.inputs["message"] = "mutated-after-consume"
+    assert store.consume("proposal-1", subject="owner") is None
 
 
 def test_confirmation_services_do_not_depend_on_execution_or_lifecycle_layers() -> None:

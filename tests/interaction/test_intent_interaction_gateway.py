@@ -73,10 +73,8 @@ class FakeCatalog:
 
 
 class ReadyCandidateRetrieval:
-    class Index:
-        is_ready = True
-
-    index = Index()
+    def is_ready(self, *, permissions: tuple[str, ...] = ()) -> bool:  # noqa: ARG002
+        return True
 
     def refresh(self, *, permissions: tuple[str, ...] = ()):  # noqa: ARG002
         raise AssertionError("ready index must not be refreshed")

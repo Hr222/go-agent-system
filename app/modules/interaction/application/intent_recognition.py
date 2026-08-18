@@ -57,7 +57,10 @@ class StructuredIntentRecognition:
             )
 
         try:
-            retrieval = self._candidate_retrieval.search(user_input)
+            retrieval = self._candidate_retrieval.search(
+                user_input,
+                permissions=permissions,
+            )
         except Exception:  # noqa: BLE001 - retrieval is an availability boundary
             return _assessment(
                 status="needs_clarification",

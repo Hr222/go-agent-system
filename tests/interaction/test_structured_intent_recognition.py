@@ -63,10 +63,15 @@ def _retrieval_result(
 class FakeCandidateRetrieval:
     def __init__(self, result: CapabilityCandidateRetrievalResult) -> None:
         self.result = result
-        self.calls: list[str] = []
+        self.calls: list[tuple[str, tuple[str, ...]]] = []
 
-    def search(self, query: str) -> CapabilityCandidateRetrievalResult:
-        self.calls.append(query)
+    def search(
+        self,
+        query: str,
+        *,
+        permissions: tuple[str, ...] = (),
+    ) -> CapabilityCandidateRetrievalResult:
+        self.calls.append((query, permissions))
         return self.result
 
 

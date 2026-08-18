@@ -16,6 +16,8 @@ from app.modules.interaction.domain.capability import PlatformCapability
 from app.modules.interaction.ports.capability_catalog import CapabilityCatalogPort
 from app.modules.llm.ports import TextEmbeddingPort
 
+PermissionScope = tuple[str, ...]
+
 
 class InMemoryCapabilityCandidateIndex:
     """能力候选的进程内索引，不依赖数据库或知识库检索对象。"""
@@ -83,14 +85,23 @@ class CapabilityCandidateRetrieval:
             raise ValueError("默认候选相似度阈值必须在 -1 到 1 之间。")
         self.capability_catalog = capability_catalog
         self.embedding = embedding
-        self.index = index or InMemoryCapabilityCandidateIndex()
+        self._indexes: dict[PermissionScope, InMemoryCapabilityCandidateIndex] = {}
+        if index is not None:
+            self._indexes[()] = index
         self.default_min_score = default_min_score
 
-    def refresh(self, *, permissions: Iterable[str] = ()) -> CapabilityIndexBuildResult:
-        """从当前启用目录重建索引；失败时保留原索引，不降级为全量目录。"""
+    def is_ready(self, *, permissions: Iterable[str] = ()) -> bool:
+        index = self._indexes.get(_permission_scope(permissions))
+        return index is not None and index.is_ready
 
+    def refresh(self, *, permissions: Iterable[str] = ()) -> CapabilityIndexBuildResult:
+        """为当前权限范围重建索引；失败时保留同范围的旧索引。"""
+
+        scope = _permission_scope(permissions)
+        previous_index = self._indexes.get(scope)
+        replacement_index = previous_index or InMemoryCapabilityCandidateIndex()
         try:
-            capabilities = self.capability_catalog.list_available(permissions=permissions)
+            capabilities = self.capability_catalog.list_available(permissions=scope)
             search_texts = [build_search_text(capability) for capability in capabilities]
             vectors = self.embedding.embed_texts(search_texts)
             if len(vectors) != len(capabilities):
@@ -108,15 +119,16 @@ class CapabilityCandidateRetrieval:
                     vectors,
                 )
             ]
-            self.index.replace(entries)
+            replacement_index.replace(entries)
         except Exception as exc:  # noqa: BLE001 - 候选索引边界统一转换
             return CapabilityIndexBuildResult(
                 status="failed",
-                indexed_count=self.index.entry_count,
+                indexed_count=previous_index.entry_count if previous_index is not None else 0,
                 error_code="INDEX_BUILD_FAILED",
                 error_message=str(exc),
             )
 
+        self._indexes[scope] = replacement_index
         status: IndexBuildStatus = "ready" if capabilities else "empty"
         return CapabilityIndexBuildResult(
             status=status,
@@ -127,6 +139,7 @@ class CapabilityCandidateRetrieval:
         self,
         query: str,
         *,
+        permissions: Iterable[str] = (),
         top_k: int = DEFAULT_TOP_K,
         min_score: float | None = None,
     ) -> CapabilityCandidateRetrievalResult:
@@ -138,7 +151,8 @@ class CapabilityCandidateRetrieval:
         threshold = self.default_min_score if min_score is None else min_score
         if not -1.0 <= threshold <= 1.0:
             raise ValueError("候选相似度阈值必须在 -1 到 1 之间。")
-        if not self.index.is_ready:
+        index = self._indexes.get(_permission_scope(permissions))
+        if index is None or not index.is_ready:
             return CapabilityCandidateRetrievalResult(
                 query=normalized_query,
                 status="unavailable",
@@ -148,7 +162,7 @@ class CapabilityCandidateRetrieval:
 
         try:
             query_vector = tuple(self.embedding.embed_text(normalized_query))
-            candidates = self.index.search(
+            candidates = index.search(
                 query_vector,
                 top_k=top_k,
                 min_score=threshold,
@@ -181,3 +195,7 @@ def build_search_text(capability: PlatformCapability) -> str:
         elif isinstance(value, (list, tuple)):
             parts.extend(str(item) for item in value if str(item).strip())
     return "\n".join(part.strip() for part in parts if part.strip())
+
+
+def _permission_scope(permissions: Iterable[str]) -> PermissionScope:
+    return tuple(sorted({permission.strip() for permission in permissions if permission.strip()}))

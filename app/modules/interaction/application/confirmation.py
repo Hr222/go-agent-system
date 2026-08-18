@@ -68,6 +68,11 @@ class ExplicitCapabilityConfirmation:
                 "当前请求暂时无法处理。",
                 "CAPABILITY_UNAVAILABLE",
             )
+        if capability.confirmation_policy == "never":
+            return _rejected(
+                "当前能力不需要确认，不能创建待确认提议。",
+                "CONFIRMATION_NOT_REQUIRED",
+            )
 
         validation = validate_capability_inputs(capability, assessment.extracted_inputs)
         if not validation.valid:

@@ -9,7 +9,12 @@ from app.modules.interaction.application.candidate_retrieval import (
 from app.modules.interaction.domain.capability import PlatformCapability
 
 
-def _capability(code: str, description: str) -> PlatformCapability:
+def _capability(
+    code: str,
+    description: str,
+    *,
+    permission: tuple[str, ...] = (),
+) -> PlatformCapability:
     return PlatformCapability(
         code=code,
         capability_type="chat",
@@ -18,7 +23,7 @@ def _capability(code: str, description: str) -> PlatformCapability:
         output_schema={},
         required_fields=(),
         confirmation_policy="always",
-        permission=(),
+        permission=permission,
         enabled=True,
         timeout_seconds=120,
         error_boundary="candidate-test",
@@ -32,10 +37,25 @@ class FakeCatalog:
         self.capabilities = capabilities
 
     def list_available(self, **kwargs):  # noqa: ANN003
-        return self.capabilities
+        permissions = frozenset(kwargs.get("permissions", ()))
+        return tuple(
+            capability
+            for capability in self.capabilities
+            if capability.enabled and set(capability.permission).issubset(permissions)
+        )
 
     def get_available(self, code: str, **kwargs):  # noqa: ANN003
-        return next((item for item in self.capabilities if item.code == code), None)
+        permissions = frozenset(kwargs.get("permissions", ()))
+        return next(
+            (
+                item
+                for item in self.capabilities
+                if item.code == code
+                and item.enabled
+                and set(item.permission).issubset(permissions)
+            ),
+            None,
+        )
 
 
 class FakeEmbedding:
@@ -157,6 +177,80 @@ def test_index_build_failure_does_not_replace_previous_index() -> None:
     assert failed_build.error_code == "INDEX_BUILD_FAILED"
     assert failed_build.indexed_count == 1
     assert [item.capability_code for item in result.candidates] == ["cap.high"]
+
+
+def test_candidate_indexes_are_isolated_by_permission_scope() -> None:
+    service = CapabilityCandidateRetrieval(
+        FakeCatalog(
+            (
+                _capability("cap.public", "high"),
+                _capability(
+                    "cap.private",
+                    "high",
+                    permission=("cap:private",),
+                ),
+            )
+        ),
+        FakeEmbedding(),
+    )
+
+    private_permissions = ("cap:private",)
+    assert service.refresh(permissions=private_permissions).indexed_count == 2
+    assert [
+        item.capability_code
+        for item in service.search("query-high", permissions=private_permissions).candidates
+    ] == ["cap.private", "cap.public"]
+
+    public_before_refresh = service.search("query-high")
+    assert public_before_refresh.status == "unavailable"
+    assert public_before_refresh.error_code == "INDEX_UNAVAILABLE"
+
+    assert service.refresh().indexed_count == 1
+    public_result = service.search("query-high")
+    assert [item.capability_code for item in public_result.candidates] == ["cap.public"]
+
+    normalized_private_result = service.search(
+        "query-high",
+        permissions=(" cap:private ", "cap:private"),
+    )
+    assert [item.capability_code for item in normalized_private_result.candidates] == [
+        "cap.private",
+        "cap.public",
+    ]
+
+
+def test_failed_refresh_preserves_only_its_permission_scope_index() -> None:
+    embedding = FakeEmbedding()
+    service = CapabilityCandidateRetrieval(
+        FakeCatalog(
+            (
+                _capability("cap.public", "high"),
+                _capability(
+                    "cap.private",
+                    "high",
+                    permission=("cap:private",),
+                ),
+            )
+        ),
+        embedding,
+    )
+
+    private_permissions = ("cap:private",)
+    assert service.refresh().indexed_count == 1
+    assert service.refresh(permissions=private_permissions).indexed_count == 2
+
+    embedding.fail_batch = True
+    failed_private_refresh = service.refresh(permissions=private_permissions)
+
+    assert failed_private_refresh.status == "failed"
+    assert failed_private_refresh.indexed_count == 2
+    assert [
+        item.capability_code
+        for item in service.search("query-high", permissions=private_permissions).candidates
+    ] == ["cap.private", "cap.public"]
+    assert [item.capability_code for item in service.search("query-high").candidates] == [
+        "cap.public"
+    ]
 
 
 def test_candidate_retrieval_does_not_import_policy_retrieval_components() -> None:
