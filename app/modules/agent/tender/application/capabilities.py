@@ -14,7 +14,11 @@ class TenderCapabilityDescriptor:
 
 
 class TenderCapabilityRegistry:
-    """维护已实现的 Tender Agent 能力，不承担能力执行。"""
+    """兼容旧协议测试的本地描述器，不是平台运行时注册来源。
+
+    平台运行时必须从 ``Platform Capability Catalog`` 查询 Agent 条目；这个类只
+    保留 Tender 模块已有的描述契约，避免协议适配器的旧测试被迫承担平台目录职责。
+    """
 
     def __init__(self, capabilities: Iterable[TenderCapabilityDescriptor] = ()) -> None:
         self._capabilities: dict[str, TenderCapabilityDescriptor] = {}

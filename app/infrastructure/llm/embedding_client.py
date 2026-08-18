@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from math import ceil
 
 from openai import OpenAI
 
-from app.modules.ingestion.contracts import ChunkItem
+from app.modules.llm.ports import TextEmbeddingPort
 from app.shared.config import settings
 from app.shared.exceptions import UpstreamServiceError
 from app.shared.logging import get_logger
@@ -12,8 +13,8 @@ from app.shared.logging import get_logger
 logger = get_logger("app.infrastructure.embedding")
 
 
-class GiteeEmbeddingClient:
-    """Gitee embedding 技术适配器，同时支持查询向量和入库向量。"""
+class GiteeEmbeddingClient(TextEmbeddingPort):
+    """Gitee embedding 技术适配器。"""
 
     def __init__(self, client: OpenAI | None = None) -> None:
         if client is not None:
@@ -28,41 +29,48 @@ class GiteeEmbeddingClient:
             )
 
     def embed_query(self, text: str) -> list[float]:
-        normalized = text.strip()
-        if not normalized:
-            raise ValueError("检索查询不能为空。")
-        vectors = self._embed_texts([normalized])
+        return self.embed_text(text)
+
+    def embed_text(self, text: str) -> list[float]:
+        vectors = self.embed_texts([text])
         if len(vectors) != 1:
-            raise RuntimeError("查询向量返回数量异常。")
-        self._validate_dimension(vectors[0], "查询")
+            raise RuntimeError("单条 Embedding 返回数量异常。")
         return vectors[0]
 
-    def embed_chunks(self, chunks: list[ChunkItem]) -> list[ChunkItem]:
-        if not chunks:
+    def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
+        if not texts:
             return []
 
-        embedded: list[ChunkItem] = []
+        normalized = [text.strip() for text in texts]
+        if any(not text for text in normalized):
+            raise ValueError("Embedding 文本不能为空。")
+
+        embedded: list[list[float]] = []
         batch_size = max(1, settings.embedding_batch_size)
-        for start in range(0, len(chunks), batch_size):
-            batch = chunks[start : start + batch_size]
-            vectors = self._embed_texts([item.chunk_text for item in batch])
+        for start in range(0, len(normalized), batch_size):
+            batch = normalized[start : start + batch_size]
+            vectors = self._embed_texts(batch)
             if len(vectors) != len(batch):
-                raise RuntimeError("向量返回数量与切块数量不一致。")
-            for chunk, vector in zip(batch, vectors, strict=True):
-                self._validate_dimension(vector, "切块")
-                embedded.append(chunk.model_copy(update={"embedding": vector}))
+                raise RuntimeError("向量返回数量与文本数量不一致。")
+            for vector in vectors:
+                self._validate_vector(vector)
+                embedded.append(vector)
         logger.info(
-            "向量生成完成 total_chunks=%s batch_size=%s total_batches=%s",
+            "向量生成完成 total_texts=%s batch_size=%s total_batches=%s",
             len(embedded),
             batch_size,
-            ceil(len(chunks) / batch_size),
+            ceil(len(normalized) / batch_size),
         )
         return embedded
 
-    def _validate_dimension(self, vector: list[float], subject: str) -> None:
+    def _validate_vector(self, vector: list[float]) -> None:
+        if not isinstance(vector, list) or not all(
+            isinstance(value, (int, float)) for value in vector
+        ):
+            raise RuntimeError("Embedding Provider 返回了无效向量。")
         if len(vector) != settings.vector_dimensions:
             raise RuntimeError(
-                f"{subject}向量维度不匹配：期望 {settings.vector_dimensions}，实际 {len(vector)}。"
+                f"Embedding 向量维度不匹配：期望 {settings.vector_dimensions}，实际 {len(vector)}。"
             )
 
     def _embed_texts(self, texts: list[str]) -> list[list[float]]:
@@ -74,4 +82,7 @@ class GiteeEmbeddingClient:
             )
         except Exception as exc:
             raise UpstreamServiceError(f"Gitee embedding 请求失败：{exc}") from exc
-        return [item.embedding for item in response.data]
+        try:
+            return [list(item.embedding) for item in response.data]
+        except (AttributeError, TypeError) as exc:
+            raise RuntimeError("Embedding Provider 返回了无效结果。") from exc

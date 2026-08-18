@@ -19,8 +19,9 @@ from app.modules.ingestion.pipeline.steps.policy_parser import PolicyParserServi
 from app.modules.ingestion.pipeline.steps.policy_section_splitter import PolicySectionSplitter
 from app.modules.ingestion.pipeline.steps.policy_text_assembler import PolicyTextAssemblerService
 from app.modules.ingestion.pipeline.steps.policy_text_cleaner import PolicyTextCleaner
-from app.modules.ingestion.ports import ChunkEmbeddingPort, FileRegistrationPort, OcrPort
+from app.modules.ingestion.ports import FileRegistrationPort, OcrPort
 from app.modules.knowledge.application.write_capability import KnowledgeBaseWriteCapability
+from app.modules.llm.ports import TextEmbeddingPort
 from app.shared.config import settings
 from app.shared.logging import get_logger
 
@@ -34,7 +35,7 @@ class PolicyPipelineService:
         self,
         write_capability: KnowledgeBaseWriteCapability | None = None,
         *,
-        embedding_service: ChunkEmbeddingPort | None = None,
+        embedding_service: TextEmbeddingPort | None = None,
         file_service: FileRegistrationPort,
         ocr_service: OcrPort,
     ) -> None:
@@ -372,7 +373,14 @@ class PolicyPipelineService:
             context.request.source_path,
             context.chunk_result.total_chunks,
         )
-        embedded_chunks = self.embedding_service.embed_chunks(context.chunk_result.chunks)
+        chunks = context.chunk_result.chunks
+        vectors = self.embedding_service.embed_texts([chunk.chunk_text for chunk in chunks])
+        if len(vectors) != len(chunks):
+            raise RuntimeError("向量返回数量与切块数量不一致。")
+        embedded_chunks = [
+            chunk.model_copy(update={"embedding": vector})
+            for chunk, vector in zip(chunks, vectors, strict=True)
+        ]
         embedded_chunk_result = context.chunk_result.model_copy(update={"chunks": embedded_chunks})
         builder.set_chunk_result(embedded_chunk_result)
         builder.success(

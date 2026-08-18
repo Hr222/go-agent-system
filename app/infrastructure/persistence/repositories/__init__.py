@@ -9,9 +9,13 @@ from app.infrastructure.persistence.repositories.knowledge_read_repository impor
 from app.infrastructure.persistence.repositories.knowledge_write_repository import (
     KnowledgeWriteRepository,
 )
+from app.infrastructure.persistence.repositories.platform_capability_repository import (
+    PlatformCapabilityRepository,
+)
 
 __all__ = [
     "KnowledgePublicationRepository",
     "KnowledgeReadRepository",
     "KnowledgeWriteRepository",
+    "PlatformCapabilityRepository",
 ]

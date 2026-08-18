@@ -11,8 +11,9 @@ from app.modules.ingestion import PolicyIngestionService, PolicyPipelineService
 from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
 from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
-from app.modules.ingestion.ports import ChunkEmbeddingPort, IngestionRetrySourcePort
+from app.modules.ingestion.ports import IngestionRetrySourcePort
 from app.modules.knowledge.application.write_capability import KnowledgeBaseWriteCapability
+from app.modules.llm.ports import TextEmbeddingPort
 
 
 def build_pipeline(
@@ -20,7 +21,7 @@ def build_pipeline(
     file_service: PolicyFileService,
     ocr_service: PolicyOcrService,
     write_capability: KnowledgeBaseWriteCapability | None = None,
-    embedding_service: ChunkEmbeddingPort | None = None,
+    embedding_service: TextEmbeddingPort | None = None,
 ) -> PolicyPipelineService:
     return PolicyPipelineService(
         write_capability=write_capability,

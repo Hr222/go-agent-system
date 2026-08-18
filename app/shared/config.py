@@ -154,6 +154,11 @@ class Settings(BaseSettings):
     vector_search_hnsw_ef_search: int = 40
     rag_answer_top_k: int = 6
     rag_max_context_chars_per_chunk: int = 500
+    interaction_proposal_ttl_seconds: float = Field(
+        default=300.0,
+        gt=0,
+        alias="INTERACTION_PROPOSAL_TTL_SECONDS",
+    )
     ocr_enabled: bool = True
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 

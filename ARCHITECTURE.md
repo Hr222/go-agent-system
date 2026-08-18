@@ -10,6 +10,13 @@
 - 上下文记忆属于独立的 Conversation 能力，不应隐含在 LLM Adapter 或具体 Agent 中。
 - Conversation 与 Task Management 都是独立的应用能力模块，与 LLM、Agent、Knowledge 和 Ingestion 同级。
 - Task Management 负责任务生命周期，不负责模型调用、会话上下文或 Agent 业务编排。
+- Interaction Gateway 是规划中的独立应用能力，负责理解用户请求、澄清、呈现确认和确认后的受控分发；它使用 LLM，但不属于 LLM、任何单一 Agent、Conversation 或 Task Management。
+- Platform Capability Catalog 是平台可调用能力的唯一目录，覆盖 Agent 和非 Agent 用例；Agent Runtime 只消费其中的 Agent 能力，不再拥有独立的能力注册表。
+- 统一入口的意图链路必须先经过规则校验、候选召回、结构化判断和用户确认；在用户明确确认前，系统不启动 Agent、RAG、政策判断或其他业务能力。
+- Platform Capability Catalog 中的 `permission` 只声明调用能力所需权限，不负责识别当前请求拥有哪些权限；后者属于独立、可替换的请求主体解析边界。
+- 当前项目尚未实现用户管理或认证协议。统一入口在此之前使用匿名主体和空权限集合，受保护能力默认不可用；未来接入 JWT、Session 或 SSO 时只替换主体解析器。
+
+本文中的“规划”节点用于固定后续演化边界，不表示对应模块、接口、数据表或向量索引已经实现；现有直接 HTTP 调用链保持不变。
 
 ## 总体结构图
 
@@ -27,6 +34,8 @@ flowchart LR
     subgraph Applications["Applications 应用模块层"]
         direction TB
         Llm["LLM Capability<br/>Chat / Structured Output / Embedding"]
+        Interaction["Interaction Gateway（规划）<br/>Intent / Clarification / Confirmation"]
+        Catalog["Platform Capability Catalog（规划）<br/>Agent / Chat / RAG / Decision"]
         Conversation["Conversation Capability<br/>History / Context"]
         Task["Task Management<br/>Lifecycle / Status / Retry"]
         AgentRuntime["Agent Runtime<br/>Orchestration / SubAgents"]
@@ -39,6 +48,11 @@ flowchart LR
         HttpAdapter --> Llm
         HttpAdapter --> Conversation
         HttpAdapter --> Task
+        HttpAdapter -.统一入口（规划）.-> Interaction
+        Interaction --> Catalog
+        Interaction --> Llm
+        Interaction -.确认后.-> AgentRuntime
+        Interaction -.确认后.-> Online
         AgentAdapter --> AgentRuntime
         AgentRuntime --> AgentCapabilities
     end
@@ -57,7 +71,8 @@ flowchart LR
     subgraph PortsLayer["Application Ports 应用能力端口"]
         direction TB
         Ports["Business Ports<br/>Read / Write / Publication"]
-        LlmPorts["LLM Ports<br/>Chat / Structured / Embedding"]
+        LlmPorts["LLM Ports<br/>Chat / Structured / Pure-text Embedding"]
+        InteractionPorts["Interaction Ports（规划）<br/>Catalog / Candidate Retrieval / Dispatch"]
         ConversationPorts["Conversation Ports<br/>Messages / Context / Persistence"]
         TaskPorts["Task Ports<br/>Lifecycle / Status / Retry"]
     end
@@ -66,7 +81,9 @@ flowchart LR
         direction TB
         Repositories["Repository Layer<br/>Read / Write / Publication Repository"]
         Providers["Technical Adapters<br/>GLM / LangChain / OCR / File System"]
-        Storage[("PostgreSQL / pgvector<br/>Published Read Model / Vector Index")]
+        PolicyStorage[("Policy Knowledge Storage<br/>Published Read Model / kb_policy_chunk")]
+        CatalogStore["Capability Catalog Store（规划）"]
+        IntentIndex[("Capability Intent Index（规划）<br/>Independent from policy knowledge")]
 
         Query --> Ports
         Write --> Ports
@@ -74,18 +91,23 @@ flowchart LR
         Llm --> LlmPorts
         Conversation --> ConversationPorts
         Task --> TaskPorts
+        Interaction --> InteractionPorts
         AgentRuntime --> LlmPorts
         AgentCapabilities --> LlmPorts
         Ports -.实现.-> Repositories
         LlmPorts -.实现.-> Providers
         ConversationPorts -.实现.-> Repositories
         TaskPorts -.实现.-> Repositories
-        Repositories --> Storage
+        InteractionPorts -.规划实现.-> CatalogStore
+        Repositories --> PolicyStorage
+        Catalog --> CatalogStore
+        CatalogStore --> IntentIndex
     end
 
     Composition["Composition Root<br/>ApplicationContainer"]
 
     Composition -.->|组装| Llm
+    Composition -.->|组装| Interaction
     Composition -.->|组装| Conversation
     Composition -.->|组装| Task
     Composition -.->|组装| AgentRuntime
@@ -103,10 +125,10 @@ flowchart LR
     classDef composition fill:#f5f5f5,stroke:#666,color:#333;
 
     class Http,HttpAdapter,AgentAdapter interface;
-    class Llm,Conversation,Task,AgentRuntime,Online,Ingestion application;
+    class Llm,Interaction,Catalog,Conversation,Task,AgentRuntime,Online,Ingestion application;
     class Query,Write,Publish knowledge;
-    class Ports,LlmPorts,ConversationPorts,TaskPorts port;
-    class Repositories,Providers,Storage infrastructure;
+    class Ports,LlmPorts,InteractionPorts,ConversationPorts,TaskPorts port;
+    class Repositories,Providers,PolicyStorage,CatalogStore,IntentIndex infrastructure;
     class Composition composition;
 ```
 
@@ -121,8 +143,13 @@ app/
 │   │   ├── ports/
 │   │   │   ├── chat_port.py               # 文本对话能力
 │   │   │   ├── structured_output_port.py  # 结构化输出能力
-│   │   │   └── embedding_port.py          # 向量能力边界
+│   │   │   └── embedding_port.py          # 纯文本单条 / 批量向量能力边界
 │   │   └── contracts.py                   # LLM 请求、结果和失败契约
+│   │
+│   ├── interaction/                       # 规划：统一交互网关与受控分发
+│   │   ├── application/                   # 意图识别、澄清、确认编排
+│   │   ├── domain/                        # 能力目录条目、确认与分发规则
+│   │   └── ports/                         # 目录、候选召回、受控分发端口
 │   │
 │   ├── conversation/                      # 会话、上下文和消息生命周期
 │   │   ├── application/
@@ -214,6 +241,7 @@ app/
 │   │   └── embedding_client.py
 │   ├── agent/
 │   │   └── langgraph_runtime_adapter.py
+│   ├── interaction/                       # 规划：能力目录与意图索引适配器
 │   ├── ocr/
 │   │   └── tencent_ocr.py
 │   └── filesystem/
@@ -223,6 +251,7 @@ app/
 ├── composition/                          # Composition Root
 │   ├── root.py
 │   ├── llm.py
+│   ├── interaction.py                     # 规划：Interaction Gateway 组装
 │   ├── agent.py
 │   ├── conversation.py
 │   ├── task.py
@@ -244,6 +273,10 @@ flowchart TB
     AgentProtocols["interfaces/agent<br/>Function Calling / MCP"]
     LlmApplication["modules/llm/application"]
     LlmPorts["modules/llm/ports"]
+    InteractionGateway["modules/interaction（规划）"]
+    InteractionPorts["modules/interaction/ports（规划）"]
+    CapabilityCatalog["Platform Capability Catalog（规划）"]
+    IntentIndex[("Capability Intent Index（规划）")]
     Conversation["modules/conversation"]
     ConversationPorts["modules/conversation/ports"]
     TaskManagement["modules/task"]
@@ -258,9 +291,10 @@ flowchart TB
     Repositories["infrastructure/persistence/repositories"]
     LlmAdapters["infrastructure/llm"]
     Providers["infrastructure/ocr / filesystem"]
-    Storage[("PostgreSQL / pgvector / Object Storage")]
+    PolicyStorage[("Policy Knowledge Storage<br/>kb_policy_chunk / pgvector / Object Storage")]
 
     HTTP --> LlmApplication
+    HTTP -.统一入口（规划）.-> InteractionGateway
     HTTP --> Conversation
     HTTP --> TaskManagement
     HTTP --> AgentRuntime
@@ -269,6 +303,12 @@ flowchart TB
     AgentProtocols --> AgentRuntime
 
     LlmApplication --> LlmPorts
+    InteractionGateway --> LlmPorts
+    InteractionGateway --> InteractionPorts
+    InteractionPorts -.规划实现.-> CapabilityCatalog
+    CapabilityCatalog --> IntentIndex
+    InteractionGateway -.用户确认后.-> AgentRuntime
+    InteractionGateway -.用户确认后.-> Online
     Conversation --> ConversationPorts
     TaskManagement --> TaskPorts
     AgentRuntime --> LlmPorts
@@ -283,10 +323,10 @@ flowchart TB
     ConversationPorts -.实现.-> Repositories
     TaskPorts -.实现.-> Repositories
     LlmPorts -.实现.-> LlmAdapters
-    Repositories --> Storage
+    Repositories --> PolicyStorage
     Ingestion -.依赖端口.-> Providers
 
-    Forbidden["禁止：业务模块直接依赖 SDK / DB<br/>禁止：Agent 绕过 Application 访问 Repository<br/>禁止：Domain 依赖 HTTP / LangChain / LangGraph"]
+    Forbidden["禁止：业务模块直接依赖 SDK / DB<br/>禁止：Agent 绕过 Application 访问 Repository<br/>禁止：Interaction 依赖 ChunkItem 或政策 Repository<br/>禁止：Domain 依赖 HTTP / LangChain / LangGraph"]
 
     classDef forbidden fill:#fff1f0,stroke:#cf1322,color:#820014;
     class Forbidden forbidden;
@@ -305,8 +345,17 @@ flowchart LR
 
     subgraph Llm["独立 LLM 能力层"]
         Chat["Chat Application"]
-        LlmPort["Chat / Structured LLM Port"]
+        LlmPort["Chat / Structured LLM / Pure-text Embedding Port"]
         LlmAdapter["GLM / LangChain Adapter"]
+    end
+
+    subgraph Interaction["统一交互网关（规划，不自动执行）"]
+        GatewayAdapter["Interaction HTTP Adapter"]
+        Gateway["Interaction Gateway<br/>Rules / Candidate Retrieval / Structured Intent"]
+        Catalog["Platform Capability Catalog"]
+        CandidateIndex[("Capability Intent Index<br/>Independent from policy knowledge")]
+        Confirmation["Clarification / Explicit User Confirmation"]
+        Dispatcher["Controlled Dispatcher"]
     end
 
     subgraph ConversationCapability["Conversation 能力层"]
@@ -325,7 +374,6 @@ flowchart LR
         AgentHttp["Agent HTTP Adapter"]
         AgentProtocol["Function / MCP Adapter"]
         Runtime["Agent Runtime<br/>Orchestration / SubAgents"]
-        Registry["Agent Capability Registry"]
         Tender["Tender Agent"]
         OtherAgents["Finance / Risk / Other Agents"]
     end
@@ -345,7 +393,7 @@ flowchart LR
         WriteRepo["KnowledgeWriteRepository"]
         Publish["KnowledgePublicationService"]
         PublishRepo["KnowledgePublicationRepository"]
-        Store[("Knowledge Base<br/>Published Read Model / Vector Index")]
+        Store[("Policy Knowledge Base<br/>Published Read Model / kb_policy_chunk")]
     end
 
     subgraph Ingestion["独立入库应用层"]
@@ -357,6 +405,7 @@ flowchart LR
     PublicationHttp["HTTP Publication Route"]
 
     HTTP --> Chat
+    HTTP -.统一入口（规划）.-> GatewayAdapter
     HTTP --> ConversationApplication
     HTTP --> TaskApplication
     HTTP --> AgentHttp
@@ -366,6 +415,15 @@ flowchart LR
     MCP --> AgentProtocol
 
     Chat --> LlmPort
+    GatewayAdapter --> Gateway
+    Gateway --> Catalog
+    Gateway --> CandidateIndex
+    Catalog --> CandidateIndex
+    Gateway --> LlmPort
+    Gateway --> Confirmation
+    Confirmation --> Dispatcher
+    Dispatcher --> Runtime
+    Dispatcher --> Facade
     ConversationApplication --> ConversationPort
     ConversationPort --> ConversationRepository
     TaskApplication --> TaskPort
@@ -373,9 +431,9 @@ flowchart LR
     AgentHttp --> Runtime
     AgentProtocol --> Runtime
     Runtime --> LlmPort
-    Runtime --> Registry
-    Registry --> Tender
-    Registry --> OtherAgents
+    Runtime -.消费 Agent 目录项.-> Catalog
+    Catalog -.受控目标.-> Tender
+    Catalog -.受控目标.-> OtherAgents
     Tender --> LlmPort
     HttpAdapter --> Facade
     Facade --> Ask
@@ -408,7 +466,7 @@ LLM 层负责的能力包括：
 
 - 文本对话和模型响应
 - Structured Output 和 Schema 校验
-- Embedding 等模型能力
+- 面向纯文本的单条和批量 Embedding 能力
 - Provider 配置、超时、重试边界和错误契约
 - Prompt 输入的技术载体和模型调用结果
 
@@ -419,14 +477,71 @@ LLM 层不负责：
 - Function Calling 工具注册与业务执行
 - MCP 会话和远程能力治理
 - 会话历史和上下文持久化
+- 用户意图的业务定义、用户确认和任何业务能力的自主启动
 
 `infrastructure/llm` 只实现 LLM Port，具体 SDK、LangChain Chat Model 和 Provider Client 不得向上层泄漏。
+
+通用 Embedding Port 的输入和输出只应是文本与向量。Knowledge、Ingestion 和后续 Interaction 各自维护领域对象、索引和 Repository；Interaction 不得为了生成向量而依赖 Ingestion 的 `ChunkItem`，也不得调用知识库检索 Repository。
+
+### Interaction Gateway 与 Platform Capability Catalog（规划）
+
+未来的 `modules/interaction` 是平台统一入口的应用能力。它负责将用户自然语言请求变成一个**可解释、待确认**的行动提议，而不是直接执行的命令。它使用通用 LLM Port，但不是 LLM 的子模块；它也不属于某一个 Agent、Conversation 或 Task Management。
+
+Interaction Gateway 的处理顺序固定为：
+
+```text
+用户输入
+  -> 确认 / 取消 / 输入安全等确定性规则
+  -> 从 Platform Capability Catalog 召回少量候选
+  -> Structured LLM 在候选范围内识别意图、提取参数、判断是否需要澄清
+  -> 代码校验候选状态、参数、权限和确认策略
+  -> 向用户澄清或展示确认信息
+  -> 用户明确确认
+  -> Controlled Dispatcher 按固定映射调用目标能力
+```
+
+其中，LLM 的职责只是在目录限定的候选范围内输出受约束的结构化结果，例如能力代码、已提取的输入、缺失输入和澄清原因。它不得产生可执行 URL、工具名称、类名或目录外的能力代码，也没有调用 Agent 的权限。模型给出的置信度只能帮助决定是否澄清，不能替代用户确认或代码校验。
+
+#### 请求主体与权限边界
+
+统一入口从 HTTP 适配层的 `PrincipalResolver` 获取当前请求的可信权限集合。该插口属于认证授权边界，而不是 Interaction、LLM 或 Agent 的业务职责：Interaction 只消费已解析的权限并执行目录校验。
+
+```text
+HTTP 请求
+  -> PrincipalResolver
+  -> 可信权限集合
+  -> Interaction Gateway / Platform Capability Catalog
+```
+
+首版 `AnonymousPrincipalResolver` 返回空权限集合，不接受请求体、查询参数或模型输出中的 `permissions`、角色、能力代码或分发键作为授权依据。未来用户模块接入 JWT、Session、SSO 或权限服务时，只替换该解析器实现；目录、意图识别、确认和 Dispatcher 的契约保持不变。
+
+`Platform Capability Catalog` 是平台可调用能力的唯一目录。它不仅登记 Tender、财务或风控 Agent，也登记普通 Chat、知识库检索、RAG 问答、政策判断等非 Agent 用例。每个目录项至少需要有：
+
+- 稳定的能力代码和业务描述
+- 输入、输出和必填资料的 Schema
+- 确认策略、启用状态、权限、超时和错误边界
+- 固定的执行目标或分发键，而不是由 LLM 生成的调用地址
+- 供候选召回使用的描述、同义表达、正反例和检索元数据
+
+Agent Runtime 可以从该目录消费 Agent 条目来完成受控执行，但不拥有目录，也不为 Chat、RAG 或政策判断维护另一份平行注册表。目录的所有权属于平台交互能力，而不是运行时。
+
+#### 能力候选索引与政策知识索引必须隔离
+
+能力目录的向量召回解决的是“用户想使用哪项能力”；政策知识库的 RAG 检索解决的是“哪段制度文本能回答问题或支撑结论”。两者即使复用同一个 Embedding Provider，也必须使用各自的领域模型、Repository 和索引。
+
+- 能力目录的描述、示例和检索元数据登记在 `platform_capability` 表；独立的 Capability Intent Index 首版仍可以使用内存候选集，只有目录规模或运营需求足够时才单独持久化向量索引。
+- 政策文档切块、引用证据和检索结果继续属于现有知识库链路及 `kb_policy_chunk`；不得写入 Agent 或其他能力的说明。
+- Interaction Gateway 只依赖自己的目录、候选召回端口和通用纯文本 Embedding Port，不依赖 Knowledge 的 RAG Pipeline、政策 Repository 或 Ingestion 的领域对象。
+
+#### 确认的边界
+
+首版确认是一次显式的确认交互：系统展示识别结果、缺失资料或拟执行的能力，用户确认后才分发。HTTP 的识别与确认请求之间允许存在短 TTL、一次性消费的受控提议状态；它不写入数据库、不创建 Conversation、Task 或后台任务，也不承担跨会话恢复。跨会话上下文、确认持久化和长流程恢复分别属于未来 Conversation 与 Task Management 的独立演化，不能因为接入意图识别而提前混入 Interaction Gateway。
 
 ### Agent 能力层
 
 `modules/agent/*` 负责具体业务 Agent 和可组合能力。每个 Agent 可以使用 LLM，也可以调用知识库、文件、外部服务或其他 Agent，但不重复实现 LLM Chat。
 
-Agent 可以通过稳定的能力契约被运行时发现和调用。能力契约至少包含：
+Agent 的能力定义需要登记到 Platform Capability Catalog；Runtime 只在受控分发后消费其中的 Agent 条目。Agent 自身的能力契约至少包含：
 
 - 能力名称和描述
 - 输入 Schema
@@ -440,13 +555,13 @@ Agent 可以通过稳定的能力契约被运行时发现和调用。能力契�
 
 Agent Runtime 负责：
 
-- 选择和调用 Agent 能力
+- 在受控分发后选择和调用已登记的 Agent 能力
 - 管理多步骤执行状态
 - 将 LLM 返回的工具调用转换为能力调用
 - 协调多个 Agent 或 SubAgent
 - 处理暂停、失败、重试和恢复边界
 
-LangGraph 可以作为 Agent Runtime 的一种具体实现，但不能成为 Domain 或通用 LLM Port 的依赖。后续更换编排实现时，Agent 业务能力和 LLM Port 不应跟着改变。
+Agent Runtime 不负责从用户自然语言自行判断平台意图、不拥有 Platform Capability Catalog，也不得绕过 Interaction Gateway 的确认规则启动新的统一入口请求。LangGraph 可以作为 Agent Runtime 的一种具体实现，但不能成为 Domain 或通用 LLM Port 的依赖。后续更换编排实现时，Agent 业务能力和 LLM Port 不应跟着改变。
 
 ### Function Calling 与 MCP
 
@@ -466,13 +581,13 @@ MCP 请求或响应
 
 ### Conversation 与上下文
 
-会话管理是独立的 Conversation 能力。它负责会话 ID、消息历史、上下文裁剪、持久化和恢复；LLM Adapter 只接收本次调用所需的消息或 Prompt，不自行保存上下文。Agent Runtime 也不应隐式承担长期会话存储。
+会话管理是独立的 Conversation 能力。它负责会话 ID、消息历史、上下文裁剪、持久化和恢复；LLM Adapter 只接收本次调用所需的消息或 Prompt，不自行保存上下文。Agent Runtime 也不应隐式承担长期会话存储。Interaction Gateway 的首版确认不是 Conversation：它不保存跨轮待执行动作，也不因一次确认而创建会话状态。
 
 Conversation 可以为普通 Chat 或 Agent 交互提供上下文，但是否启用上下文由具体应用用例决定。当前 `modules/llm` 的单轮 Chat 不创建会话、不读取历史，也不依赖 Conversation 模块。
 
 ### Task Management 与任务生命周期
 
-Task Management 是与 Conversation 同级的独立能力模块。它负责任务 ID、任务状态、状态转换、失败、重试、幂等和持久化；它不负责 LLM 调用、会话历史、上下文组装或 Agent 业务编排。
+Task Management 是与 Conversation 同级的独立能力模块。它负责任务 ID、任务状态、状态转换、失败、重试、幂等和持久化；它不负责 LLM 调用、会话历史、上下文组装或 Agent 业务编排。Interaction Gateway 的“等待用户确认”在首版不是任务状态；只有将来需要异步、可恢复或跨请求的执行流程时，才通过独立契约接入 Task Management。
 
 Tender Agent 如果未来需要异步处理，可以通过明确的 Task Application / Port 使用任务能力，但不能把任务状态查询直接塞入 `modules/llm` 或某个 Agent 内部。Task Management 是否参与某个 Agent 用例，应由上层 Application 通过契约决定。
 

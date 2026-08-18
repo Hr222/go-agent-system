@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from app.modules.llm.ports import TextEmbeddingPort
 
-from app.modules.ingestion.contracts import ChunkItem
-
-
-class ChunkEmbeddingPort(Protocol):
-    """入库流程生成文本向量所需的最小能力。"""
-
-    def embed_chunks(self, chunks: list[ChunkItem]) -> list[ChunkItem]: ...
+# 兼容现有组装代码；领域映射由 Ingestion 流水线负责。
+ChunkEmbeddingPort = TextEmbeddingPort

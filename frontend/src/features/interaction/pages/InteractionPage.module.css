@@ -1,0 +1,25 @@
+.page { min-height: calc(100vh - 72px); padding: 34px clamp(28px, 5vw, 72px) 48px; background: #f5f7fb; }
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; max-width: 1120px; margin: 0 auto 24px; }
+.eyebrow { display: block; color: #8290a5; font-size: 10px; font-weight: 700; letter-spacing: 1.3px; }
+.header h1, .resultHeading h2 { margin: 6px 0 0; color: #25334b; font-size: 24px; line-height: 1.25; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr); gap: 20px; max-width: 1120px; margin: 0 auto; align-items: start; }
+.requestCard, .resultCard { border: 1px solid #e3e9f2 !important; border-radius: 8px !important; box-shadow: 0 8px 22px rgba(39, 61, 96, .05); }
+.requestCard :global(.ant-card-body), .resultCard :global(.ant-card-body) { padding: 24px; }
+.fieldLabel, .detailLabel { display: block; margin: 0 0 8px; color: #62728b; font-size: 12px; font-weight: 700; }
+.fieldLabel + :global(.ant-input) { margin-bottom: 20px; }
+.inputsEditor { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+.submitRow { display: flex; align-items: center; gap: 8px; margin-top: 20px; }
+.alert { margin-top: 14px; }
+.resultContent { display: grid; gap: 18px; min-height: 282px; }
+.resultHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.resultHeading h2 { font-size: 18px; }
+.detailSection, .proposalSection { padding-top: 17px; border-top: 1px solid #edf1f6; }
+.capabilityValue { color: #25334b; font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; font-weight: 700; }
+.tagGroup { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+.clarification { display: flex; align-items: flex-start; gap: 7px; margin-top: 13px; color: #69788f; font-size: 13px; line-height: 1.65; }
+.clarification svg { flex: 0 0 auto; margin-top: 3px; color: #5c85e9; }
+.proposalSection { display: grid; gap: 8px; color: #5d6b80; font-size: 13px; line-height: 1.55; }
+.proposalSection strong { color: #2e405d; font-size: 15px; }
+.proposalActions { margin-top: 8px; }
+.executionResult { max-height: 310px; margin: 0; padding: 12px; overflow: auto; color: #3e4f69; background: #f7f9fc; border: 1px solid #e7ecf4; border-radius: 6px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+@media (max-width: 1080px) { .workspace { grid-template-columns: 1fr; } }

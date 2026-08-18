@@ -14,6 +14,20 @@ from app.composition.ingestion import (
     build_retry_ingestion_use_case,
     build_upload_service,
 )
+from app.composition.intent import (
+    build_explicit_capability_confirmation,
+    build_intent_interaction_gateway,
+    build_interaction_chat_stream_application,
+    build_structured_intent_recognition,
+)
+from app.composition.interaction import (
+    build_agent_runtime,
+    build_capability_candidate_retrieval,
+    build_capability_catalog_repository,
+    build_capability_dispatch_registry,
+    build_controlled_dispatcher,
+    build_platform_capability_catalog,
+)
 from app.composition.knowledge import (
     build_knowledge_base_service,
     build_knowledge_management_service,
@@ -24,7 +38,7 @@ from app.composition.knowledge import (
     build_write_capability,
     build_write_repository,
 )
-from app.composition.llm import build_chat_llm, build_streaming_chat_llm
+from app.composition.llm import build_chat_llm, build_streaming_chat_llm, build_structured_llm
 from app.composition.online import (
     build_decision_service,
     build_policy_decision_application_service,
@@ -48,11 +62,20 @@ from app.infrastructure.persistence.repositories.policy_persistence_gateway impo
 )
 from app.infrastructure.persistence.session import SessionLocal
 from app.interfaces.agent import FunctionCallingAdapter
+from app.modules.agent.runtime import AgentRuntime
 from app.modules.agent.tender.application.service import TenderApplication
 from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
 from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
 from app.modules.ingestion.pipeline import PolicyIngestionService
+from app.modules.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
+from app.modules.interaction.application.catalog import PlatformCapabilityCatalog
+from app.modules.interaction.application.chat_stream import InteractionChatStreamApplication
+from app.modules.interaction.application.confirmation import ExplicitCapabilityConfirmation
+from app.modules.interaction.application.gateway import IntentInteractionGateway
+from app.modules.interaction.application.intent_recognition import StructuredIntentRecognition
+from app.modules.interaction.ports.capability_catalog import CapabilityCatalogPort
+from app.modules.interaction.ports.proposal_store import PendingProposalStorePort
 from app.modules.knowledge import KnowledgeBaseQueryCapability, KnowledgePublicationService
 from app.modules.knowledge.application.knowledge_base import KnowledgeBaseService
 from app.modules.knowledge.application.management_service import KnowledgeManagementService
@@ -106,9 +129,12 @@ class ApplicationContainer:
         data_provider_registry: ChecklistDataProviderRegistry | None = None,
         answer_service: RagAnswerGenerator | None = None,
         tender_structured_llm: StructuredLlmPort | None = None,
+        intent_structured_llm: StructuredLlmPort | None = None,
         chat_llm: ChatLlmPort | None = None,
         streaming_chat_llm: StreamingChatLlmPort | None = None,
         openai_client_factory: OpenAICompatibleClientFactory | None = None,
+        capability_catalog: CapabilityCatalogPort | None = None,
+        capability_candidate_retrieval: CapabilityCandidateRetrieval | None = None,
     ) -> None:
         self.session = session
         self.scenario_registry = scenario_registry or ChecklistScenarioRegistry(
@@ -119,6 +145,7 @@ class ApplicationContainer:
         self._data_provider_registry = data_provider_registry
         self._answer_service = answer_service
         self._tender_structured_llm = tender_structured_llm
+        self._intent_structured_llm = intent_structured_llm
         self._tender_application: TenderApplication | None = None
         self._chat_llm = chat_llm
         self._chat_application: ChatApplication | None = None
@@ -148,6 +175,15 @@ class ApplicationContainer:
         self._embedding_service: GiteeEmbeddingClient | None = None
         self._file_service: PolicyFileService | None = None
         self._ocr_service: PolicyOcrService | None = None
+        self._capability_catalog = capability_catalog
+        self._capability_catalog_repository = None
+        self._capability_dispatch_registry = None
+        self._agent_runtime: AgentRuntime | None = None
+        self._capability_candidate_retrieval: CapabilityCandidateRetrieval | None = None
+        self._structured_intent_recognition: StructuredIntentRecognition | None = None
+        self._explicit_capability_confirmation: ExplicitCapabilityConfirmation | None = None
+        if capability_candidate_retrieval is not None:
+            self._capability_candidate_retrieval = capability_candidate_retrieval
 
     def tender_structured_llm(self) -> StructuredLlmPort:
         """延迟组装招标书 Agent 使用的结构化 LLM 能力。"""
@@ -164,6 +200,87 @@ class ApplicationContainer:
         if self._tender_application is None:
             self._tender_application = build_tender_application(self.tender_structured_llm())
         return self._tender_application
+
+    def platform_capability_catalog(self) -> PlatformCapabilityCatalog | CapabilityCatalogPort:
+        if self._capability_catalog is None:
+            if self.session is None:
+                raise RuntimeError("平台能力目录需要数据库 session，但容器未提供 session。")
+            if self._capability_catalog_repository is None:
+                self._capability_catalog_repository = build_capability_catalog_repository(
+                    self.session
+                )
+            if self._capability_dispatch_registry is None:
+                self._capability_dispatch_registry = build_capability_dispatch_registry()
+            self._capability_catalog = build_platform_capability_catalog(
+                self._capability_catalog_repository,
+                self._capability_dispatch_registry,
+            )
+        return self._capability_catalog
+
+    def agent_runtime(self) -> AgentRuntime:
+        if self._agent_runtime is None:
+            self._agent_runtime = build_agent_runtime(
+                self.platform_capability_catalog(),
+                tender_application=self.tender_application,
+            )
+        return self._agent_runtime
+
+    def capability_candidate_retrieval(self) -> CapabilityCandidateRetrieval:
+        if self._capability_candidate_retrieval is None:
+            self._capability_candidate_retrieval = build_capability_candidate_retrieval(
+                self.platform_capability_catalog(),
+                self.embedding_service(),
+            )
+        return self._capability_candidate_retrieval
+
+    def intent_structured_llm(self) -> StructuredLlmPort:
+        if self._intent_structured_llm is None:
+            self._intent_structured_llm = build_structured_llm(self.openai_client_factory())
+        return self._intent_structured_llm
+
+    def structured_intent_recognition(self) -> StructuredIntentRecognition:
+        if self._structured_intent_recognition is None:
+            self._structured_intent_recognition = build_structured_intent_recognition(
+                self.capability_candidate_retrieval(),
+                self.platform_capability_catalog(),
+                self.intent_structured_llm(),
+            )
+        return self._structured_intent_recognition
+
+    def explicit_capability_confirmation(self) -> ExplicitCapabilityConfirmation:
+        if self._explicit_capability_confirmation is None:
+            self._explicit_capability_confirmation = build_explicit_capability_confirmation(
+                self.platform_capability_catalog()
+            )
+        return self._explicit_capability_confirmation
+
+    def intent_interaction_gateway(
+        self,
+        proposal_store: PendingProposalStorePort,
+    ) -> IntentInteractionGateway:
+        dispatcher = build_controlled_dispatcher(
+            self.platform_capability_catalog(),
+            agent_runtime=self.agent_runtime,
+            chat_application=self.chat_application,
+            ask_knowledge_use_case=self.ask_knowledge_use_case,
+            policy_decision_application_service=self.policy_decision_application_service,
+        )
+        return build_intent_interaction_gateway(
+            candidate_retrieval=self.capability_candidate_retrieval(),
+            intent_recognition=self.structured_intent_recognition(),
+            confirmation=self.explicit_capability_confirmation(),
+            proposal_store=proposal_store,
+            dispatcher=dispatcher,
+        )
+
+    def interaction_chat_stream_application(
+        self,
+        proposal_store: PendingProposalStorePort,
+    ) -> InteractionChatStreamApplication:
+        return build_interaction_chat_stream_application(
+            self.intent_interaction_gateway(proposal_store),
+            self.streaming_chat_application(),
+        )
 
     def chat_application(self) -> ChatApplication:
         """提供无数据库依赖的独立单轮 LLM Chat 用例。"""

@@ -3,9 +3,8 @@ import {
   Archive,
   Bot,
   Check,
-  ChevronDown,
   Clipboard,
-  FileText,
+  LoaderCircle,
   MessageSquare,
   MoreHorizontal,
   Paperclip,
@@ -13,33 +12,49 @@ import {
   RotateCcw,
   Search,
   Send,
+  ShieldCheck,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
   Workflow,
+  X,
 } from "lucide-react";
 
-import { useChatStream } from "../hooks/useChatStream";
+import { useIntentProposalResponse } from "../../interaction/hooks/useIntentInteraction";
+import { useInteractionChatStream } from "../../interaction/hooks/useInteractionChatStream";
+import type {
+  InteractionGatewayResult,
+  InteractionStreamApproval,
+} from "../../interaction/types";
 import { useDeltaRenderQueue } from "../hooks/useDeltaRenderQueue";
 import styles from "./ChatPage.module.css";
 
 type ChatRole = "user" | "assistant";
+type ChatMessageStatus =
+  | "connecting"
+  | "streaming"
+  | "awaiting_confirmation"
+  | "confirming"
+  | "cancelling"
+  | "needs_clarification"
+  | "unrecognized"
+  | "completed"
+  | "cancelled"
+  | "rejected"
+  | "failed";
 
 type ChatMessage = {
   id: string;
   role: ChatRole;
   content: string;
   timestamp: string;
-  citations?: string[];
-  metrics?: string;
   request?: string;
-  status?: "connecting" | "streaming" | "completed" | "cancelled" | "failed";
+  approval?: InteractionStreamApproval;
+  status?: ChatMessageStatus;
 };
 
 const initialMessages: ChatMessage[] = [];
-
 const conversationItems: Array<{ id: string; title: string; meta: string }> = [];
-
 const promptSuggestions = [
   "介绍一下你的能力",
   "解释什么是 LangChain",
@@ -50,114 +65,150 @@ export function ChatPage() {
   const [activeConversation, setActiveConversation] = useState("new-conversation");
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [inputValue, setInputValue] = useState("");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [failedRequest, setFailedRequest] = useState<string | null>(null);
-  const chatStream = useChatStream();
-  const deltaQueue = useDeltaRenderQueue();
-  const isThinking = chatStream.isActive || deltaQueue.isRendering;
+  const interactionStream = useInteractionChatStream();
+  const proposalResponse = useIntentProposalResponse();
+  const deltaRenderer = useDeltaRenderQueue();
+  const respondingProposalIds = useRef(new Set<string>());
   const messageStreamRef = useRef<HTMLDivElement>(null);
+  const hasPendingApproval = messages.some((message) => message.status === "awaiting_confirmation");
+  const isStreaming = interactionStream.isActive || deltaRenderer.isRendering;
+  const isComposerBusy = isStreaming || proposalResponse.isPending || hasPendingApproval;
 
   useEffect(() => {
     const stream = messageStreamRef.current;
-    if (stream) stream.scrollTo({ top: stream.scrollHeight, behavior: "smooth" });
-  }, [messages, isThinking]);
+    if (stream && typeof stream.scrollTo === "function") {
+      stream.scrollTo({ top: stream.scrollHeight, behavior: "smooth" });
+    }
+  }, [messages, isComposerBusy]);
+
+  const updateAssistant = (assistantId: string, update: (message: ChatMessage) => ChatMessage) => {
+    setMessages((current) => current.map((message) => (
+      message.id === assistantId ? update(message) : message
+    )));
+  };
+
+  const settleAssistant = (
+    assistantId: string,
+    status: "completed" | "cancelled" | "failed",
+    fallbackContent: string,
+  ) => {
+    deltaRenderer.settle(() => {
+      updateAssistant(assistantId, (message) => ({
+        ...message,
+        status,
+        content: message.content || fallbackContent,
+      }));
+    });
+  };
 
   const handleNewConversation = () => {
+    interactionStream.cancel();
     setActiveConversation("new-conversation");
     setMessages([]);
     setInputValue("");
-    setErrorMessage(null);
-    setFailedRequest(null);
   };
 
   const handleConversationSelect = (conversationId: string) => {
+    interactionStream.cancel();
     setActiveConversation(conversationId);
     setMessages(conversationId === "tender-response" ? initialMessages : []);
     setInputValue("");
-    setErrorMessage(null);
-    setFailedRequest(null);
   };
 
   const handleSend = async (suggestion?: string) => {
     const content = (suggestion ?? inputValue).trim();
-    if (!content || isThinking) return;
+    if (!content || isComposerBusy) return;
 
+    const requestId = Date.now().toString();
     const now = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    const assistantId = "assistant-" + requestId;
     setMessages((current) => [
       ...current,
-      { id: `user-${Date.now()}`, role: "user", content, timestamp: `今天 ${now}` },
-    ]);
-    setInputValue("");
-    setErrorMessage(null);
-    setFailedRequest(null);
-
-    const assistantId = `assistant-${Date.now()}`;
-    const startedAt = performance.now();
-    setMessages((current) => [
-      ...current,
+      { id: "user-" + requestId, role: "user", content, timestamp: "今天 " + now },
       {
         id: assistantId,
         role: "assistant",
         content: "",
-        timestamp: `今天 ${now}`,
+        timestamp: "今天 " + now,
         request: content,
         status: "connecting",
       },
     ]);
-    deltaQueue.start((delta) => {
-      setMessages((current) => current.map((message) => (
-        message.id === assistantId ? { ...message, content: `${message.content}${delta}` } : message
-      )));
+    setInputValue("");
+    deltaRenderer.start((delta) => {
+      updateAssistant(assistantId, (message) => ({
+        ...message,
+        status: "streaming",
+        content: message.content + delta,
+      }));
     });
 
-    let completed = false;
-
     try {
-      await chatStream.send(content, {
-        onDelta: (delta) => {
-          setMessages((current) => current.map((message) => (
-            message.id === assistantId ? { ...message, status: "streaming" } : message
-          )));
-          deltaQueue.enqueue(delta);
+      const terminal = await interactionStream.send(content, {
+        onMeta: () => {
+          updateAssistant(assistantId, (message) => ({ ...message, status: "streaming" }));
         },
-        onComplete: (result) => {
-          completed = true;
-          deltaQueue.settle(() => {
-            const tokens = result.usage.total_tokens;
-            setMessages((current) => current.map((message) => (
-              message.id === assistantId
-                ? {
-                  ...message,
-                  status: "completed",
-                  metrics: `${result.model} · ${Math.round(performance.now() - startedAt)}ms${tokens === null || tokens === undefined ? "" : ` · ${tokens} tokens`}`,
-                }
-                : message
-            )));
-            setFailedRequest(null);
-          });
+        onDelta: (delta) => deltaRenderer.enqueue(delta),
+        onComplete: () => {
+          settleAssistant(assistantId, "completed", "模型未返回可显示内容。");
+        },
+        onApprovalRequired: (approval) => {
+          updateAssistant(assistantId, (message) => ({
+            ...message,
+            status: "awaiting_confirmation",
+            content: "这项操作会调用业务能力，请先确认后再执行。",
+            approval,
+          }));
+        },
+        onResult: (result) => {
+          updateAssistant(assistantId, (message) => ({
+            ...message,
+            status: result.status,
+            content: result.message || "请求已处理。",
+          }));
         },
       });
-      if (!completed) {
-        deltaQueue.settle(() => {
-          setMessages((current) => current.map((message) => (
-            message.id === assistantId ? { ...message, status: "cancelled" } : message
-          )));
-        });
+      if (terminal === undefined) {
+        settleAssistant(assistantId, "cancelled", "已取消本次回答。");
       }
     } catch (error) {
-      const apiError = error as { message?: string };
-      setErrorMessage(apiError.message ?? "LLM 请求失败，请稍后重试。");
-      setFailedRequest(content);
-      deltaQueue.settle(() => {
-        setMessages((current) => current.map((message) => (
-          message.id === assistantId ? { ...message, status: "failed" } : message
-        )));
-      });
+      const message = error instanceof Error ? error.message : "请求暂时无法处理，请稍后重试。";
+      settleAssistant(assistantId, "failed", message);
     }
   };
 
-  const handleCancel = () => {
-    chatStream.cancel();
+  const handleCancelStream = () => {
+    if (!interactionStream.isActive) return;
+    interactionStream.cancel();
+    const activeAssistant = [...messages].reverse().find((message) => (
+      message.role === "assistant" && (message.status === "connecting" || message.status === "streaming")
+    ));
+    if (activeAssistant) {
+      updateAssistant(activeAssistant.id, (message) => ({ ...message, status: "cancelling" }));
+    }
+  };
+
+  const handleProposalResponse = async (messageId: string, action: "confirm" | "cancel") => {
+    const message = messages.find((item) => item.id === messageId);
+    const proposalId = message?.approval?.proposalId;
+    if (!proposalId || message?.status !== "awaiting_confirmation" || respondingProposalIds.current.has(proposalId)) return;
+
+    respondingProposalIds.current.add(proposalId);
+    updateAssistant(messageId, (item) => ({
+      ...item,
+      status: action === "confirm" ? "confirming" : "cancelling",
+      content: action === "confirm" ? "正在执行已批准的请求…" : "正在取消请求…",
+    }));
+
+    try {
+      const result = await proposalResponse.mutateAsync({ proposalId, action });
+      updateAssistant(messageId, (item) => applyConfirmationResult(item, result));
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : "请求暂时无法处理，请稍后重试。";
+      updateAssistant(messageId, (item) => ({ ...item, status: "failed", content: messageText }));
+    } finally {
+      respondingProposalIds.current.delete(proposalId);
+    }
   };
 
   const handleCopy = async (content: string) => {
@@ -176,22 +227,18 @@ export function ChatPage() {
             <MoreHorizontal size={17} />
           </button>
         </div>
-
         <button className={styles.newConversationButton} type="button" onClick={handleNewConversation}>
-          <Plus size={16} />
-          新建对话
+          <Plus size={16} /> 新建对话
         </button>
-
         <label className={styles.conversationSearch}>
           <Search size={14} />
           <input aria-label="搜索会话" placeholder="搜索会话" />
         </label>
-
         <div className={styles.listSectionLabel}>最近对话</div>
         <div className={styles.conversationItems}>
           {conversationItems.map((conversation) => (
             <button
-              className={`${styles.conversationItem} ${activeConversation === conversation.id ? styles.conversationItemActive : ""}`}
+              className={styles.conversationItem + (activeConversation === conversation.id ? " " + styles.conversationItemActive : "")}
               key={conversation.id}
               type="button"
               onClick={() => handleConversationSelect(conversation.id)}
@@ -204,10 +251,8 @@ export function ChatPage() {
             </button>
           ))}
         </div>
-
         <div className={styles.storageHint}>
-          <Archive size={14} />
-          <span>当前不保存会话历史</span>
+          <Archive size={14} /> <span>当前不保存会话历史</span>
         </div>
       </aside>
 
@@ -217,7 +262,7 @@ export function ChatPage() {
             <div className={styles.agentIcon}><Bot size={19} /></div>
             <div>
               <div className={styles.agentTitle}>LLM 助手 <span className={styles.statusDot} /> 在线</div>
-              <div className={styles.agentSubtitle}>单轮模型调用验证</div>
+              <div className={styles.agentSubtitle}>准备就绪</div>
             </div>
           </div>
           <div className={styles.chatHeaderActions}>
@@ -231,18 +276,25 @@ export function ChatPage() {
             <div className={styles.emptyConversation}>
               <div className={styles.emptyIcon}><Sparkles size={20} /></div>
               <h2>开始一段新的工作对话</h2>
-              <p>发送一条消息，验证后端 LangChain 与 GLM 的单轮调用。</p>
+              <p>发送一条消息开始工作。</p>
             </div>
           )}
           {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} onCopy={handleCopy} onRetry={() => handleSend(message.request ?? message.content)} />
+            <MessageBubble
+              key={message.id}
+              message={message}
+              isProposalResponding={proposalResponse.isPending}
+              onCopy={handleCopy}
+              onProposalResponse={handleProposalResponse}
+              onRetry={() => handleSend(message.request ?? message.content)}
+            />
           ))}
         </div>
 
         <footer className={styles.composerArea}>
           <div className={styles.suggestionRow}>
             {promptSuggestions.map((suggestion) => (
-              <button key={suggestion} type="button" onClick={() => handleSend(suggestion)}>
+              <button key={suggestion} type="button" onClick={() => handleSend(suggestion)} disabled={isComposerBusy}>
                 <Sparkles size={13} /> {suggestion}
               </button>
             ))}
@@ -255,80 +307,48 @@ export function ChatPage() {
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  handleSend();
+                  void handleSend();
                 }
               }}
-              placeholder="输入你想了解的内容..."
+              placeholder="输入你想了解的内容…"
               rows={2}
+              disabled={isComposerBusy}
             />
             <div className={styles.composerToolbar}>
               <div className={styles.composerTools}>
-                <button type="button" title="添加附件" aria-label="添加附件"><Paperclip size={16} /></button>
-                <button type="button" title="添加工作流" aria-label="添加工作流"><Workflow size={16} /></button>
-                <span className={styles.composerHint}>Enter 发送 · Shift + Enter 换行</span>
+                <button type="button" title="添加附件" aria-label="添加附件" disabled={isComposerBusy}><Paperclip size={16} /></button>
+                <button type="button" title="添加工作流" aria-label="添加工作流" disabled={isComposerBusy}><Workflow size={16} /></button>
               </div>
-              {isThinking ? (
-                <button className={styles.cancelButton} type="button" onClick={handleCancel}>取消</button>
+              {isStreaming ? (
+                <button className={styles.cancelButton} type="button" onClick={handleCancelStream}>取消生成</button>
+              ) : isComposerBusy ? (
+                <span className={styles.processingLabel}><LoaderCircle size={14} /> 处理中</span>
               ) : (
-                <button className={styles.sendButton} type="button" title="发送消息" aria-label="发送消息" onClick={() => handleSend()} disabled={!inputValue.trim()}>
+                <button className={styles.sendButton} type="button" title="发送消息" aria-label="发送消息" onClick={() => void handleSend()} disabled={!inputValue.trim()}>
                   <Send size={16} />
                 </button>
               )}
             </div>
           </div>
-          {errorMessage && (
-            <div className={styles.errorMessage} role="alert">
-              <span>{errorMessage}</span>
-              <button className={styles.retryButton} type="button" onClick={() => handleSend(failedRequest ?? undefined)} disabled={isThinking || !failedRequest}>
-                <RotateCcw size={12} /> 重试
-              </button>
-            </div>
-          )}
         </footer>
       </section>
-
-      <aside className={styles.inspector} aria-label="LLM 调用信息">
-        <div className={styles.inspectorHeading}>
-          <div><span className={styles.eyebrow}>LLM TEST</span><h2>调用信息</h2></div>
-          <button className={styles.iconButton} type="button" title="收起上下文" aria-label="收起上下文"><ChevronDown size={16} /></button>
-        </div>
-
-        <div className={styles.inspectorSection}>
-          <div className={styles.sectionTitle}><span>调用模式</span></div>
-          <div className={styles.sourceCard}>
-            <div className={styles.sourceIcon}><Sparkles size={16} /></div>
-            <div className={styles.sourceCopy}><strong>独立 LLM 调用</strong><small>单轮 · 无上下文 · 无工具</small></div>
-          </div>
-          <div className={styles.contextNote}>当前只验证模型文本响应</div>
-        </div>
-
-        <div className={styles.inspectorSection}>
-          <div className={styles.sectionTitle}><span>当前模型</span><button type="button" className={styles.textButton}>切换</button></div>
-          <div className={styles.modelCard}>
-            <div className={styles.modelMark}>GLM</div>
-            <div className={styles.sourceCopy}><strong>GLM</strong><small>LangChain 后端适配 · 单轮调用</small></div>
-            <Check size={15} color="#2aa77c" />
-          </div>
-        </div>
-
-        <div className={styles.inspectorSection}>
-          <div className={styles.sectionTitle}><span>响应设置</span></div>
-          <div className={styles.parameterRow}><span>温度</span><strong>0.2</strong></div>
-          <div className={styles.parameterTrack}><span style={{ width: "20%" }} /></div>
-          <div className={styles.parameterRow}><span>上下文记忆</span><strong>未接入</strong></div>
-          <div className={styles.parameterRow}><span>工具调用</span><strong>未接入</strong></div>
-        </div>
-
-        <div className={styles.langchainNote}>
-          <div className={styles.langchainIcon}><Workflow size={15} /></div>
-          <div><strong>LangChain 技术验证</strong><p>当前只验证通用 LLM 的单轮调用。</p></div>
-        </div>
-      </aside>
     </div>
   );
 }
 
-function MessageBubble({ message, onCopy, onRetry }: { message: ChatMessage; onCopy: (content: string) => void; onRetry: () => void }) {
+function MessageBubble({
+  message,
+  isProposalResponding,
+  onCopy,
+  onProposalResponse,
+  onRetry,
+}: {
+  message: ChatMessage;
+  isProposalResponding: boolean;
+  onCopy: (content: string) => void;
+  onProposalResponse: (messageId: string, action: "confirm" | "cancel") => void;
+  onRetry: () => void;
+}) {
   if (message.role === "user") {
     return <div className={styles.userMessageRow}><div className={styles.userMessage}><p>{message.content}</p><small>{message.timestamp}</small></div></div>;
   }
@@ -338,29 +358,72 @@ function MessageBubble({ message, onCopy, onRetry }: { message: ChatMessage; onC
       <div className={styles.messageAvatar}><Bot size={16} /></div>
       <div className={styles.assistantMessageGroup}>
         <div className={styles.assistantMessage}>
-          <div className={styles.assistantLabel}>
-            LLM 助手 <span>{statusLabel(message.status)}</span>
-            {message.status === "streaming" && <i className={styles.streamingCaret} aria-label="正在输出" />}
-          </div>
-          <p>{message.content || (message.status === "connecting" ? "正在连接模型…" : message.status === "streaming" ? "正在输出…" : "")}</p>
-          {message.citations && <div className={styles.citations}>{message.citations.map((citation) => <button key={citation} type="button"><FileText size={13} />{citation}</button>)}</div>}
+          <div className={styles.assistantLabel}>LLM 助手 <span>{statusLabel(message.status)}</span></div>
+          {message.content && <p>{message.content}{message.status === "streaming" && <span className={styles.streamingCaret} />}</p>}
+          {message.status === "awaiting_confirmation" && message.approval && (
+            <div className={styles.confirmationCard}>
+              <div className={styles.confirmationHeading}><ShieldCheck size={16} /><strong>需要你的批准</strong></div>
+              <p className={styles.confirmationSummary}>{message.approval.summary}</p>
+              <span className={styles.confirmationPrompt}>{message.approval.confirmationPrompt}</span>
+              <div className={styles.confirmationActions}>
+                <button className={styles.confirmButton} type="button" onClick={() => onProposalResponse(message.id, "confirm")} disabled={isProposalResponding}>
+                  <Check size={14} /> 批准执行
+                </button>
+                <button className={styles.declineButton} type="button" onClick={() => onProposalResponse(message.id, "cancel")} disabled={isProposalResponding}>
+                  <X size={14} /> 取消
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         <div className={styles.messageActions}>
-          <button type="button" title="复制回答" aria-label="复制回答" onClick={() => onCopy(message.content)}><Clipboard size={13} /></button>
-          <button type="button" title="回答有帮助" aria-label="回答有帮助"><ThumbsUp size={13} /></button>
-          <button type="button" title="回答没有帮助" aria-label="回答没有帮助"><ThumbsDown size={13} /></button>
-          <button type="button" title="重新生成" aria-label="重新生成" onClick={onRetry}><RotateCcw size={13} /></button>
-          {message.metrics && <span>{message.metrics}</span>}
+          {message.status === "completed" && (
+            <>
+              <button type="button" title="复制回答" aria-label="复制回答" onClick={() => onCopy(message.content)}><Clipboard size={13} /></button>
+              <button type="button" title="回答有帮助" aria-label="回答有帮助"><ThumbsUp size={13} /></button>
+              <button type="button" title="回答没有帮助" aria-label="回答没有帮助"><ThumbsDown size={13} /></button>
+            </>
+          )}
+          {message.status === "failed" && (
+            <button className={styles.inlineRetryButton} type="button" onClick={onRetry} disabled={isProposalResponding}>
+              <RotateCcw size={12} /> 再次尝试
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
+function applyConfirmationResult(message: ChatMessage, result: InteractionGatewayResult): ChatMessage {
+  const answer = result.execution_result?.answer;
+  return {
+    ...message,
+    status: result.status === "pending" ? "awaiting_confirmation" : result.status,
+    content: result.status === "completed" && typeof answer === "string" && answer.trim()
+      ? answer
+      : result.message || "请求已处理。",
+    approval: result.status === "pending" && result.proposal
+      ? {
+        proposalId: result.proposal.proposal_id,
+        state: result.proposal.state,
+        summary: result.proposal.summary,
+        confirmationPrompt: result.proposal.confirmation_prompt,
+      }
+      : undefined,
+  };
+}
+
 function statusLabel(status: ChatMessage["status"]): string {
-  if (status === "connecting") return "正在连接";
-  if (status === "streaming") return "正在输出";
+  if (status === "connecting") return "连接中";
+  if (status === "streaming") return "输出中";
+  if (status === "awaiting_confirmation") return "等待批准";
+  if (status === "confirming") return "正在执行";
+  if (status === "cancelling") return "正在取消";
+  if (status === "needs_clarification") return "需要补充";
+  if (status === "unrecognized") return "未能理解";
   if (status === "cancelled") return "已取消";
-  if (status === "failed") return "生成失败";
+  if (status === "rejected") return "无法继续";
+  if (status === "failed") return "处理失败";
   return "已完成";
 }

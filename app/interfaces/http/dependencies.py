@@ -7,12 +7,19 @@ from app.modules.ingestion.application.ingestion_use_case import IngestionUseCas
 from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
 from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
 from app.modules.ingestion.ports import UploadStoragePort
+from app.modules.interaction.application.chat_stream import InteractionChatStreamApplication
+from app.modules.interaction.application.gateway import (
+    InMemoryPendingProposalStore,
+    IntentInteractionGateway,
+)
+from app.modules.interaction.ports.proposal_store import PendingProposalStorePort
 from app.modules.knowledge.application.knowledge_base import KnowledgeBaseService
 from app.modules.knowledge.application.management_service import KnowledgeManagementService
 from app.modules.knowledge.application.publication_service import KnowledgePublicationService
 from app.modules.llm.application.chat import ChatApplication
 from app.modules.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.modules.online.application.policy_decision import PolicyDecisionApplicationService
+from app.shared.config import settings
 
 
 def get_application_container(
@@ -20,6 +27,29 @@ def get_application_container(
 ) -> ApplicationContainer:
     """为需要数据库能力的请求提供统一装配容器。"""
     return ApplicationContainer(session)
+
+
+@lru_cache(maxsize=1)
+def get_interaction_proposal_store() -> PendingProposalStorePort:
+    """确认跨 HTTP 请求时共享短 TTL、一次消费的服务端状态。"""
+
+    return InMemoryPendingProposalStore(
+        ttl_seconds=settings.interaction_proposal_ttl_seconds,
+    )
+
+
+def get_intent_interaction_gateway(
+    container: ApplicationContainer = Depends(get_application_container),
+    proposal_store: PendingProposalStorePort = Depends(get_interaction_proposal_store),
+) -> IntentInteractionGateway:
+    return container.intent_interaction_gateway(proposal_store)
+
+
+def get_interaction_chat_stream_application(
+    container: ApplicationContainer = Depends(get_application_container),
+    proposal_store: PendingProposalStorePort = Depends(get_interaction_proposal_store),
+) -> InteractionChatStreamApplication:
+    return container.interaction_chat_stream_application(proposal_store)
 
 
 @lru_cache(maxsize=1)
