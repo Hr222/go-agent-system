@@ -1,0 +1,6 @@
+- [x] 1.1 新增 Dialogue Agent Continuation 的命令、结果和应用服务，读取 `agent_result`、构建上下文、调用 Chat LLM 并持久化 assistant Message。
+- [x] 1.2 定义续写 Prompt、结果序列化和错误映射，确保敏感字段与二进制内容不进入模型上下文。
+- [x] 1.3 在 Composition Root 组装续写服务，并接入确认后的 Dialogue Agent 路径；保留 Agent 结构化结果和 Conversation ID。
+- [x] 1.4 增加单元测试，覆盖成功续写、结果缺失、空回答、Provider 失败、预算不足、敏感字段隔离和不重复执行 Agent。
+- [x] 1.5 增加 HTTP 集成测试，验证确认响应同时返回 `answer` 与安全 `agent_result`，并验证续写失败时不丢失 Agent 结果。
+- [x] 1.6 更新中文架构与 OpenSpec 规格引用，运行后端全量测试、Ruff 和 OpenSpec 校验。
