@@ -17,6 +17,8 @@ from app.modules.agent.tender.contracts import (
     TenderGenerateSkeletonCommand,
     TenderVerifyExtractionBoundaryCommand,
 )
+from app.modules.interaction.application.agent_call_policy import AgentCallPolicyValidator
+from app.modules.interaction.application.agent_dispatch import AgentCallDispatcher
 from app.modules.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
 from app.modules.interaction.application.catalog import PlatformCapabilityCatalog
 from app.modules.interaction.application.dispatch import (
@@ -110,6 +112,20 @@ def build_agent_runtime(
                 inputs,
             ),
         },
+    )
+
+
+def build_agent_call_dispatcher(
+    capability_catalog: CapabilityCatalogPort,
+    *,
+    agent_runtime: Callable[[], AgentRuntime],
+) -> AgentCallDispatcher:
+    """组装 V2 结构化 Agent 调用的策略后分发边界。"""
+
+    return AgentCallDispatcher(
+        capability_catalog,
+        AgentCallPolicyValidator(capability_catalog),
+        agent_runtime(),
     )
 
 
