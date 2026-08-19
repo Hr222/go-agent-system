@@ -1,6 +1,6 @@
 # llm-dialogue-system-v2
 
-V2 LLM dialogue system umbrella change. Child changes will be created and executed in priority order after explicit direction.
+V2 LLM 对话系统的收口 Change。下列叶子 Change 已按依赖顺序完成、归档，并由本 Change 汇总端到端契约和验收状态。
 
 ## Child change hierarchy
 
@@ -59,4 +59,4 @@ dialogue-basic-chat
   -> retire-v1-llm-chat
 ```
 
-Grouping nodes are roadmap labels. Each named leaf is an independent OpenSpec change with its own future proposal, design, specs, tasks, implementation, verification, and archive lifecycle.
+分组节点只表达路线图层级。每个叶子节点都是独立 OpenSpec Change，具有各自的 proposal、design、spec、tasks、实现、验证和归档记录；本 Change 不替代这些详细记录。
