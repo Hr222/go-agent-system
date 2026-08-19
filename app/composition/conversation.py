@@ -2,6 +2,9 @@
 
 from sqlalchemy.orm import Session
 
+from app.infrastructure.persistence.repositories.conversation_event_repository import (
+    ConversationEventRepository,
+)
 from app.infrastructure.persistence.repositories.conversation_history_read_repository import (
     ConversationHistoryReadRepository,
 )
@@ -48,3 +51,7 @@ def build_conversation_context_builder() -> ConversationContextBuilder:
     """组装使用默认字符成本计量的 Conversation 上下文构建服务。"""
 
     return ConversationContextBuilder(CharacterCountContextMessageCostEstimator())
+
+
+def build_conversation_event_repository(session: Session) -> ConversationEventRepository:
+    return ConversationEventRepository(session)

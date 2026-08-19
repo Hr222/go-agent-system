@@ -3,7 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BIGINT, TIMESTAMP, CheckConstraint, ForeignKey, Text, UniqueConstraint, func
+from sqlalchemy import (
+    BIGINT,
+    TIMESTAMP,
+    CheckConstraint,
+    ForeignKey,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -73,3 +82,53 @@ class ConversationMessageRecord(Base):
         server_default=func.now(),
     )
     conversation: Mapped["ConversationRecord"] = relationship(back_populates="messages")
+
+
+class ConversationEventRecord(Base):
+    """Conversation 的结构化 Agent 生命周期事件。"""
+
+    __tablename__ = "conversation_event"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id",
+            "sequence",
+            name="uq_conversation_event_conversation_sequence",
+        ),
+        CheckConstraint(
+            "event_type IN ('agent_call', 'agent_result', 'agent_error')",
+            name="chk_conversation_event_type",
+        ),
+        CheckConstraint(
+            "btrim(call_id) <> ''",
+            name="chk_conversation_event_call_id_not_blank",
+        ),
+        CheckConstraint(
+            "btrim(capability_code) <> ''",
+            name="chk_conversation_event_capability_not_blank",
+        ),
+        CheckConstraint(
+            "sequence > 0",
+            name="chk_conversation_event_sequence_positive",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(payload) = 'object'",
+            name="chk_conversation_event_payload_object",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    conversation_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("conversation.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    call_id: Mapped[str] = mapped_column(Text, nullable=False)
+    capability_code: Mapped[str] = mapped_column(Text, nullable=False)
+    sequence: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )

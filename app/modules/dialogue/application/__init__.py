@@ -1,5 +1,11 @@
 """Dialogue Runtime 应用用例。"""
 
+from app.modules.dialogue.application.agent_invocation import (
+    DialogueAgentInvocationCommand,
+    DialogueAgentInvocationResult,
+    DialogueAgentInvocationService,
+)
+from app.modules.dialogue.application.agent_result_projection import AgentResultProjector
 from app.modules.dialogue.application.basic_chat import (
     DEFAULT_DIALOGUE_CONTEXT_BUDGET,
     DEFAULT_DIALOGUE_CONTEXT_POLICY,
@@ -18,4 +24,8 @@ __all__ = [
     "BasicDialogueRuntime",
     "DialogueCommand",
     "DialogueResult",
+    "AgentResultProjector",
+    "DialogueAgentInvocationCommand",
+    "DialogueAgentInvocationResult",
+    "DialogueAgentInvocationService",
 ]

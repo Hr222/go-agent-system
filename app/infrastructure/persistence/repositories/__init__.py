@@ -27,3 +27,8 @@ __all__ = [
     "KnowledgeWriteRepository",
     "PlatformCapabilityRepository",
 ]
+from app.infrastructure.persistence.repositories.conversation_event_repository import (
+    ConversationEventRepository,
+)
+
+__all__ = ["ConversationEventRepository"]

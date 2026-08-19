@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from app.infrastructure.persistence.models.conversation import (
+    ConversationEventRecord,
     ConversationMessageRecord,
     ConversationRecord,
 )
-from app.modules.conversation.domain import Conversation, Message, MessageRole
+from app.modules.conversation.domain import Conversation, ConversationEvent, Message, MessageRole
 
 
 def conversation_to_record(conversation: Conversation) -> ConversationRecord:
@@ -49,5 +50,31 @@ def message_from_record(record: ConversationMessageRecord) -> Message:
         role=MessageRole(record.role),
         content=record.content,
         sequence=record.sequence,
+        created_at=record.created_at,
+    )
+
+
+def event_to_record(event: ConversationEvent) -> ConversationEventRecord:
+    return ConversationEventRecord(
+        id=event.id,
+        conversation_id=event.conversation_id,
+        event_type=event.event_type,
+        call_id=event.call_id,
+        capability_code=event.capability_code,
+        sequence=event.sequence,
+        payload=dict(event.payload),
+        created_at=event.created_at,
+    )
+
+
+def event_from_record(record: ConversationEventRecord) -> ConversationEvent:
+    return ConversationEvent(
+        id=record.id,
+        conversation_id=record.conversation_id,
+        event_type=record.event_type,
+        call_id=record.call_id,
+        capability_code=record.capability_code,
+        sequence=record.sequence,
+        payload=dict(record.payload),
         created_at=record.created_at,
     )

@@ -1,6 +1,7 @@
 """PostgreSQL 知识库 ORM 模型。"""
 
 from app.infrastructure.persistence.models.conversation import (
+    ConversationEventRecord,
     ConversationMessageRecord,
     ConversationRecord,
 )
@@ -13,6 +14,7 @@ from app.infrastructure.persistence.models.policy_version import PolicyVersion
 
 __all__ = [
     "ConversationMessageRecord",
+    "ConversationEventRecord",
     "ConversationRecord",
     "PlatformCapabilityRecord",
     "PolicyBlock",
