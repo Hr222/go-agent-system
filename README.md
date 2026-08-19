@@ -223,11 +223,11 @@ npm run dev
 | 文档入库 | POST | `/api/v1/kb/policy-pipeline/ingest` |
 | 暂存文件入库 | POST | `/api/v1/kb/policy-pipeline/ingest-upload` |
 | 知识版本发布 | POST | `/api/v1/kb/publication/activate` |
-| 流式单轮 LLM 对话 | POST | `/api/v1/llm/chat/stream` |
+| 统一对话流 | POST | `/api/v1/interaction/chat/stream` |
 
-### 流式 LLM 部署
+### 统一对话流部署
 
-流式接口使用 SSE。反向代理需关闭缓冲、保持 HTTP/1.1 连接，并将超时设为不低于 `LLM_STREAM_TOTAL_TIMEOUT_SECONDS`。可将 `docker/nginx/llm-streaming.conf` 并入对应的 Nginx `server` 块。
+统一对话流使用 SSE。反向代理需关闭缓冲、保持 HTTP/1.1 连接，并将超时设为不低于 `LLM_STREAM_TOTAL_TIMEOUT_SECONDS`。可将 `docker/nginx/llm-streaming.conf` 并入对应的 Nginx `server` 块。
 
 生产环境可通过以下参数调整流的容量与超时：`LLM_STREAM_MAX_CONCURRENCY`、`LLM_STREAM_FIRST_TOKEN_TIMEOUT_SECONDS`、`LLM_STREAM_IDLE_TIMEOUT_SECONDS`、`LLM_STREAM_TOTAL_TIMEOUT_SECONDS` 和 `LLM_STREAM_HEARTBEAT_SECONDS`。应用日志记录请求标识、阶段、耗时、事件数及活跃流数，不记录 Prompt 或增量文本。
 

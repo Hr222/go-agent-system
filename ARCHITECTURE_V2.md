@@ -1,6 +1,6 @@
 # 架构演化目标（V2：LLM 对话体系）
 
-> 状态：已完成架构探索，尚未开始实现。
+> 状态：实施中。P0-P2、P3.1、P3.2 及 P4 已实施并归档；下一步进入认证授权与上传适配器的独立探索。
 >
 > V1 的已实现基线见 [ARCHITECTURE_V1.md](ARCHITECTURE_V1.md)。本文件只描述 V2 的目标架构、演化边界和实施顺序，不把 V2 内容回写为 V1 已实现事实。
 
@@ -208,9 +208,9 @@ app/
 
 ## 实施顺序
 
-首个 Change 先做 Conversation，建议名称为 `conversation-foundation`。它为 Dialogue Runtime、上下文组装、Agent 结果回填和多轮恢复提供稳定基础。
+V2 的 Conversation 基础、基础多轮 Dialogue、Interaction 控制、P3.1 单 Agent 调用、P3.2 Agent 结果续写及 P4 旧 V1 LLM Chat 入口退场已完成并归档。它们为后续多轮恢复、真实认证适配和上传适配提供稳定基础。
 
-`conversation-foundation` 包含：
+已完成的 Conversation 基础包括：
 
 - `Conversation`、`Message`、`Turn`、`ConversationEvent` 领域对象和标识。
 - 会话创建、读取、消息追加、历史查询和顺序保证。
@@ -219,25 +219,23 @@ app/
 - `conversation_id`、`turn_id`、`run_id`、`parent_run_id` 等关联标识。
 - `approval_required`、`approval`、`agent_call`、`agent_result` 等扩展事件；Proposal 本体仍由 Gateway 的短 TTL 存储负责。
 
-该 Change 不包含 Dialogue Runtime、Interaction Gateway 执行、Agent Runtime 改造、Task Management、Harness 或旧接口删除。
+已完成范围不包含 Task Management、Harness、SubAgent、Workflow、异步恢复、真实认证授权或 HTTP 上传适配。
 
-后续顺序固定为：
+后续顺序为：
 
 ```text
-1. conversation-foundation
-2. dialogue-runtime
-3. interaction-agent-call-authorization
-4. 新对话入口验收后删除 /api/v1/llm/chat
-5. SubAgent / Workflow / Task Management / Harness 的独立演化
+1. 真实认证 / 授权适配器：接入 `PrincipalResolver Port`，为主体授予受控权限
+2. HTTP / Upload Adapter：临时文件引用、Gateway 校验及 Tender 输入适配
+3. SubAgent / Workflow / Task Management / Harness 的独立演化
 ```
 
 ## V1 退场规则
 
-`/api/v1/llm/chat` 是 V1 为快速落地 MCP 链路建立的单轮入口。新 Dialogue API 完成验收后，必须一并删除：
+`/api/v1/llm/chat` 是 V1 为快速落地 MCP 链路建立的单轮入口，已在 P4 完成退场。已删除：
 
 - `app/interfaces/http/routes/llm.py`
 - `app/interfaces/http/schemas/llm.py`
 - 前端直接调用 `/api/v1/llm/chat` 的逻辑
 - 对应的 V1 测试和兼容 Schema
 
-保留并演化的是 `app/modules/llm/`，不是旧 HTTP 入口。
+浏览器对话统一走 `/api/v1/interaction/chat/stream`。保留并演化的是 `app/modules/llm/`，不是旧 HTTP 入口。

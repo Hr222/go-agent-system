@@ -62,9 +62,8 @@ TBD - created by archiving change conversation-history-read. Update Purpose afte
 - **AND** 调用方可以使用返回游标继续读取之后的消息
 - **AND** 历史读取 MUST 不阻塞或修改追加事务
 
-#### Scenario: 部署读取能力后访问 V1 单轮 Chat
+#### Scenario: 部署读取能力后访问统一对话入口
 
-- **WHEN** 仅部署 Conversation 历史读取能力并访问现有 `/api/v1/llm/chat`
-- **THEN** V1 单轮 Chat 的行为和响应契约 MUST 保持不变
+- **WHEN** 仅部署 Conversation 历史读取能力并访问 `/api/v1/interaction/chat/stream`
+- **THEN** 统一入口的识别、授权和确认边界 MUST 保持不变
 - **AND** 系统 MUST 不新增 Conversation HTTP 路由
-

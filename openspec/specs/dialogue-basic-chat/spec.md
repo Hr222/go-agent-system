@@ -32,7 +32,7 @@ TBD - created by archiving change dialogue-basic-chat. Update Purpose after arch
 #### Scenario: 既有单轮调用不提供历史消息
 - **WHEN** 现有单轮 Chat 用例创建未携带历史消息的 LLM 请求
 - **THEN** Provider 仍只接收系统提示和当前用户消息
-- **AND** `/api/v1/llm/chat` 的请求和响应契约保持不变
+- **AND** 此行为不依赖任何旧 V1 HTTP 入口
 
 ### Requirement: 系统显式保留失败前已确认的用户事实
 系统 MUST 在 Context Builder、LLM 或助手消息写入失败时向调用方返回失败。若本轮 user Message 已成功持久化，系统 MUST 保留它；失败路径 MUST 不持久化虚构或空白的 assistant Message。
@@ -54,4 +54,3 @@ Dialogue Runtime MUST 只依赖 Conversation 应用服务、Conversation 领域�
 - **WHEN** 调用方注入 Conversation 服务、Context Builder 和 LLM Port 的测试替身
 - **THEN** Dialogue Runtime 可以完成或报告一轮对话的结果
 - **AND** 不需要实例化 HTTP、数据库 ORM、Provider SDK、Gateway 或 Agent
-

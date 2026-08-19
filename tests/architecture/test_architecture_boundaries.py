@@ -243,14 +243,14 @@ def test_conversation_context_builder_is_independent_from_llm_and_persistence() 
     )
 
 
-def test_dialogue_runtime_only_depends_on_conversation_and_llm_contracts() -> None:
+def test_dialogue_runtime_depends_only_on_controlled_interaction_contracts() -> None:
     imported = _imported_modules(APP_ROOT / "modules" / "dialogue")
 
     forbidden_prefixes = (
         "app.infrastructure",
         "app.interfaces",
         "app.modules.agent",
-        "app.modules.interaction",
+        "app.modules.interaction.ports.agent_runtime",
         "app.modules.task",
         "fastapi",
         "sqlalchemy",

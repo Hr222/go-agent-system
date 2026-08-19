@@ -37,8 +37,7 @@ TBD - created by archiving change conversation-model-storage. Update Purpose aft
 ### Requirement: 会话模型存储不引入对话行为
 系统 MUST 将 Conversation 模型存储限制在领域模型、ORM 映射、数据库脚本和转换边界内，不得通过本能力新增会话创建接口、消息追加接口、历史查询接口、LLM 调用、Agent 调用或前端交互。
 
-#### Scenario: 初始化模型存储后访问现有单轮 Chat
+#### Scenario: 初始化模型存储后访问统一对话入口
 - **WHEN** 部署仅包含 Conversation 模型存储的版本
-- **THEN** 现有 `/api/v1/llm/chat` 行为 MUST 保持不变
+- **THEN** `/api/v1/interaction/chat/stream` 继续是浏览器对话入口
 - **AND** 系统 MUST 不新增可供客户端调用的 Conversation HTTP 路由
-

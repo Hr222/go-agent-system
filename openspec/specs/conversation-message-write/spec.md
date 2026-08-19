@@ -74,13 +74,12 @@ TBD - created by archiving change conversation-message-write. Update Purpose aft
 - **THEN** 系统 MUST 回滚本次事务
 - **AND** 数据库 MUST 不留下孤立 Message 或只更新一半的会话状态
 
-### Requirement: Conversation 写入不改变现有外部接口
+### Requirement: Conversation 写入不新增独立外部接口
 
 本能力 MUST 通过模块应用服务和端口提供，不得新增 Conversation HTTP 路由、前端调用、LLM 调用或 Agent 调用。
 
-#### Scenario: 部署写入能力后访问 V1 单轮 Chat
+#### Scenario: 部署写入能力后访问统一对话入口
 
-- **WHEN** 仅部署 Conversation 写入能力并访问现有 `/api/v1/llm/chat`
-- **THEN** 现有单轮 Chat 的行为和响应契约 MUST 保持不变
-- **AND** 客户端 MUST 不需要提供 `conversation_id` 才能访问该旧接口
-
+- **WHEN** 仅部署 Conversation 写入能力并访问 `/api/v1/interaction/chat/stream`
+- **THEN** 统一入口仍负责请求识别和确认策略
+- **AND** 本能力不新增独立 Conversation HTTP 路由
