@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import pytest
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
 
-from app.interfaces.http.security import get_request_principal
+from app.interfaces.http.security import get_principal_resolver, get_request_principal
 from app.modules.security import (
     AnonymousPrincipalResolver,
     PrincipalResolutionContext,
@@ -86,3 +88,84 @@ def test_http_security_adapter_can_be_replaced_without_changing_application_cont
     )
 
     assert principal.has_permission("agent:tender:execute")
+
+
+def test_http_security_adapter_uses_anonymous_mode_by_default() -> None:
+    resolver = get_principal_resolver()
+
+    principal = resolver.resolve(
+        PrincipalResolutionContext(headers={"x-permissions": "agent:tender:execute"})
+    )
+
+    assert isinstance(resolver, AnonymousPrincipalResolver)
+    assert principal == RequestPrincipal.anonymous()
+
+
+def test_http_security_adapter_uses_static_mode_from_server_configuration(
+    monkeypatch,
+) -> None:  # noqa: ANN001
+    from app.shared.config import settings
+
+    monkeypatch.setattr(settings, "request_principal_mode", "static")
+    monkeypatch.setattr(settings, "static_principal_subject", "local-operator")
+    monkeypatch.setattr(settings, "static_principal_permissions", "agent:tender:execute")
+
+    resolver = get_principal_resolver()
+    principal = resolver.resolve(
+        PrincipalResolutionContext(headers={"x-permissions": "agent:other:execute"})
+    )
+
+    assert principal.subject == "local-operator"
+    assert principal.permission_tuple() == ("agent:tender:execute",)
+    assert principal.authenticated is True
+
+
+def test_http_static_mode_never_uses_client_permission_header(monkeypatch) -> None:  # noqa: ANN001
+    from app.shared.config import settings
+
+    monkeypatch.setattr(settings, "request_principal_mode", "static")
+    monkeypatch.setattr(settings, "static_principal_subject", "local-operator")
+    monkeypatch.setattr(settings, "static_principal_permissions", "agent:tender:execute")
+
+    principal = get_request_principal(
+        request=type(
+            "RequestStub",
+            (),
+            {"headers": {"x-permissions": "agent:admin:execute"}},
+        )(),
+        resolver=get_principal_resolver(),
+    )
+
+    assert principal.permission_tuple() == ("agent:tender:execute",)
+    assert not principal.has_permission("agent:admin:execute")
+
+
+def test_fastapi_injects_the_configured_static_principal(monkeypatch) -> None:  # noqa: ANN001
+    from app.shared.config import settings
+
+    monkeypatch.setattr(settings, "request_principal_mode", "static")
+    monkeypatch.setattr(settings, "static_principal_subject", "local-operator")
+    monkeypatch.setattr(settings, "static_principal_permissions", "agent:tender:execute")
+    application = FastAPI()
+
+    @application.get("/principal")
+    def read_principal(
+        principal: RequestPrincipal = Depends(get_request_principal),
+    ) -> dict[str, object]:
+        return {
+            "subject": principal.subject,
+            "permissions": principal.permission_tuple(),
+            "authenticated": principal.authenticated,
+        }
+
+    response = TestClient(application).get(
+        "/principal",
+        headers={"x-permissions": "agent:admin:execute"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "subject": "local-operator",
+        "permissions": ["agent:tender:execute"],
+        "authenticated": True,
+    }

@@ -7,11 +7,19 @@ from app.modules.security import (
     PrincipalResolutionContext,
     PrincipalResolverPort,
     RequestPrincipal,
+    StaticPrincipalResolver,
 )
+from app.shared.config import settings
 
 
 def get_principal_resolver() -> PrincipalResolverPort:
-    """HTTP adapter seam for replacing anonymous access with real authentication."""
+    """Build the configured server-side principal resolver for an HTTP request."""
+
+    if settings.request_principal_mode == "static":
+        return StaticPrincipalResolver(
+            subject=settings.static_principal_subject,
+            permissions=settings.static_principal_permission_tuple,
+        )
 
     return AnonymousPrincipalResolver()
 
