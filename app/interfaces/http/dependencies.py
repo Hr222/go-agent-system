@@ -3,6 +3,9 @@ from functools import lru_cache
 from fastapi import Depends
 
 from app.composition import ApplicationContainer, get_db_session
+from app.modules.dialogue.application import (
+    InMemoryPendingAgentInvocationStore,
+)
 from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
 from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
@@ -16,7 +19,6 @@ from app.modules.interaction.ports.proposal_store import PendingProposalStorePor
 from app.modules.knowledge.application.knowledge_base import KnowledgeBaseService
 from app.modules.knowledge.application.management_service import KnowledgeManagementService
 from app.modules.knowledge.application.publication_service import KnowledgePublicationService
-from app.modules.llm.application.chat import ChatApplication
 from app.modules.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.modules.online.application.policy_decision import PolicyDecisionApplicationService
 from app.shared.config import settings
@@ -45,25 +47,30 @@ def get_intent_interaction_gateway(
     return container.intent_interaction_gateway(proposal_store)
 
 
+@lru_cache(maxsize=1)
+def get_pending_agent_invocation_store() -> InMemoryPendingAgentInvocationStore:
+    return InMemoryPendingAgentInvocationStore(
+        ttl_seconds=settings.interaction_proposal_ttl_seconds,
+    )
+
+
 def get_interaction_chat_stream_application(
     container: ApplicationContainer = Depends(get_application_container),
     proposal_store: PendingProposalStorePort = Depends(get_interaction_proposal_store),
+    pending_agent_invocations: InMemoryPendingAgentInvocationStore = Depends(
+        get_pending_agent_invocation_store
+    ),
 ) -> InteractionChatStreamApplication:
-    return container.interaction_chat_stream_application(proposal_store)
+    return container.interaction_chat_stream_application(
+        proposal_store,
+        pending_agent_invocations,
+    )
 
 
 @lru_cache(maxsize=1)
 def get_stateless_application_container() -> ApplicationContainer:
     """为纯内存或文件系统能力提供无会话容器。"""
     return ApplicationContainer()
-
-
-def get_chat_application(
-    container: ApplicationContainer = Depends(get_stateless_application_container),
-) -> ChatApplication:
-    """提供不依赖数据库的独立 LLM Chat 用例。"""
-
-    return container.chat_application()
 
 
 def get_ask_knowledge_use_case(

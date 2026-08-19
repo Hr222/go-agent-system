@@ -12,6 +12,7 @@ export type InteractionStreamApproval = {
   state: "pending" | "confirmed" | "cancelled";
   summary: string;
   confirmationPrompt: string;
+  conversationId?: string;
 };
 
 export type InteractionStreamResult = {
@@ -66,6 +67,7 @@ export type InteractionGatewayResult = {
   proposal: InteractionProposal | null;
   execution_result: Record<string, unknown> | null;
   error_code: string | null;
+  conversation_id?: string | null;
 };
 
 export type IntentRecognitionInput = {

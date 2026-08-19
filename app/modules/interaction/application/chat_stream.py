@@ -4,11 +4,12 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from time import monotonic
-from typing import Literal
-from uuid import uuid4
+from typing import TYPE_CHECKING, Literal
+from uuid import UUID, uuid4
 
 from app.modules.interaction.application.gateway import (
     DirectCapabilityExecution,
+    GatewayConfirmationCommand,
     GatewayRecognitionCommand,
     GatewayResult,
     IntentInteractionGateway,
@@ -18,6 +19,13 @@ from app.modules.llm.application.streaming_chat import StreamingChatApplication
 from app.modules.llm.contracts import ChatLlmStreamChunk
 from app.modules.security.domain.principal import RequestPrincipal
 from app.shared.config import settings
+
+if TYPE_CHECKING:
+    from app.modules.dialogue.application import (
+        DialogueAgentContinuationService,
+        DialogueAgentInvocationService,
+        InMemoryPendingAgentInvocationStore,
+    )
 
 InteractionStreamEventName = Literal[
     "meta",
@@ -36,6 +44,7 @@ class InteractionChatStreamCommand:
     user_input: str
     principal: RequestPrincipal
     provided_inputs: dict[str, object]
+    conversation_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,9 +69,15 @@ class InteractionChatStreamApplication:
         self,
         gateway: IntentInteractionGateway,
         streaming_chat: StreamingChatApplication,
+        dialogue_agent_invocation: DialogueAgentInvocationService | None = None,
+        dialogue_agent_continuation: DialogueAgentContinuationService | None = None,
+        pending_agent_invocations: InMemoryPendingAgentInvocationStore | None = None,
     ) -> None:
         self._gateway = gateway
         self._streaming_chat = streaming_chat
+        self._dialogue_agent_invocation = dialogue_agent_invocation
+        self._dialogue_agent_continuation = dialogue_agent_continuation
+        self._pending_agent_invocations = pending_agent_invocations
 
     def prepare(
         self,
@@ -81,6 +96,9 @@ class InteractionChatStreamApplication:
         except Exception:  # noqa: BLE001 - never expose interaction internals
             return _single_error("INTERACTION_UNAVAILABLE", "请求暂时无法处理。")
 
+        if _is_pending_agent(result) and self._can_prepare_agent_confirmation():
+            return self._prepare_agent_confirmation(command, result)
+
         if result.status != "authorized":
             return InteractionStreamPreparation(
                 kind="single_event",
@@ -96,6 +114,172 @@ class InteractionChatStreamApplication:
         return InteractionStreamPreparation(
             kind="chat",
             direct_execution=direct_execution,
+        )
+
+    def confirm_agent(
+        self,
+        command: GatewayConfirmationCommand,
+    ) -> GatewayResult | None:
+        """确认已由 Chat 绑定的 Agent 调用；None 交由既有非 Agent 路径处理。"""
+
+        if self._pending_agent_invocations is None or self._dialogue_agent_invocation is None:
+            return None
+        from app.modules.dialogue.application import DialogueAgentInvocationCommand
+        pending = self._pending_agent_invocations.read(
+            proposal_id=command.proposal_id,
+            subject=command.principal.subject,
+        )
+        if pending is None:
+            return None
+
+        confirmation = self._gateway.confirm_dialogue_agent(command)
+        if confirmation.status == "rejected":
+            return GatewayResult(
+                status="rejected",
+                message=confirmation.message,
+                error_code=confirmation.error_code,
+                conversation_id=pending.command.conversation_id,
+            )
+
+        consumed = self._pending_agent_invocations.consume(
+            proposal_id=command.proposal_id,
+            subject=command.principal.subject,
+        )
+        if (
+            consumed is None
+            or consumed.command.conversation_id is None
+            or consumed.command.call is None
+        ):
+            return GatewayResult(
+                status="rejected",
+                message="对话 Agent 调用上下文不可用。",
+                error_code="DIALOGUE_AGENT_CONTEXT_UNAVAILABLE",
+            )
+
+        if confirmation.status == "cancelled":
+            result = self._dialogue_agent_invocation.cancel_confirmation(
+                conversation_id=consumed.command.conversation_id,
+                call=consumed.command.call,
+            )
+            return GatewayResult(
+                status=result.status,
+                message=result.message,
+                error_code=result.error_code,
+                conversation_id=result.conversation_id,
+            )
+
+        if confirmation.approved_dispatch is None:
+            return GatewayResult(
+                status="rejected",
+                message="确认提议未生成有效批准信息。",
+                error_code="APPROVED_DISPATCH_UNAVAILABLE",
+                conversation_id=consumed.command.conversation_id,
+            )
+        result = self._dialogue_agent_invocation.invoke(
+            DialogueAgentInvocationCommand(
+                conversation_id=consumed.command.conversation_id,
+                capability_code=consumed.command.capability_code,
+                inputs=dict(consumed.command.inputs),
+                principal=command.principal,
+                approved_dispatch=confirmation.approved_dispatch,
+                call=consumed.command.call,
+                persist_call_event=False,
+            )
+        )
+        if result.status == "completed" and self._dialogue_agent_continuation is not None:
+            from app.modules.dialogue.application import DialogueAgentContinuationCommand
+
+            continuation = self._dialogue_agent_continuation.execute(
+                DialogueAgentContinuationCommand(
+                    conversation_id=result.conversation_id,
+                    call_id=result.call.call_id,
+                )
+            )
+            if continuation.status == "completed":
+                return GatewayResult(
+                    status="completed",
+                    message=continuation.message,
+                    execution_result={
+                        "answer": continuation.answer,
+                        "agent_result": result.output,
+                        "model": continuation.model,
+                        "prompt_version": continuation.prompt_version,
+                        "usage": {
+                            "input_tokens": continuation.input_tokens,
+                            "output_tokens": continuation.output_tokens,
+                            "total_tokens": continuation.total_tokens,
+                        },
+                    },
+                    conversation_id=result.conversation_id,
+                )
+            return GatewayResult(
+                status="failed",
+                message=continuation.message,
+                execution_result={"agent_result": result.output},
+                error_code=continuation.error_code,
+                conversation_id=result.conversation_id,
+            )
+        return GatewayResult(
+            status=result.status,
+            message=result.message,
+            execution_result=result.output,
+            error_code=result.error_code,
+            conversation_id=result.conversation_id,
+        )
+
+    def _can_prepare_agent_confirmation(self) -> bool:
+        return (
+            self._dialogue_agent_invocation is not None
+            and self._pending_agent_invocations is not None
+        )
+
+    def _prepare_agent_confirmation(
+        self,
+        command: InteractionChatStreamCommand,
+        gateway_result: GatewayResult,
+    ) -> InteractionStreamPreparation:
+        proposal = gateway_result.proposal
+        assert proposal is not None
+        assert self._dialogue_agent_invocation is not None
+        assert self._pending_agent_invocations is not None
+        from app.modules.dialogue.application import DialogueAgentInvocationCommand
+        try:
+            result = self._dialogue_agent_invocation.prepare_confirmation(
+                DialogueAgentInvocationCommand(
+                    conversation_id=command.conversation_id,
+                    capability_code=proposal.capability_code,
+                    inputs=dict(proposal.inputs),
+                    principal=command.principal,
+                    user_input=command.user_input,
+                )
+            )
+            self._pending_agent_invocations.save(
+                proposal_id=proposal.proposal_id,
+                command=DialogueAgentInvocationCommand(
+                    conversation_id=result.conversation_id,
+                    capability_code=proposal.capability_code,
+                    inputs=dict(proposal.inputs),
+                    principal=command.principal,
+                    call=result.call,
+                ),
+            )
+        except ValueError as exc:
+            return _single_error("DIALOGUE_AGENT_INPUT_INVALID", str(exc))
+        except Exception:  # noqa: BLE001 - database and invocation internals stay server-side
+            return _single_error("DIALOGUE_AGENT_UNAVAILABLE", "对话 Agent 调用暂时不可用。")
+
+        return InteractionStreamPreparation(
+            kind="single_event",
+            event=InteractionStreamEvent(
+                "approval_required",
+                {
+                    "proposal_id": proposal.proposal_id,
+                    "state": proposal.state,
+                    "summary": proposal.summary,
+                    "confirmation_prompt": proposal.confirmation_prompt,
+                    "conversation_id": str(result.conversation_id),
+                },
+            ),
         )
 
     async def stream(
@@ -221,14 +405,17 @@ def _single_error(code: str, message: str) -> InteractionStreamPreparation:
 
 def _result_event(result: GatewayResult) -> InteractionStreamEvent:
     if result.status == "pending" and result.proposal is not None:
+        data: dict[str, object] = {
+            "proposal_id": result.proposal.proposal_id,
+            "state": result.proposal.state,
+            "summary": result.proposal.summary,
+            "confirmation_prompt": result.proposal.confirmation_prompt,
+        }
+        if result.conversation_id is not None:
+            data["conversation_id"] = str(result.conversation_id)
         return InteractionStreamEvent(
             "approval_required",
-            {
-                "proposal_id": result.proposal.proposal_id,
-                "state": result.proposal.state,
-                "summary": result.proposal.summary,
-                "confirmation_prompt": result.proposal.confirmation_prompt,
-            },
+            data,
         )
     return InteractionStreamEvent(
         "result",
@@ -237,6 +424,14 @@ def _result_event(result: GatewayResult) -> InteractionStreamEvent:
             "message": result.message,
             "error_code": result.error_code,
         },
+    )
+
+
+def _is_pending_agent(result: GatewayResult) -> bool:
+    return (
+        result.status == "pending"
+        and result.proposal is not None
+        and result.proposal.capability_type == "agent"
     )
 
 

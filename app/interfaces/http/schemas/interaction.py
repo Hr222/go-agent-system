@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -12,6 +13,17 @@ class InteractionIntentRequest(BaseModel):
 
     user_input: str = Field(min_length=1, max_length=10_000)
     provided_inputs: dict[str, object] = Field(default_factory=dict)
+    conversation_id: UUID | None = None
+
+
+class InteractionChatRequest(BaseModel):
+    """Chat 接受用户文本、附件等原始上下文，不接受调用授权字段。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_input: str = Field(min_length=1, max_length=10_000)
+    provided_inputs: dict[str, object] = Field(default_factory=dict)
+    conversation_id: UUID | None = None
 
 
 class InteractionConfirmationRequest(BaseModel):
@@ -61,3 +73,4 @@ class InteractionGatewayResponse(BaseModel):
     proposal: InteractionProposalResponse | None = None
     execution_result: dict[str, Any] | None = None
     error_code: str | None = None
+    conversation_id: UUID | None = None

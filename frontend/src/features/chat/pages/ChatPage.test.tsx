@@ -90,7 +90,17 @@ describe("ChatPage interaction stream", () => {
       message: "请求已完成。",
       assessment: null,
       proposal: null,
-      execution_result: { answer: "已执行" },
+      execution_result: {
+        answer: "投标骨架已经生成。",
+        agent_result: {
+          artifact: {
+            file_name: "投标骨架.docx",
+            media_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            size: 42,
+            resource_id: "agent-artifact:call-1:0",
+          },
+        },
+      },
       error_code: null,
     });
 
@@ -103,7 +113,8 @@ describe("ChatPage interaction stream", () => {
     expect(screen.queryByText("tender.generate_bid_skeleton")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "批准执行" }));
-    await screen.findByText("已执行");
+    await screen.findByText("投标骨架已经生成。");
+    await screen.findByText("投标骨架.docx");
     expect(respondToIntentProposalMock).toHaveBeenCalledWith("proposal-1", "confirm");
   });
 

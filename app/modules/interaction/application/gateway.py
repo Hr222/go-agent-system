@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from threading import Lock
 from time import monotonic
 from typing import Literal
+from uuid import UUID
 
 from app.modules.interaction.application.candidate_retrieval import (
     CapabilityCandidateRetrieval,
@@ -34,6 +35,7 @@ GatewayStatus = Literal[
     "failed",
 ]
 ConfirmationAction = Literal["confirm", "cancel"]
+DialogueConfirmationStatus = Literal["confirmed", "cancelled", "rejected"]
 DispatchHandler = Callable[[dict[str, object]], object]
 AgentDispatchHandler = Callable[[str, str, dict[str, object], RequestPrincipal], object]
 
@@ -61,6 +63,18 @@ class GatewayResult:
     execution_result: object | None = None
     error_code: str | None = None
     direct_execution: "DirectCapabilityExecution | None" = None
+    conversation_id: UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DialogueAgentConfirmationResult:
+    """Chat Agent 确认的内部结果；确认成功时只携带批准分发对象。"""
+
+    status: DialogueConfirmationStatus
+    message: str
+    proposal: ConfirmationProposal | None = None
+    approved_dispatch: ApprovedCapabilityDispatch | None = None
+    error_code: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,6 +397,13 @@ class IntentInteractionGateway:
                 message="确认提议不存在、已过期、已处理或不属于当前主体。",
                 error_code="PROPOSAL_UNAVAILABLE",
             )
+        if proposal.capability_type == "agent":
+            return GatewayResult(
+                status="rejected",
+                message="Agent 调用必须在 Chat 对话中确认，未执行目标能力。",
+                proposal=proposal,
+                error_code="AGENT_DIALOGUE_CONFIRMATION_REQUIRED",
+            )
 
         confirmation = self._confirmation.respond(proposal, command.action)
         if confirmation.status == "cancelled":
@@ -409,4 +430,85 @@ class IntentInteractionGateway:
             proposal=confirmation.proposal,
             execution_result=dispatched.execution_result,
             error_code=dispatched.error_code,
+        )
+
+    def confirm_dialogue_agent(
+        self,
+        command: GatewayConfirmationCommand,
+    ) -> DialogueAgentConfirmationResult:
+        """消费 Chat Agent 提议，但把执行责任交给 Dialogue Invocation。"""
+
+        proposal = self._proposal_store.consume(
+            command.proposal_id,
+            subject=command.principal.subject,
+        )
+        if proposal is None:
+            return DialogueAgentConfirmationResult(
+                status="rejected",
+                message="确认提议不存在、已过期、已处理或不属于当前主体。",
+                error_code="PROPOSAL_UNAVAILABLE",
+            )
+        if proposal.capability_type != "agent":
+            return DialogueAgentConfirmationResult(
+                status="rejected",
+                message="该提议不是对话 Agent 调用。",
+                proposal=proposal,
+                error_code="NOT_AGENT_PROPOSAL",
+            )
+
+        permissions = command.principal.permission_tuple()
+        try:
+            capability = self._confirmation.capability_catalog.get_available(
+                proposal.capability_code,
+                permissions=permissions,
+            )
+        except Exception:  # noqa: BLE001 - catalog is an availability boundary
+            return DialogueAgentConfirmationResult(
+                status="rejected",
+                message="能力目录暂时不可用，未执行目标能力。",
+                proposal=proposal,
+                error_code="CAPABILITY_CATALOG_UNAVAILABLE",
+            )
+        if capability is None or capability.capability_type != "agent":
+            return DialogueAgentConfirmationResult(
+                status="rejected",
+                message="该 Agent 能力当前不可用或当前主体没有调用权限。",
+                proposal=proposal,
+                error_code="CAPABILITY_UNAVAILABLE",
+            )
+        if capability.dispatch_key != proposal.dispatch_key:
+            return DialogueAgentConfirmationResult(
+                status="rejected",
+                message="确认提议与当前能力目录不一致，未执行目标能力。",
+                proposal=proposal,
+                error_code="DISPATCH_KEY_MISMATCH",
+            )
+        validation = validate_capability_inputs(capability, proposal.inputs)
+        if not validation.valid:
+            return DialogueAgentConfirmationResult(
+                status="rejected",
+                message="确认提议输入已不符合当前能力契约，未执行目标能力。",
+                proposal=proposal,
+                error_code="DISPATCH_INPUT_INVALID",
+            )
+
+        confirmation = self._confirmation.respond(proposal, command.action)
+        if confirmation.status == "cancelled":
+            return DialogueAgentConfirmationResult(
+                status="cancelled",
+                message=confirmation.message,
+                proposal=confirmation.proposal,
+            )
+        if confirmation.status != "confirmed" or confirmation.approved_dispatch is None:
+            return DialogueAgentConfirmationResult(
+                status="rejected",
+                message=confirmation.message,
+                proposal=confirmation.proposal,
+                error_code=confirmation.error_code,
+            )
+        return DialogueAgentConfirmationResult(
+            status="confirmed",
+            message=confirmation.message,
+            proposal=confirmation.proposal,
+            approved_dispatch=confirmation.approved_dispatch,
         )

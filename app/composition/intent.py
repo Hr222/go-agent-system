@@ -1,5 +1,10 @@
 """Composition root for bounded intent recognition and confirmation."""
 
+from app.modules.dialogue.application import (
+    DialogueAgentContinuationService,
+    DialogueAgentInvocationService,
+    InMemoryPendingAgentInvocationStore,
+)
 from app.modules.interaction.application.candidate_retrieval import (
     CapabilityCandidateRetrieval,
 )
@@ -52,5 +57,14 @@ def build_intent_interaction_gateway(
 def build_interaction_chat_stream_application(
     gateway: IntentInteractionGateway,
     streaming_chat: StreamingChatApplication,
+    dialogue_agent_invocation: DialogueAgentInvocationService | None = None,
+    dialogue_agent_continuation: DialogueAgentContinuationService | None = None,
+    pending_agent_invocations: InMemoryPendingAgentInvocationStore | None = None,
 ) -> InteractionChatStreamApplication:
-    return InteractionChatStreamApplication(gateway, streaming_chat)
+    return InteractionChatStreamApplication(
+        gateway,
+        streaming_chat,
+        dialogue_agent_invocation=dialogue_agent_invocation,
+        dialogue_agent_continuation=dialogue_agent_continuation,
+        pending_agent_invocations=pending_agent_invocations,
+    )

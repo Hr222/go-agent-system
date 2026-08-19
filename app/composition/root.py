@@ -6,6 +6,12 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.composition.agent import build_tender_application, build_tender_structured_llm
+from app.composition.conversation import (
+    build_conversation_context_builder,
+    build_conversation_event_repository,
+    build_conversation_history_read_service,
+    build_conversation_write_service,
+)
 from app.composition.ingestion import (
     build_ingestion_service,
     build_ingestion_use_case,
@@ -21,6 +27,7 @@ from app.composition.intent import (
     build_structured_intent_recognition,
 )
 from app.composition.interaction import (
+    build_agent_call_dispatcher,
     build_agent_runtime,
     build_capability_candidate_retrieval,
     build_capability_catalog_repository,
@@ -64,10 +71,16 @@ from app.infrastructure.persistence.session import SessionLocal
 from app.interfaces.agent import FunctionCallingAdapter
 from app.modules.agent.runtime import AgentRuntime
 from app.modules.agent.tender.application.service import TenderApplication
+from app.modules.dialogue.application import (
+    AgentResultProjector,
+    DialogueAgentContinuationService,
+    DialogueAgentInvocationService,
+)
 from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
 from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
 from app.modules.ingestion.pipeline import PolicyIngestionService
+from app.modules.interaction.application.agent_dispatch import AgentCallDispatcher
 from app.modules.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
 from app.modules.interaction.application.catalog import PlatformCapabilityCatalog
 from app.modules.interaction.application.chat_stream import InteractionChatStreamApplication
@@ -179,6 +192,9 @@ class ApplicationContainer:
         self._capability_catalog_repository = None
         self._capability_dispatch_registry = None
         self._agent_runtime: AgentRuntime | None = None
+        self._agent_call_dispatcher: AgentCallDispatcher | None = None
+        self._dialogue_agent_invocation: DialogueAgentInvocationService | None = None
+        self._dialogue_agent_continuation: DialogueAgentContinuationService | None = None
         self._capability_candidate_retrieval: CapabilityCandidateRetrieval | None = None
         self._structured_intent_recognition: StructuredIntentRecognition | None = None
         self._explicit_capability_confirmation: ExplicitCapabilityConfirmation | None = None
@@ -224,6 +240,44 @@ class ApplicationContainer:
                 tender_application=self.tender_application,
             )
         return self._agent_runtime
+
+    def agent_call_dispatcher(self) -> AgentCallDispatcher:
+        """提供后续 Dialogue Runtime 使用的 V2 受控 Agent 分发服务。"""
+
+        if self._agent_call_dispatcher is None:
+            self._agent_call_dispatcher = build_agent_call_dispatcher(
+                self.platform_capability_catalog(),
+                agent_runtime=self.agent_runtime,
+            )
+        return self._agent_call_dispatcher
+
+    def dialogue_agent_invocation(self) -> DialogueAgentInvocationService:
+        """组装 V2 对话到 Agent 的一次调用服务。"""
+
+        if self.session is None:
+            raise RuntimeError("对话 Agent 调用需要数据库 session，但容器未提供 session。")
+        if self._dialogue_agent_invocation is None:
+            self._dialogue_agent_invocation = DialogueAgentInvocationService(
+                conversation_read=build_conversation_history_read_service(self.session),
+                conversation_write=build_conversation_write_service(self.session),
+                event_write=build_conversation_event_repository(self.session),
+                dispatcher=self.agent_call_dispatcher(),
+                projector=AgentResultProjector(),
+            )
+        return self._dialogue_agent_invocation
+
+    def dialogue_agent_continuation(self) -> DialogueAgentContinuationService:
+        if self.session is None:
+            raise RuntimeError("对话 Agent 续写需要数据库 session，但容器未提供。")
+        if self._dialogue_agent_continuation is None:
+            self._dialogue_agent_continuation = DialogueAgentContinuationService(
+                conversation_read=build_conversation_history_read_service(self.session),
+                event_read=build_conversation_event_repository(self.session),
+                conversation_write=build_conversation_write_service(self.session),
+                context_builder=build_conversation_context_builder(),
+                llm=self.chat_application().llm,
+            )
+        return self._dialogue_agent_continuation
 
     def capability_candidate_retrieval(self) -> CapabilityCandidateRetrieval:
         if self._capability_candidate_retrieval is None:
@@ -276,10 +330,14 @@ class ApplicationContainer:
     def interaction_chat_stream_application(
         self,
         proposal_store: PendingProposalStorePort,
+        pending_agent_invocations=None,  # noqa: ANN001
     ) -> InteractionChatStreamApplication:
         return build_interaction_chat_stream_application(
             self.intent_interaction_gateway(proposal_store),
             self.streaming_chat_application(),
+            dialogue_agent_invocation=self.dialogue_agent_invocation(),
+            dialogue_agent_continuation=self.dialogue_agent_continuation(),
+            pending_agent_invocations=pending_agent_invocations,
         )
 
     def chat_application(self) -> ChatApplication:

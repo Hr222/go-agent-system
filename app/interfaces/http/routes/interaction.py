@@ -17,6 +17,7 @@ from app.interfaces.http.dependencies import (
     get_interaction_chat_stream_application,
 )
 from app.interfaces.http.schemas.interaction import (
+    InteractionChatRequest,
     InteractionConfirmationRequest,
     InteractionGatewayResponse,
     InteractionIntentRequest,
@@ -47,7 +48,7 @@ async def recognize_intent(
 @router.post("/chat/stream")
 async def interaction_chat_stream(
     http_request: Request,
-    request: InteractionIntentRequest,
+    request: InteractionChatRequest,
     application: InteractionChatStreamApplication = Depends(
         get_interaction_chat_stream_application
     ),
@@ -97,14 +98,21 @@ async def interaction_chat_stream(
 async def confirm_intent_proposal(
     proposal_id: str,
     request: InteractionConfirmationRequest,
+    application: InteractionChatStreamApplication = Depends(
+        get_interaction_chat_stream_application
+    ),
     gateway: IntentInteractionGateway = Depends(get_intent_interaction_gateway),
     principal: RequestPrincipal = Depends(get_request_principal),
 ) -> InteractionGatewayResponse:
     """消费一次待确认提议；确认后才可能调用固定分发目标。"""
 
     try:
+        command = confirmation_command(proposal_id, request, principal)
+        dialogue_result = application.confirm_agent(command)
+        if dialogue_result is not None:
+            return gateway_response(dialogue_result)
         return gateway_response(
-            gateway.confirm(confirmation_command(proposal_id, request, principal))
+            gateway.confirm(command)
         )
     except Exception as exc:  # noqa: BLE001 - HTTP boundary must not expose internals
         raise HTTPException(status_code=500, detail="统一交互入口暂时不可用。") from exc

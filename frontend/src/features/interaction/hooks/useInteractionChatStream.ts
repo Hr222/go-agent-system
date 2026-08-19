@@ -5,7 +5,7 @@ import {
   streamInteractionChat,
   type InteractionStreamTerminal,
 } from "../api/interactionStreamApi";
-import type { InteractionStreamHandlers } from "../types";
+import type { InteractionStreamHandlers, InteractionStreamMeta } from "../types";
 
 export type InteractionChatStreamPhase =
   | "idle"
@@ -24,18 +24,22 @@ export function useInteractionChatStream() {
   const send = useCallback(async (
     userInput: string,
     handlers: InteractionStreamHandlers,
+    conversationId?: string,
   ): Promise<InteractionStreamTerminal | undefined> => {
     const controller = new AbortController();
     controllerRef.current = controller;
     setPhase("connecting");
     try {
-      const terminal = await streamInteractionChat(userInput, {
+      const streamHandlers = {
         ...handlers,
-        onMeta: (meta) => {
+        onMeta: (meta: InteractionStreamMeta) => {
           setPhase("streaming");
           handlers.onMeta?.(meta);
         },
-      }, controller.signal);
+      };
+      const terminal = conversationId
+        ? await streamInteractionChat(userInput, streamHandlers, controller.signal, conversationId)
+        : await streamInteractionChat(userInput, streamHandlers, controller.signal);
       setPhase(terminal === "complete" ? "completed" : terminal === "result" ? "result" : "awaiting_approval");
       return terminal;
     } catch (error) {

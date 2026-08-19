@@ -315,7 +315,7 @@ def test_gateway_rejects_expired_proposal_without_execution() -> None:
     assert handler.calls == []
 
 
-def test_gateway_dispatches_agent_via_runtime_only_after_confirmed_authorization() -> None:
+def test_gateway_rejects_agent_confirmation_outside_chat_dialogue() -> None:
     capability = _capability(
         "agent.tender.generate_bid_skeleton",
         capability_type="agent",
@@ -374,8 +374,52 @@ def test_gateway_dispatches_agent_via_runtime_only_after_confirmed_authorization
         )
     )
 
-    assert completed.status == "completed"
-    assert handler.calls == [{"file_name": "招标文件.docx"}]
+    assert completed.status == "rejected"
+    assert completed.error_code == "AGENT_DIALOGUE_CONFIRMATION_REQUIRED"
+    assert handler.calls == []
+
+
+def test_gateway_dialogue_agent_confirmation_returns_approval_without_dispatching() -> None:
+    capability = _capability(
+        "agent.tender.generate_bid_skeleton",
+        capability_type="agent",
+        input_schema={
+            "type": "object",
+            "properties": {"file_name": {"type": "string"}},
+            "additionalProperties": False,
+        },
+        required_fields=("file_name",),
+        dispatch_key="agent.tender.generate_bid_skeleton",
+    )
+    catalog = FakeCatalog(capability)
+    handler = RecordingHandler(calls=[])
+    gateway = IntentInteractionGateway(
+        candidate_retrieval=ReadyCandidateRetrieval(),  # type: ignore[arg-type]
+        intent_recognition=StaticIntentRecognition(
+            IntentAssessment(
+                status="matched",
+                capability_code=capability.code,
+                extracted_inputs={"file_name": "招标文件.docx"},
+            )
+        ),  # type: ignore[arg-type]
+        confirmation=ExplicitCapabilityConfirmation(catalog),  # type: ignore[arg-type]
+        proposal_store=InMemoryPendingProposalStore(),
+        dispatcher=ControlledDispatcher(catalog, {}, agent_handler=lambda *_args: handler({})),  # type: ignore[arg-type]
+    )
+    principal = _principal()
+    recognized = gateway.recognize(
+        GatewayRecognitionCommand("生成投标骨架", principal, {"file_name": "招标文件.docx"})
+    )
+
+    assert recognized.proposal is not None
+    confirmed = gateway.confirm_dialogue_agent(
+        GatewayConfirmationCommand(recognized.proposal.proposal_id, "confirm", principal)
+    )
+
+    assert confirmed.status == "confirmed"
+    assert confirmed.approved_dispatch is not None
+    assert confirmed.approved_dispatch.capability_code == capability.code
+    assert handler.calls == []
 
 
 def test_gateway_returns_clarification_without_creating_or_dispatching_a_proposal() -> None:

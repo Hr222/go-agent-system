@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 describe("streamInteractionChat", () => {
-  it("sends only user input and parses ordinary chat deltas in order", async () => {
+  it("sends user chat context and parses ordinary chat deltas in order", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(responseFor([
       "event: meta\ndata: {\"request_id\":\"r1\",\"model\":\"glm\",\"prompt_version\":\"v1\"}\n\n",
       "event: delta\ndata: {\"content\":\"你\"}\n\nevent: delta\ndata: {\"content\":\"好\"}\n\n",
@@ -35,7 +35,7 @@ describe("streamInteractionChat", () => {
 
   it("parses an approval event without exposing an internal dispatch target", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(responseFor([
-      "event: approval_required\ndata: {\"proposal_id\":\"p1\",\"state\":\"pending\",\"summary\":\"生成投标骨架\",\"confirmation_prompt\":\"批准后才会执行。\"}\n\n",
+      "event: approval_required\ndata: {\"proposal_id\":\"p1\",\"state\":\"pending\",\"summary\":\"生成投标骨架\",\"confirmation_prompt\":\"批准后才会执行。\",\"conversation_id\":\"2cd6e871-e36a-40ca-9237-68bdfca55099\"}\n\n",
     ])));
     const approvals: object[] = [];
 
@@ -49,6 +49,7 @@ describe("streamInteractionChat", () => {
       state: "pending",
       summary: "生成投标骨架",
       confirmationPrompt: "批准后才会执行。",
+      conversationId: "2cd6e871-e36a-40ca-9237-68bdfca55099",
     }]);
     expect(JSON.stringify(approvals)).not.toContain("dispatch_key");
   });

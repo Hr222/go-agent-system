@@ -50,6 +50,7 @@ type ChatMessage = {
   timestamp: string;
   request?: string;
   approval?: InteractionStreamApproval;
+  agentResult?: Record<string, unknown>;
   status?: ChatMessageStatus;
 };
 
@@ -153,6 +154,9 @@ export function ChatPage() {
           settleAssistant(assistantId, "completed", "模型未返回可显示内容。");
         },
         onApprovalRequired: (approval) => {
+          if (approval.conversationId) {
+            setActiveConversation(approval.conversationId);
+          }
           updateAssistant(assistantId, (message) => ({
             ...message,
             status: "awaiting_confirmation",
@@ -167,7 +171,7 @@ export function ChatPage() {
             content: result.message || "请求已处理。",
           }));
         },
-      });
+      }, activeConversation === "new-conversation" ? undefined : activeConversation);
       if (terminal === undefined) {
         settleAssistant(assistantId, "cancelled", "已取消本次回答。");
       }
@@ -375,6 +379,9 @@ function MessageBubble({
               </div>
             </div>
           )}
+          {(message.status === "completed" || message.status === "failed") && message.agentResult && (
+            <AgentResultSummary result={message.agentResult} />
+          )}
         </div>
         <div className={styles.messageActions}>
           {message.status === "completed" && (
@@ -397,6 +404,8 @@ function MessageBubble({
 
 function applyConfirmationResult(message: ChatMessage, result: InteractionGatewayResult): ChatMessage {
   const answer = result.execution_result?.answer;
+  const agentResult = recordValue(result.execution_result?.agent_result)
+    ?? (result.status === "completed" ? result.execution_result : null);
   return {
     ...message,
     status: result.status === "pending" ? "awaiting_confirmation" : result.status,
@@ -411,7 +420,49 @@ function applyConfirmationResult(message: ChatMessage, result: InteractionGatewa
         confirmationPrompt: result.proposal.confirmation_prompt,
       }
       : undefined,
+    agentResult: agentResult ?? undefined,
   };
+}
+
+function AgentResultSummary({ result }: { result: Record<string, unknown> }) {
+  const analysis = recordValue(result.analysis);
+  const summary = typeof analysis?.summary === "string" ? analysis.summary : null;
+  const artifacts = artifactValues(result);
+  if (!summary && artifacts.length === 0) return null;
+
+  return (
+    <div className={styles.agentResultCard} aria-label="Agent 执行结果">
+      <strong>执行结果</strong>
+      {summary && <p>{summary}</p>}
+      {artifacts.map((artifact, index) => (
+        <div className={styles.agentArtifact} key={artifact.resourceId || `${artifact.fileName}-${index}`}>
+          <span>{artifact.fileName}</span>
+          <small>{artifact.mediaType}{artifact.size === null ? "" : ` · ${artifact.size} 字节`}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function artifactValues(result: Record<string, unknown>) {
+  const values = Array.isArray(result.artifacts)
+    ? result.artifacts
+    : result.artifact ? [result.artifact] : [];
+  return values.flatMap((value) => {
+    const artifact = recordValue(value);
+    if (!artifact) return [];
+    const fileName = typeof artifact.file_name === "string" ? artifact.file_name : "生成文件";
+    const mediaType = typeof artifact.media_type === "string" ? artifact.media_type : "未知类型";
+    const size = typeof artifact.size === "number" ? artifact.size : null;
+    const resourceId = typeof artifact.resource_id === "string" ? artifact.resource_id : null;
+    return [{ fileName, mediaType, size, resourceId }];
+  });
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function statusLabel(status: ChatMessage["status"]): string {

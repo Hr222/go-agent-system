@@ -22,6 +22,7 @@ export async function streamInteractionChat(
   userInput: string,
   handlers: InteractionStreamHandlers,
   signal: AbortSignal,
+  conversationId?: string,
 ): Promise<InteractionStreamTerminal> {
   let terminal: InteractionStreamTerminal | null = null;
 
@@ -29,6 +30,7 @@ export async function streamInteractionChat(
     await postSse(`${appConfig.apiBaseUrl}/v1/interaction/chat/stream`, {
       user_input: userInput,
       provided_inputs: {},
+      ...(conversationId ? { conversation_id: conversationId } : {}),
     }, {
       signal,
       onEvent: (event) => {
@@ -80,6 +82,7 @@ function handleEvent(
       state: approvalState(event.data.state),
       summary: stringValue(event.data.summary),
       confirmationPrompt: stringValue(event.data.confirmation_prompt),
+      conversationId: nullableString(event.data.conversation_id) ?? undefined,
     });
     return "approval_required";
   }

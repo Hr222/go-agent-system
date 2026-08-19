@@ -84,6 +84,7 @@ class ExplicitCapabilityConfirmation:
         proposal = ConfirmationProposal(
             proposal_id=self._proposal_id_factory(),
             capability_code=capability.code,
+            capability_type=capability.capability_type,
             dispatch_key=capability.dispatch_key,
             inputs=dict(assessment.extracted_inputs),
             summary=capability.description,

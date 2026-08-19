@@ -7,6 +7,7 @@ from fastapi.encoders import jsonable_encoder
 
 from app.interfaces.http.schemas.interaction import (
     InteractionAssessmentResponse,
+    InteractionChatRequest,
     InteractionConfirmationRequest,
     InteractionGatewayResponse,
     InteractionIntentRequest,
@@ -35,13 +36,14 @@ def recognition_command(
 
 
 def chat_stream_command(
-    request: InteractionIntentRequest,
+    request: InteractionChatRequest,
     principal: RequestPrincipal,
 ) -> InteractionChatStreamCommand:
     return InteractionChatStreamCommand(
         user_input=request.user_input,
         principal=principal,
         provided_inputs=dict(request.provided_inputs),
+        conversation_id=request.conversation_id,
     )
 
 
@@ -66,6 +68,7 @@ def gateway_response(result: GatewayResult) -> InteractionGatewayResponse:
         proposal=_proposal_response(result.proposal),
         execution_result=execution_result,
         error_code=result.error_code,
+        conversation_id=result.conversation_id,
     )
 
 

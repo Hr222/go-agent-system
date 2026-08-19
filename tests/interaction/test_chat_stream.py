@@ -5,7 +5,10 @@ from collections.abc import AsyncIterator
 
 from fastapi.testclient import TestClient
 
-from app.interfaces.http.dependencies import get_interaction_chat_stream_application
+from app.interfaces.http.dependencies import (
+    get_intent_interaction_gateway,
+    get_interaction_chat_stream_application,
+)
 from app.main import create_app
 from app.modules.interaction.application.chat_stream import (
     InteractionChatStreamApplication,
@@ -269,7 +272,7 @@ def test_http_chat_stream_serializes_only_browser_safe_approval_data() -> None:
     with TestClient(application) as client:
         response = client.post(
             "/api/v1/interaction/chat/stream",
-            json={"user_input": "生成投标文件", "provided_inputs": {}},
+            json={"user_input": "生成投标文件"},
         )
 
     assert response.status_code == 200
@@ -279,3 +282,141 @@ def test_http_chat_stream_serializes_only_browser_safe_approval_data() -> None:
     assert "dispatch_key" not in response.text
     assert "content_base64" not in response.text
     application.dependency_overrides.clear()
+
+
+def test_http_chat_stream_accepts_user_context_but_rejects_capability_authority() -> None:
+    class CapturingApplication:
+        command: InteractionChatStreamCommand | None = None
+
+        def prepare(self, command: InteractionChatStreamCommand):
+            self.command = command
+            return InteractionStreamPreparation(
+                kind="single_event",
+                event=InteractionStreamEvent("result", {"status": "unrecognized", "message": "无"}),
+            )
+
+        async def stream(self, preparation, *, is_disconnected):  # noqa: ANN001
+            del is_disconnected
+            if preparation.event is not None:
+                yield preparation.event
+
+    capturing = CapturingApplication()
+    application = create_app()
+    application.dependency_overrides[get_interaction_chat_stream_application] = lambda: capturing
+    try:
+        client = TestClient(application)
+        accepted = client.post(
+            "/api/v1/interaction/chat/stream",
+            json={
+                "user_input": "根据上传的招标文件生成骨架",
+                "provided_inputs": {"file_name": "招标文件.docx"},
+            },
+        )
+        rejected = client.post(
+            "/api/v1/interaction/chat/stream",
+            json={
+                "user_input": "生成投标文件",
+                "capability_code": "agent.tender.generate_bid_skeleton",
+            },
+        )
+    finally:
+        application.dependency_overrides.clear()
+
+    assert accepted.status_code == 200
+    assert capturing.command is not None
+    assert capturing.command.provided_inputs == {"file_name": "招标文件.docx"}
+    assert rejected.status_code == 422
+
+
+def test_removed_direct_dialogue_agent_endpoint_is_not_registered() -> None:
+    application = create_app()
+
+    with TestClient(application) as client:
+        response = client.post(
+            "/api/v1/dialogue/agent-invocations",
+            json={
+                "capability_code": "agent.tender.generate_bid_skeleton",
+                "inputs": {"file_name": "不应执行.docx"},
+            },
+        )
+
+    assert response.status_code == 404
+
+
+def test_http_confirmation_uses_dialogue_agent_result_when_context_is_bound() -> None:
+    class DialogueConfirmationApplication:
+        def __init__(self) -> None:
+            self.commands = []
+
+        def confirm_agent(self, command):  # noqa: ANN001
+            self.commands.append(command)
+            return GatewayResult(
+                status="completed",
+                message="Agent 已完成执行。",
+                execution_result={
+                    "answer": "投标骨架已经生成。",
+                    "agent_result": {
+                        "artifact": {"file_name": "骨架.docx", "size": 42}
+                    },
+                },
+            )
+
+    class UnexpectedGateway:
+        def confirm(self, command):  # noqa: ANN001
+            raise AssertionError("已绑定的对话 Agent 不应进入通用分发确认路径")
+
+    dialogue_application = DialogueConfirmationApplication()
+    application = create_app()
+    application.dependency_overrides[get_interaction_chat_stream_application] = (
+        lambda: dialogue_application
+    )
+    application.dependency_overrides[get_intent_interaction_gateway] = UnexpectedGateway
+    try:
+        response = TestClient(application).post(
+            "/api/v1/interaction/proposals/proposal-agent-1/confirmation",
+            json={"action": "confirm"},
+        )
+    finally:
+        application.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["execution_result"] == {
+        "answer": "投标骨架已经生成。",
+        "agent_result": {"artifact": {"file_name": "骨架.docx", "size": 42}},
+    }
+    assert dialogue_application.commands[0].proposal_id == "proposal-agent-1"
+
+
+def test_http_confirmation_keeps_agent_result_when_continuation_fails() -> None:
+    class FailedContinuationApplication:
+        def confirm_agent(self, command):  # noqa: ANN001
+            del command
+            return GatewayResult(
+                status="failed",
+                message="Agent 已完成，但最终回复暂时无法生成。",
+                execution_result={
+                    "agent_result": {
+                        "artifact": {"file_name": "骨架.docx", "size": 42}
+                    }
+                },
+                error_code="CONTINUATION_LLM_UNAVAILABLE",
+            )
+
+    application = create_app()
+    application.dependency_overrides[get_interaction_chat_stream_application] = (
+        FailedContinuationApplication
+    )
+    try:
+        response = TestClient(application).post(
+            "/api/v1/interaction/proposals/proposal-agent-1/confirmation",
+            json={"action": "confirm"},
+        )
+    finally:
+        application.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert body["error_code"] == "CONTINUATION_LLM_UNAVAILABLE"
+    assert body["execution_result"]["agent_result"]["artifact"]["file_name"] == "骨架.docx"
