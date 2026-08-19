@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LlmProviderName = Literal["glm", "deepseek"]
+PrincipalMode = Literal["anonymous", "static"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +30,18 @@ class Settings(BaseSettings):
     backend_host: str = "127.0.0.1"
     backend_port: int = Field(default=9205, gt=0, le=65535)
     api_v1_prefix: str = "/api/v1"
+    request_principal_mode: PrincipalMode = Field(
+        default="anonymous",
+        alias="REQUEST_PRINCIPAL_MODE",
+    )
+    static_principal_subject: str = Field(
+        default="",
+        alias="STATIC_PRINCIPAL_SUBJECT",
+    )
+    static_principal_permissions: str = Field(
+        default="",
+        alias="STATIC_PRINCIPAL_PERMISSIONS",
+    )
     policy_pipeline_workspace: str = ".runtime/policy_pipeline"
     policy_upload_max_size_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
     policy_upload_retention_seconds: int = Field(default=24 * 60 * 60, gt=0)
@@ -168,6 +181,28 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @model_validator(mode="after")
+    def _validate_principal_configuration(self) -> "Settings":
+        if self.request_principal_mode == "static" and not self.static_principal_subject.strip():
+            raise ValueError(
+                "STATIC_PRINCIPAL_SUBJECT is required when REQUEST_PRINCIPAL_MODE=static"
+            )
+        return self
+
+    @property
+    def static_principal_permission_tuple(self) -> tuple[str, ...]:
+        """Return normalized server-configured static principal permissions."""
+
+        return tuple(
+            sorted(
+                {
+                    permission.strip()
+                    for permission in self.static_principal_permissions.split(",")
+                    if permission.strip()
+                }
+            )
+        )
 
     model_config = SettingsConfigDict(
         env_file=".env",
