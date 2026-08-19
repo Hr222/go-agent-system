@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
 from app.interfaces.http.security import get_request_principal
 from app.modules.security import (
     AnonymousPrincipalResolver,
     PrincipalResolutionContext,
     RequestPrincipal,
+    StaticPrincipalResolver,
 )
 
 
@@ -28,6 +31,39 @@ def test_request_principal_normalizes_permission_order_for_application_input() -
     assert principal.permission_tuple() == ("a:first", "z:last")
     assert principal.has_permission("a:first")
     assert not principal.has_permission("missing")
+
+
+def test_static_resolver_returns_the_server_configured_principal() -> None:
+    resolver = StaticPrincipalResolver(
+        subject=" local-operator ",
+        permissions=("agent:tender:execute", " agent:tender:execute ", ""),
+    )
+
+    first = resolver.resolve(PrincipalResolutionContext())
+    second = resolver.resolve(
+        PrincipalResolutionContext(headers={"x-permissions": "agent:other:execute"})
+    )
+
+    assert first == RequestPrincipal(
+        subject="local-operator",
+        permissions=frozenset({"agent:tender:execute"}),
+        authenticated=True,
+    )
+    assert second == first
+
+
+@pytest.mark.parametrize("subject", ("", "   ", None, 1))
+def test_static_resolver_rejects_an_empty_or_non_text_subject(subject: object) -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        StaticPrincipalResolver(subject=subject)  # type: ignore[arg-type]
+
+
+def test_static_resolver_rejects_non_text_permissions() -> None:
+    with pytest.raises(ValueError, match="permissions must be strings"):
+        StaticPrincipalResolver(
+            subject="local-operator",
+            permissions=("agent:run", 1),  # type: ignore[arg-type]
+        )
 
 
 def test_http_security_adapter_can_be_replaced_without_changing_application_contract() -> None:

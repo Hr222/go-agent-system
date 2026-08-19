@@ -5,6 +5,7 @@ from app.modules.security.ports.principal_resolver import (
     AnonymousPrincipalResolver,
     PrincipalResolutionContext,
     PrincipalResolverPort,
+    StaticPrincipalResolver,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "PrincipalResolutionContext",
     "PrincipalResolverPort",
     "RequestPrincipal",
+    "StaticPrincipalResolver",
 ]

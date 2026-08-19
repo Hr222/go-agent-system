@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -26,3 +26,30 @@ class AnonymousPrincipalResolver:
     def resolve(self, context: PrincipalResolutionContext) -> RequestPrincipal:
         del context
         return RequestPrincipal.anonymous()
+
+
+class StaticPrincipalResolver:
+    """Resolve one server-configured principal for local and controlled deployments."""
+
+    def __init__(self, *, subject: str, permissions: Iterable[str] = ()) -> None:
+        normalized_subject = subject.strip() if isinstance(subject, str) else ""
+        if not normalized_subject:
+            raise ValueError("Static principal subject must be a non-empty string")
+
+        normalized_permissions: set[str] = set()
+        for permission in permissions:
+            if not isinstance(permission, str):
+                raise ValueError("Static principal permissions must be strings")
+            normalized_permission = permission.strip()
+            if normalized_permission:
+                normalized_permissions.add(normalized_permission)
+
+        self._principal = RequestPrincipal(
+            subject=normalized_subject,
+            permissions=frozenset(normalized_permissions),
+            authenticated=True,
+        )
+
+    def resolve(self, context: PrincipalResolutionContext) -> RequestPrincipal:
+        del context
+        return self._principal
