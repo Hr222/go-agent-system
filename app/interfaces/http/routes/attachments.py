@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app.interfaces.http.dependencies import get_attachment_storage
 from app.interfaces.http.schemas.attachment import AttachmentUploadResponse
-from app.modules.attachment import AttachmentStoragePort
+from app.interfaces.http.security import get_request_principal
+from app.modules.attachment import AttachmentAccessContext, AttachmentStoragePort
+from app.modules.security import RequestPrincipal
 
 router = APIRouter()
 
@@ -22,6 +24,7 @@ router = APIRouter()
 async def upload_attachment(
     file: UploadFile = File(...),
     storage: AttachmentStoragePort = Depends(get_attachment_storage),
+    principal: RequestPrincipal = Depends(get_request_principal),
 ) -> AttachmentUploadResponse:
     """Stage a generic attachment without invoking any business capability."""
 
@@ -30,6 +33,7 @@ async def upload_attachment(
             file_name=file.filename,
             media_type=file.content_type,
             file_stream=file.file,
+            context=AttachmentAccessContext(subject=principal.subject),
         )
     except (OSError, RuntimeError, ValueError) as exc:
         raise HTTPException(
@@ -40,4 +44,3 @@ async def upload_attachment(
         await file.close()
 
     return AttachmentUploadResponse(**attachment.public_dict())
-

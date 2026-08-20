@@ -1,4 +1,5 @@
 from app.modules.attachment.contracts import (
+    AttachmentAccessContext,
     AttachmentErrorCode,
     AttachmentReadResult,
     AttachmentRef,
@@ -7,6 +8,7 @@ from app.modules.attachment.contracts import (
 from app.modules.attachment.ports import AttachmentReadPort, AttachmentStoragePort
 
 __all__ = [
+    "AttachmentAccessContext",
     "AttachmentErrorCode",
     "AttachmentReadPort",
     "AttachmentStoragePort",

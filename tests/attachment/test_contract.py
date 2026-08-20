@@ -9,12 +9,12 @@ from fastapi import UploadFile
 
 from app.infrastructure.filesystem.upload_service import PolicyUploadService
 from app.modules.attachment import (
+    AttachmentAccessContext,
     AttachmentReadPort,
     AttachmentReadResult,
     AttachmentRef,
 )
 from app.modules.ingestion.ports import StagedUpload, UploadStoragePort
-
 
 _SHA256 = "a" * 64
 
@@ -24,7 +24,13 @@ class FakeAttachmentReader:
         self.result = result
         self.requested: list[str] = []
 
-    def read(self, attachment: AttachmentRef) -> AttachmentReadResult:
+    def read(
+        self,
+        attachment: AttachmentRef,
+        *,
+        context: AttachmentAccessContext,
+    ) -> AttachmentReadResult:
+        assert context.subject == "owner"
         self.requested.append(attachment.attachment_id)
         return self.result
 
@@ -89,7 +95,7 @@ def test_attachment_read_port_returns_content_without_exposing_storage_details()
     )
     port: AttachmentReadPort = reader
 
-    result = port.read(reference)
+    result = port.read(reference, context=AttachmentAccessContext(subject="owner"))
 
     assert result.status == "available"
     assert result.content == b"docx"

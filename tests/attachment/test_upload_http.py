@@ -6,7 +6,10 @@ from fastapi.testclient import TestClient
 
 from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
 from app.interfaces.http.dependencies import get_attachment_storage
+from app.interfaces.http.security import get_request_principal
 from app.main import create_app
+from app.modules.attachment import AttachmentAccessContext
+from app.modules.security import RequestPrincipal
 
 
 class _FailingStorage:
@@ -51,6 +54,35 @@ def test_upload_http_rest_alias_works_without_invoking_agents(tmp_path: Path) ->
 
     assert response.status_code == 200
     assert response.json()["file_name"] == "source.png"
+
+
+def test_upload_http_binds_the_server_resolved_principal(tmp_path: Path) -> None:
+    storage = FilesystemAttachmentStorage(
+        tmp_path,
+        allowed_media_types=("application/pdf",),
+    )
+    application = create_app()
+    application.dependency_overrides[get_attachment_storage] = lambda: storage
+    application.dependency_overrides[get_request_principal] = lambda: RequestPrincipal(
+        subject="static-owner",
+        authenticated=True,
+    )
+
+    response = TestClient(application).post(
+        "/api/v1/attachments/upload",
+        files={"file": ("source.pdf", b"pdf-content", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    attachment_id = response.json()["attachment_id"]
+    assert storage.read(
+        attachment_id,
+        context=AttachmentAccessContext(subject="static-owner"),
+    ).content == b"pdf-content"
+    assert storage.read(
+        attachment_id,
+        context=AttachmentAccessContext(subject="other-owner"),
+    ).status == "missing"
 
 
 def test_upload_http_rejects_empty_file_and_leaves_no_attachment(tmp_path: Path) -> None:

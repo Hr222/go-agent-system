@@ -16,6 +16,24 @@ _ATTACHMENT_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 
 @dataclass(frozen=True, slots=True)
+class AttachmentAccessContext:
+    """Trusted caller identity and optional conversation binding for an attachment."""
+
+    subject: str | None = None
+    conversation_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.subject is not None:
+            if not isinstance(self.subject, str) or not self.subject.strip():
+                raise ValueError("attachment access subject must be non-empty when provided")
+            object.__setattr__(self, "subject", self.subject.strip())
+        if self.conversation_id is not None:
+            if not isinstance(self.conversation_id, str) or not self.conversation_id.strip():
+                raise ValueError("attachment conversation_id must be non-empty when provided")
+            object.__setattr__(self, "conversation_id", self.conversation_id.strip())
+
+
+@dataclass(frozen=True, slots=True)
 class AttachmentRef:
     """Opaque, serializable metadata for a server-managed attachment."""
 
@@ -112,6 +130,7 @@ class AttachmentReadResult:
 
 
 __all__ = [
+    "AttachmentAccessContext",
     "AttachmentErrorCode",
     "AttachmentReadResult",
     "AttachmentRef",
