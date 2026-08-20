@@ -1,0 +1,16 @@
+.root { display: grid; gap: 8px; }
+.fileInput { display: none; }
+.addButton { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; color: #667992; background: #f5f8fc; border: 1px solid #dce5ef; border-radius: 6px; cursor: pointer; }
+.addButton:hover { color: #315fbe; background: #edf3ff; border-color: #bfd2f5; }
+.addButton:disabled { cursor: not-allowed; opacity: .55; }
+.list { display: grid; gap: 6px; }
+.item { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px 8px; color: #60738f; background: #f8fafc; border: 1px solid #e4eaf2; border-radius: 6px; font-size: 11px; }
+.fileName { overflow: hidden; min-width: 0; color: #42536b; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.status { margin-left: auto; flex-shrink: 0; color: #75879e; font-size: 10px; }
+.item button { display: grid; place-items: center; flex: 0 0 auto; width: 24px; height: 24px; padding: 0; color: #8190a5; background: transparent; border: 0; border-radius: 5px; cursor: pointer; }
+.item button:hover { color: #315fbe; background: #eaf1fd; }
+.item button:disabled { cursor: not-allowed; opacity: .55; }
+.spinner { flex: 0 0 auto; color: #4f7ee1; animation: spin .85s linear infinite; }
+.error { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; color: #bd4d4d; font-size: 10px; }
+.selectionError { color: #b54747; font-size: 11px; }
+@keyframes spin { to { transform: rotate(360deg); } }
