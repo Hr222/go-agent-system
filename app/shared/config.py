@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     policy_pipeline_workspace: str = ".runtime/policy_pipeline"
     policy_upload_max_size_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
     policy_upload_retention_seconds: int = Field(default=24 * 60 * 60, gt=0)
+    attachment_storage_workspace: str = ".runtime/attachments"
+    attachment_max_size_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
+    attachment_retention_seconds: int = Field(default=24 * 60 * 60, gt=0)
+    attachment_allowed_media_types: str = (
+        "application/msword,"
+        "application/pdf,"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document,"
+        "image/bmp,image/jpeg,image/png,image/tiff,image/webp"
+    )
     tender_upload_max_size_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
     tender_hard_max_size_bytes: int = Field(
         default=70 * 1024 * 1024, gt=0, alias="TENDER_HARD_MAX_SIZE_BYTES"
@@ -200,6 +209,20 @@ class Settings(BaseSettings):
                     permission.strip()
                     for permission in self.static_principal_permissions.split(",")
                     if permission.strip()
+                }
+            )
+        )
+
+    @property
+    def attachment_allowed_media_type_tuple(self) -> tuple[str, ...]:
+        """Return normalized server-configured attachment media types."""
+
+        return tuple(
+            sorted(
+                {
+                    media_type.strip().lower()
+                    for media_type in self.attachment_allowed_media_types.split(",")
+                    if media_type.strip()
                 }
             )
         )

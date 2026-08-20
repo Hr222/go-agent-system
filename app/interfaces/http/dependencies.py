@@ -122,6 +122,13 @@ def get_policy_upload_service(
     return container.policy_upload_service()
 
 
+def get_attachment_storage(
+    container: ApplicationContainer = Depends(get_stateless_application_container),
+):
+    """提供通用附件暂存服务。"""
+    return container.attachment_storage()
+
+
 def get_policy_candidate_scan_use_case(
     container: ApplicationContainer = Depends(get_stateless_application_container),
 ) -> PolicyCandidateScanUseCase:

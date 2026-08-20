@@ -6,6 +6,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.composition.agent import build_tender_application, build_tender_structured_llm
+from app.composition.attachment import build_attachment_storage
 from app.composition.conversation import (
     build_conversation_context_builder,
     build_conversation_event_repository,
@@ -52,6 +53,7 @@ from app.composition.online import (
     build_rag_facade,
     build_rule_retrieval_service,
 )
+from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
 from app.infrastructure.filesystem.policy_file_service import PolicyFileService
 from app.infrastructure.filesystem.upload_service import PolicyUploadService
 from app.infrastructure.llm.embedding_client import GiteeEmbeddingClient
@@ -181,6 +183,7 @@ class ApplicationContainer:
         self._retry_ingestion_use_case: RetryIngestionUseCase | None = None
         self._ask_knowledge_use_case: AskKnowledgeUseCase | None = None
         self._policy_upload_service: PolicyUploadService | None = None
+        self._attachment_storage: FilesystemAttachmentStorage | None = None
         self._policy_ingestion_service: PolicyIngestionService | None = None
         self._policy_candidate_scan_use_case: PolicyCandidateScanUseCase | None = None
         self._knowledge_base_service: KnowledgeBaseService | None = None
@@ -532,6 +535,13 @@ class ApplicationContainer:
                 Path(settings.policy_pipeline_workspace)
             )
         return self._policy_upload_service
+
+    def attachment_storage(self) -> FilesystemAttachmentStorage:
+        if self._attachment_storage is None:
+            self._attachment_storage = build_attachment_storage(
+                Path(settings.attachment_storage_workspace)
+            )
+        return self._attachment_storage
 
     def policy_ingestion_service(self) -> PolicyIngestionService:
         if self._policy_ingestion_service is None:
