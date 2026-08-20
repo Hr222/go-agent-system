@@ -29,6 +29,7 @@ from app.modules.interaction.application.gateway import (
     ControlledDispatcher,
     DispatchHandler,
 )
+from app.modules.interaction.domain.attachment import ResolvedAttachment
 from app.modules.interaction.ports.capability_catalog import CapabilityCatalogPort
 from app.modules.llm.application.chat import ChatApplication, ChatCommand
 from app.modules.llm.ports import TextEmbeddingPort
@@ -183,12 +184,33 @@ def _generate_tender_skeleton(
     application: TenderApplication,
     inputs: dict[str, object],
 ) -> object:
-    return application.execute(
-        TenderGenerateSkeletonCommand(
-            file_name=_required_string(inputs, "file_name"),
-            content=_decode_tender_content(inputs),
+    return application.execute(_tender_generate_skeleton_command(inputs))
+
+
+def _tender_generate_skeleton_command(
+    inputs: dict[str, object],
+) -> TenderGenerateSkeletonCommand:
+    """Adapt either a resolved chat attachment or the legacy Base64 input.
+
+    Only the Interaction Gateway may replace the public attachment ID with a
+    ``ResolvedAttachment``.  Its content therefore remains inside the server
+    boundary until the Tender application consumes this command.
+    """
+
+    if "source_document" in inputs:
+        source_document = inputs["source_document"]
+        if not isinstance(source_document, ResolvedAttachment):
+            raise ValueError("source_document 必须是服务端已解析的附件。")
+        return TenderGenerateSkeletonCommand(
+            file_name=source_document.reference.file_name,
+            content=source_document.content,
             user_focus=_optional_string(inputs.get("user_focus")),
         )
+
+    return TenderGenerateSkeletonCommand(
+        file_name=_required_string(inputs, "file_name"),
+        content=_decode_tender_content(inputs),
+        user_focus=_optional_string(inputs.get("user_focus")),
     )
 
 
