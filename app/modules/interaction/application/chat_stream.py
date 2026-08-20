@@ -91,6 +91,7 @@ class InteractionChatStreamApplication:
                     user_input=command.user_input,
                     principal=command.principal,
                     provided_inputs=dict(command.provided_inputs),
+                    conversation_id=command.conversation_id,
                 )
             )
         except Exception:  # noqa: BLE001 - never expose interaction internals

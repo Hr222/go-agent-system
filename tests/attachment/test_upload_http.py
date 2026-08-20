@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -82,6 +83,43 @@ def test_upload_http_binds_the_server_resolved_principal(tmp_path: Path) -> None
     assert storage.read(
         attachment_id,
         context=AttachmentAccessContext(subject="other-owner"),
+    ).status == "missing"
+
+
+def test_upload_http_binds_optional_conversation_context(tmp_path: Path) -> None:
+    storage = FilesystemAttachmentStorage(
+        tmp_path,
+        allowed_media_types=("application/pdf",),
+    )
+    application = create_app()
+    application.dependency_overrides[get_attachment_storage] = lambda: storage
+    application.dependency_overrides[get_request_principal] = lambda: RequestPrincipal(
+        subject="static-owner",
+        authenticated=True,
+    )
+    conversation_id = UUID("00000000-0000-0000-0000-000000000001")
+
+    response = TestClient(application).post(
+        "/api/v1/attachments/upload",
+        data={"conversation_id": str(conversation_id)},
+        files={"file": ("source.pdf", b"pdf-content", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    attachment_id = response.json()["attachment_id"]
+    assert storage.read(
+        attachment_id,
+        context=AttachmentAccessContext(
+            subject="static-owner",
+            conversation_id=str(conversation_id),
+        ),
+    ).content == b"pdf-content"
+    assert storage.read(
+        attachment_id,
+        context=AttachmentAccessContext(
+            subject="static-owner",
+            conversation_id="00000000-0000-0000-0000-000000000002",
+        ),
     ).status == "missing"
 
 

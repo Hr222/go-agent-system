@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.interfaces.http.dependencies import get_attachment_storage
 from app.interfaces.http.schemas.attachment import AttachmentUploadResponse
@@ -23,6 +25,7 @@ router = APIRouter()
 )
 async def upload_attachment(
     file: UploadFile = File(...),
+    conversation_id: UUID | None = Form(default=None),
     storage: AttachmentStoragePort = Depends(get_attachment_storage),
     principal: RequestPrincipal = Depends(get_request_principal),
 ) -> AttachmentUploadResponse:
@@ -33,7 +36,10 @@ async def upload_attachment(
             file_name=file.filename,
             media_type=file.content_type,
             file_stream=file.file,
-            context=AttachmentAccessContext(subject=principal.subject),
+            context=AttachmentAccessContext(
+                subject=principal.subject,
+                conversation_id=str(conversation_id) if conversation_id is not None else None,
+            ),
         )
     except (OSError, RuntimeError, ValueError) as exc:
         raise HTTPException(

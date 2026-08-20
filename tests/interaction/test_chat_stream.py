@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -113,6 +114,32 @@ def test_chat_stream_emits_ordered_chat_events_after_server_authorization() -> N
         "total_tokens": 8,
     }
     assert chat.commands[0].message == "解释一下向量检索"
+
+
+def test_chat_stream_passes_conversation_context_to_gateway() -> None:
+    gateway = RecordingGateway(
+        GatewayResult(
+            status="needs_clarification",
+            message="需要更多信息。",
+        )
+    )
+    application = InteractionChatStreamApplication(
+        gateway,  # type: ignore[arg-type]
+        FakeStreamingChat([]),  # type: ignore[arg-type]
+    )
+    conversation_id = UUID("00000000-0000-0000-0000-000000000001")
+
+    preparation = application.prepare(
+        InteractionChatStreamCommand(
+            user_input="处理附件",
+            principal=RequestPrincipal.anonymous(),
+            provided_inputs={"source_document": "a" * 32},
+            conversation_id=conversation_id,
+        )
+    )
+
+    assert preparation.kind == "single_event"
+    assert gateway.commands[0].conversation_id == conversation_id
 
 
 def test_chat_stream_emits_approval_without_starting_model_execution() -> None:

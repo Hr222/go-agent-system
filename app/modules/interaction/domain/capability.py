@@ -5,6 +5,11 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
+from app.modules.interaction.domain.attachment import (
+    AttachmentDeclarationError,
+    attachment_field_declarations,
+)
+
 CapabilityType = Literal["agent", "chat", "knowledge_qa", "policy_decision"]
 ConfirmationPolicy = Literal["always", "conditional", "never"]
 
@@ -79,6 +84,10 @@ def validate_capability(capability: PlatformCapability) -> None:
         raise CapabilityValidationError("能力描述不能为空。")
     if not isinstance(capability.input_schema, dict):
         raise CapabilityValidationError("input_schema 必须是 JSON 对象。")
+    try:
+        attachment_field_declarations(capability.input_schema)
+    except AttachmentDeclarationError as exc:
+        raise CapabilityValidationError(f"附件字段声明无效：{exc}") from exc
     if not isinstance(capability.output_schema, dict):
         raise CapabilityValidationError("output_schema 必须是 JSON 对象。")
     if len(set(capability.required_fields)) != len(capability.required_fields):

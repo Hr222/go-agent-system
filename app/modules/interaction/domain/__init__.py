@@ -5,6 +5,11 @@ from app.modules.interaction.domain.agent_call import (
     AgentCallResult,
     StructuredAgentCall,
 )
+from app.modules.interaction.domain.attachment import (
+    AttachmentFieldDeclaration,
+    AttachmentResolutionResult,
+    ResolvedAttachment,
+)
 from app.modules.interaction.domain.candidate import (
     CapabilityCandidate,
     CapabilityCandidateIndexEntry,
@@ -33,6 +38,8 @@ from app.modules.interaction.domain.intent import (
 __all__ = [
     "AgentCallError",
     "AgentCallResult",
+    "AttachmentFieldDeclaration",
+    "AttachmentResolutionResult",
     "CapabilityPrincipal",
     "CapabilityCandidate",
     "CapabilityCandidateIndexEntry",
@@ -48,6 +55,7 @@ __all__ = [
     "CapabilityType",
     "ConfirmationPolicy",
     "PlatformCapability",
+    "ResolvedAttachment",
     "StructuredAgentCall",
     "validate_dispatch_key",
 ]

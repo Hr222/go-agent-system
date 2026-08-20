@@ -1,9 +1,13 @@
 """Composition root for bounded intent recognition and confirmation."""
 
+from app.modules.attachment.ports.read_port import AttachmentReadPort
 from app.modules.dialogue.application import (
     DialogueAgentContinuationService,
     DialogueAgentInvocationService,
     InMemoryPendingAgentInvocationStore,
+)
+from app.modules.interaction.application.attachment_resolution import (
+    CapabilityAttachmentResolver,
 )
 from app.modules.interaction.application.candidate_retrieval import (
     CapabilityCandidateRetrieval,
@@ -44,6 +48,7 @@ def build_intent_interaction_gateway(
     confirmation: ExplicitCapabilityConfirmation,
     proposal_store: PendingProposalStorePort,
     dispatcher: ControlledDispatcher,
+    attachment_reader: AttachmentReadPort,
 ) -> IntentInteractionGateway:
     return IntentInteractionGateway(
         candidate_retrieval=candidate_retrieval,
@@ -51,6 +56,7 @@ def build_intent_interaction_gateway(
         confirmation=confirmation,
         proposal_store=proposal_store,
         dispatcher=dispatcher,
+        attachment_resolver=CapabilityAttachmentResolver(attachment_reader),
     )
 
 

@@ -14,7 +14,7 @@ class AttachmentReadPort(Protocol):
 
     def read(
         self,
-        attachment: AttachmentRef,
+        attachment: AttachmentRef | str,
         *,
         context: AttachmentAccessContext,
     ) -> AttachmentReadResult: ...

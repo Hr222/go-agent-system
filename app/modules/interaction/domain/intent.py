@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.modules.interaction.domain.attachment import is_resolved_attachment_value
 from app.modules.interaction.domain.capability import PlatformCapability
 
 IntentAssessmentStatus = Literal["matched", "needs_clarification", "unrecognized"]
@@ -57,6 +58,7 @@ def validate_capability_inputs(
             field_name
             for field_name, value in inputs.items()
             if field_name in declared_properties
+            and not is_resolved_attachment_value(value, declared_properties[field_name])
             and not _matches_schema_type(value, declared_properties[field_name])
         )
     )

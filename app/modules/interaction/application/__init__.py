@@ -12,6 +12,9 @@ from app.modules.interaction.application.agent_dispatch import (
     AgentCallDispatchResult,
     AgentDispatchStatus,
 )
+from app.modules.interaction.application.attachment_resolution import (
+    CapabilityAttachmentResolver,
+)
 from app.modules.interaction.application.candidate_retrieval import (
     CapabilityCandidateRetrieval,
     InMemoryCapabilityCandidateIndex,
@@ -47,6 +50,7 @@ __all__ = [
     "AgentCallPolicyResult",
     "AgentCallPolicyStatus",
     "AgentCallPolicyValidator",
+    "CapabilityAttachmentResolver",
     "AgentCallDispatchCommand",
     "AgentCallDispatcher",
     "AgentCallDispatchResult",

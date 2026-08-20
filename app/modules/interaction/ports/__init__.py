@@ -1,6 +1,7 @@
 """平台交互端口。"""
 
 from app.modules.interaction.ports.agent_runtime import AgentRuntimePort
+from app.modules.interaction.ports.attachment_resolver import CapabilityAttachmentResolverPort
 from app.modules.interaction.ports.capability_catalog import (
     CapabilityCatalogPort,
     CapabilityCatalogRepositoryPort,
@@ -11,5 +12,6 @@ __all__ = [
     "CapabilityCatalogPort",
     "CapabilityCatalogRepositoryPort",
     "AgentRuntimePort",
+    "CapabilityAttachmentResolverPort",
     "PendingProposalStorePort",
 ]

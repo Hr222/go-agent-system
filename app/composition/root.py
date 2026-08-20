@@ -328,6 +328,7 @@ class ApplicationContainer:
             confirmation=self.explicit_capability_confirmation(),
             proposal_store=proposal_store,
             dispatcher=dispatcher,
+            attachment_reader=self.attachment_storage(),
         )
 
     def interaction_chat_stream_application(

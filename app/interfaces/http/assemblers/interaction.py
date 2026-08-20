@@ -19,6 +19,7 @@ from app.modules.interaction.application.gateway import (
     GatewayRecognitionCommand,
     GatewayResult,
 )
+from app.modules.interaction.domain.attachment import ResolvedAttachment
 from app.modules.interaction.domain.confirmation import ConfirmationProposal
 from app.modules.interaction.domain.intent import IntentAssessment
 from app.modules.security.domain.principal import RequestPrincipal
@@ -32,6 +33,7 @@ def recognition_command(
         user_input=request.user_input,
         principal=principal,
         provided_inputs=dict(request.provided_inputs),
+        conversation_id=request.conversation_id,
     )
 
 
@@ -79,6 +81,7 @@ def _json_object(value: object | None) -> dict[str, Any] | None:
         value,
         custom_encoder={
             bytes: lambda content: base64.b64encode(content).decode("ascii"),
+            ResolvedAttachment: lambda attachment: attachment.reference.public_dict(),
         },
     )
     return encoded if isinstance(encoded, dict) else {"value": encoded}

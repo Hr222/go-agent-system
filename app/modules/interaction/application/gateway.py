@@ -7,6 +7,7 @@ from time import monotonic
 from typing import Literal
 from uuid import UUID
 
+from app.modules.attachment import AttachmentAccessContext
 from app.modules.interaction.application.candidate_retrieval import (
     CapabilityCandidateRetrieval,
 )
@@ -15,11 +16,13 @@ from app.modules.interaction.application.intent_recognition import (
     IntentRecognitionCommand,
     StructuredIntentRecognition,
 )
+from app.modules.interaction.domain.attachment import attachment_field_declarations
 from app.modules.interaction.domain.confirmation import (
     ApprovedCapabilityDispatch,
     ConfirmationProposal,
 )
 from app.modules.interaction.domain.intent import IntentAssessment, validate_capability_inputs
+from app.modules.interaction.ports.attachment_resolver import CapabilityAttachmentResolverPort
 from app.modules.interaction.ports.capability_catalog import CapabilityCatalogPort
 from app.modules.interaction.ports.proposal_store import PendingProposalStorePort
 from app.modules.security.domain.principal import RequestPrincipal
@@ -45,6 +48,7 @@ class GatewayRecognitionCommand:
     user_input: str
     principal: RequestPrincipal
     provided_inputs: dict[str, object]
+    conversation_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,12 +265,14 @@ class IntentInteractionGateway:
         confirmation: ExplicitCapabilityConfirmation,
         proposal_store: PendingProposalStorePort,
         dispatcher: ControlledDispatcher,
+        attachment_resolver: CapabilityAttachmentResolverPort | None = None,
     ) -> None:
         self._candidate_retrieval = candidate_retrieval
         self._intent_recognition = intent_recognition
         self._confirmation = confirmation
         self._proposal_store = proposal_store
         self._dispatcher = dispatcher
+        self._attachment_resolver = attachment_resolver
 
     def recognize(self, command: GatewayRecognitionCommand) -> GatewayResult:
         permissions = command.principal.permission_tuple()
@@ -293,6 +299,11 @@ class IntentInteractionGateway:
                 assessment=assessment,
                 error_code=assessment.error_code,
             )
+
+        attachment_resolution = self._resolve_attachments(assessment, command)
+        if isinstance(attachment_resolution, GatewayResult):
+            return attachment_resolution
+        assessment = attachment_resolution
 
         direct_execution = self._prepare_unconfirmed_execution(
             assessment,
@@ -329,6 +340,75 @@ class IntentInteractionGateway:
             assessment=assessment,
             proposal=confirmation.proposal,
         )
+
+    def _resolve_attachments(
+        self,
+        assessment: IntentAssessment,
+        command: GatewayRecognitionCommand,
+    ) -> IntentAssessment | GatewayResult:
+        if assessment.capability_code is None:
+            return GatewayResult(
+                status="rejected",
+                message="当前请求没有可执行的能力标识。",
+                assessment=assessment,
+                error_code="MISSING_CAPABILITY_CODE",
+            )
+        permissions = command.principal.permission_tuple()
+        try:
+            capability = self._confirmation.capability_catalog.get_available(
+                assessment.capability_code,
+                permissions=permissions,
+            )
+        except Exception:  # noqa: BLE001 - catalog is an availability boundary
+            return GatewayResult(
+                status="needs_clarification",
+                message="能力目录暂时不可用，请稍后重试。",
+                assessment=assessment,
+                error_code="CAPABILITY_CATALOG_UNAVAILABLE",
+            )
+        if capability is None:
+            return GatewayResult(
+                status="rejected",
+                message="该能力当前不可用或当前主体没有调用权限。",
+                assessment=assessment,
+                error_code="CAPABILITY_UNAVAILABLE",
+            )
+        if not attachment_field_declarations(capability.input_schema):
+            return assessment
+        if self._attachment_resolver is None:
+            return GatewayResult(
+                status="needs_clarification",
+                message="附件解析服务暂时不可用，请稍后重试。",
+                assessment=assessment,
+                error_code="ATTACHMENT_RESOLUTION_UNAVAILABLE",
+            )
+
+        resolution = self._attachment_resolver.resolve(
+            capability=capability,
+            inputs=dict(assessment.extracted_inputs),
+            access_context=AttachmentAccessContext(
+                subject=command.principal.subject,
+                conversation_id=(
+                    str(command.conversation_id)
+                    if command.conversation_id is not None
+                    else None
+                ),
+            ),
+        )
+        if resolution.status != "resolved":
+            return GatewayResult(
+                status="needs_clarification",
+                message="附件无法用于当前请求，请重新上传或检查附件约束。",
+                assessment=assessment.model_copy(
+                    update={
+                        "status": "needs_clarification",
+                        "clarification": "请提供满足当前能力约束的附件。",
+                        "error_code": resolution.error_code,
+                    }
+                ),
+                error_code=resolution.error_code or "ATTACHMENT_RESOLUTION_FAILED",
+            )
+        return assessment.model_copy(update={"extracted_inputs": resolution.inputs})
 
     def _prepare_unconfirmed_execution(
         self,
