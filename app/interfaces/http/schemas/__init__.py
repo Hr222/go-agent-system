@@ -1,5 +1,6 @@
 """HTTP 请求、响应与入库流水线 Schema。"""
 
+from app.interfaces.http.schemas.attachment import AttachmentUploadResponse
 from app.interfaces.http.schemas.knowledge_base import (
     KnowledgeBaseOverview,
     PolicyDocumentOption,
@@ -75,6 +76,7 @@ from app.interfaces.http.schemas.tender import (
 
 __all__ = [
     "AnswerCitation",
+    "AttachmentUploadResponse",
     "AssembledLine",
     "BlockSource",
     "BlockType",
