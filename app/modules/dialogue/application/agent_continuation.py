@@ -7,8 +7,10 @@ from typing import Literal
 from uuid import UUID
 
 from app.modules.conversation.application import (
+    ConversationAccessService,
     ConversationContextBuilder,
     ConversationHistoryReadService,
+    ConversationResolveQuery,
     ConversationWriteService,
 )
 from app.modules.conversation.domain import (
@@ -20,6 +22,7 @@ from app.modules.conversation.domain import (
 )
 from app.modules.conversation.errors import (
     ContextBudgetExceededError,
+    ConversationAccessDeniedError,
     ConversationNotFoundError,
 )
 from app.modules.conversation.ports import MAX_HISTORY_PAGE_SIZE, ConversationEventReadPort
@@ -29,6 +32,7 @@ from app.modules.llm.contracts import (
     ChatLlmPort,
     ChatLlmRequest,
 )
+from app.modules.security.domain.principal import RequestPrincipal
 
 ContinuationStatus = Literal["completed", "unavailable", "failed"]
 
@@ -58,6 +62,7 @@ _FORBIDDEN_KEYS = frozenset(
 class DialogueAgentContinuationCommand:
     conversation_id: UUID
     call_id: str
+    principal: RequestPrincipal
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +87,7 @@ class DialogueAgentContinuationService:
     def __init__(
         self,
         *,
+        conversation_access: ConversationAccessService,
         conversation_read: ConversationHistoryReadService,
         event_read: ConversationEventReadPort,
         conversation_write: ConversationWriteService,
@@ -92,6 +98,7 @@ class DialogueAgentContinuationService:
         system_prompt: str = DEFAULT_CONTINUATION_SYSTEM_PROMPT,
         prompt_version: str = DEFAULT_CONTINUATION_PROMPT_VERSION,
     ) -> None:
+        self.conversation_access = conversation_access
         self.conversation_read = conversation_read
         self.event_read = event_read
         self.conversation_write = conversation_write
@@ -108,12 +115,18 @@ class DialogueAgentContinuationService:
     ) -> DialogueAgentContinuationResult:
         self._validate_command(command)
         try:
+            self.conversation_access.resolve(
+                ConversationResolveQuery(
+                    principal=command.principal,
+                    conversation_id=command.conversation_id,
+                )
+            )
             events = self.event_read.list_events(
                 conversation_id=command.conversation_id,
                 call_id=command.call_id,
             )
-        except ConversationNotFoundError:
-            return self._unavailable(command, "CONVERSATION_NOT_FOUND", "会话不存在。")
+        except ConversationAccessDeniedError:
+            return self._unavailable(command, "CONVERSATION_ACCESS_DENIED", "会话不可用。")
         except Exception:  # noqa: BLE001 - persistence is an availability boundary
             return self._unavailable(command, "AGENT_RESULT_UNAVAILABLE", "Agent 结果暂时不可用。")
 
@@ -139,7 +152,7 @@ class DialogueAgentContinuationService:
             )
             llm_result = self.llm.invoke(self._build_request(context, safe_result))
         except ConversationNotFoundError:
-            return self._unavailable(command, "CONVERSATION_NOT_FOUND", "会话不存在。")
+            return self._unavailable(command, "CONVERSATION_ACCESS_DENIED", "会话不可用。")
         except ContextBudgetExceededError:
             return self._failed(
                 command,
@@ -224,6 +237,8 @@ class DialogueAgentContinuationService:
             raise ValueError("会话标识必须是 UUID。")
         if not isinstance(command.call_id, str) or not command.call_id.strip():
             raise ValueError("调用标识不能为空。")
+        if not isinstance(command.principal, RequestPrincipal):
+            raise ValueError("请求主体无效。")
 
     @staticmethod
     def _unavailable(

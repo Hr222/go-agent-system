@@ -12,10 +12,10 @@ class ConversationWriteService:
     def __init__(self, write_port: ConversationWritePort) -> None:
         self.write_port = write_port
 
-    def create_conversation(self) -> Conversation:
-        """创建并持久化一个不含消息的新会话。"""
+    def create_conversation(self, *, owner_subject: str) -> Conversation:
+        """创建并持久化一个绑定可信主体的新会话。"""
 
-        return self.write_port.save_conversation(Conversation())
+        return self.write_port.save_conversation(Conversation(owner_subject=owner_subject))
 
     def append_message(
         self,

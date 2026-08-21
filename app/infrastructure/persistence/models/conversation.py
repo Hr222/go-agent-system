@@ -8,6 +8,7 @@ from sqlalchemy import (
     TIMESTAMP,
     CheckConstraint,
     ForeignKey,
+    Index,
     Text,
     UniqueConstraint,
     func,
@@ -23,8 +24,16 @@ class ConversationRecord(Base):
     """Conversation 的 PostgreSQL 持久化记录。"""
 
     __tablename__ = "conversation"
+    __table_args__ = (
+        CheckConstraint(
+            "btrim(owner_subject) <> ''",
+            name="chk_conversation_owner_subject_not_blank",
+        ),
+        Index("idx_conversation_owner_subject", "owner_subject"),
+    )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    owner_subject: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,

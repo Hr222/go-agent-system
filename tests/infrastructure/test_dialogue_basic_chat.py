@@ -30,7 +30,9 @@ def test_dialogue_runtime_persists_user_and_assistant_messages() -> None:
     try:
         session = harness.session_local()
         try:
-            conversation = build_conversation_write_service(session).create_conversation()
+            conversation = build_conversation_write_service(session).create_conversation(
+                owner_subject="user-1"
+            )
             llm = RecordingChatLlm()
             runtime = build_basic_dialogue_runtime(session, llm)
 

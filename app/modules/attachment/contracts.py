@@ -19,14 +19,13 @@ _ATTACHMENT_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 class AttachmentAccessContext:
     """Trusted caller identity and optional conversation binding for an attachment."""
 
-    subject: str | None = None
+    subject: str
     conversation_id: str | None = None
 
     def __post_init__(self) -> None:
-        if self.subject is not None:
-            if not isinstance(self.subject, str) or not self.subject.strip():
-                raise ValueError("attachment access subject must be non-empty when provided")
-            object.__setattr__(self, "subject", self.subject.strip())
+        if not isinstance(self.subject, str) or not self.subject.strip():
+            raise ValueError("attachment access subject must be non-empty")
+        object.__setattr__(self, "subject", self.subject.strip())
         if self.conversation_id is not None:
             if not isinstance(self.conversation_id, str) or not self.conversation_id.strip():
                 raise ValueError("attachment conversation_id must be non-empty when provided")

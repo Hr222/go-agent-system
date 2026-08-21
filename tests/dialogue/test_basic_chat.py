@@ -95,7 +95,7 @@ class FakeConversationReader:
         page_messages = tuple(records[:limit])
         has_more = len(records) > limit
         return ConversationHistoryPage(
-            conversation=Conversation(id=conversation_id),
+            conversation=Conversation(id=conversation_id, owner_subject="user-1"),
             messages=page_messages,
             has_more=has_more,
             next_after_sequence=page_messages[-1].sequence if has_more else None,

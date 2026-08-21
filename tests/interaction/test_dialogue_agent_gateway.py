@@ -100,7 +100,8 @@ class RecordingDialogueInvocation:
             output={"artifact": {"file_name": "骨架.docx", "size": 42}},
         )
 
-    def cancel_confirmation(self, *, conversation_id, call):  # noqa: ANN001
+    def cancel_confirmation(self, *, conversation_id, call, principal):  # noqa: ANN001
+        del principal
         self.cancel_calls.append((conversation_id, call))
         return DialogueAgentInvocationResult(
             status="cancelled",

@@ -4,6 +4,7 @@ import {
   Bot,
   Check,
   Clipboard,
+  Download,
   FileText,
   LoaderCircle,
   MessageSquare,
@@ -28,6 +29,7 @@ import type {
 } from "../../interaction/types";
 import { AttachmentPicker } from "../../attachment/components/AttachmentPicker";
 import type { AttachmentRef, AttachmentUploadItem } from "../../attachment/types";
+import { appConfig } from "../../../app/appConfig";
 import { useDeltaRenderQueue } from "../hooks/useDeltaRenderQueue";
 import styles from "./ChatPage.module.css";
 
@@ -329,6 +331,7 @@ export function ChatPage() {
             <MessageBubble
               key={message.id}
               message={message}
+              conversationId={attachmentConversationId}
               isProposalResponding={proposalResponse.isPending}
               onCopy={handleCopy}
               onProposalResponse={handleProposalResponse}
@@ -397,12 +400,14 @@ export function ChatPage() {
 
 function MessageBubble({
   message,
+  conversationId,
   isProposalResponding,
   onCopy,
   onProposalResponse,
   onRetry,
 }: {
   message: ChatMessage;
+  conversationId?: string;
   isProposalResponding: boolean;
   onCopy: (content: string) => void;
   onProposalResponse: (messageId: string, action: "confirm" | "cancel") => void;
@@ -453,7 +458,7 @@ function MessageBubble({
             </div>
           )}
           {(message.status === "completed" || message.status === "failed") && message.agentResult && (
-            <AgentResultSummary result={message.agentResult} />
+            <AgentResultSummary result={message.agentResult} conversationId={conversationId} />
           )}
         </div>
         <div className={styles.messageActions}>
@@ -512,7 +517,13 @@ function formatAttachmentSize(sizeBytes: number): string {
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function AgentResultSummary({ result }: { result: Record<string, unknown> }) {
+function AgentResultSummary({
+  result,
+  conversationId,
+}: {
+  result: Record<string, unknown>;
+  conversationId?: string;
+}) {
   const analysis = recordValue(result.analysis);
   const summary = typeof analysis?.summary === "string" ? analysis.summary : null;
   const artifacts = artifactValues(result);
@@ -524,12 +535,33 @@ function AgentResultSummary({ result }: { result: Record<string, unknown> }) {
       {summary && <p>{summary}</p>}
       {artifacts.map((artifact, index) => (
         <div className={styles.agentArtifact} key={artifact.resourceId || `${artifact.fileName}-${index}`}>
-          <span>{artifact.fileName}</span>
-          <small>{artifact.mediaType}{artifact.size === null ? "" : ` · ${artifact.size} 字节`}</small>
+          <div className={styles.agentArtifactInfo}>
+            <span>{artifact.fileName}</span>
+            <small>{artifact.mediaType}{artifact.size === null ? "" : ` · ${artifact.size} 字节`}</small>
+          </div>
+          {artifact.resourceId && conversationId && isAttachmentResourceId(artifact.resourceId) && (
+            <a
+              className={styles.agentArtifactDownload}
+              href={artifactDownloadUrl(artifact.resourceId, conversationId)}
+              title="下载文件"
+              aria-label="下载文件"
+            >
+              <Download size={14} />
+            </a>
+          )}
         </div>
       ))}
     </div>
   );
+}
+
+function isAttachmentResourceId(resourceId: string): boolean {
+  return /^[0-9a-f]{32}$/i.test(resourceId);
+}
+
+function artifactDownloadUrl(resourceId: string, conversationId: string): string {
+  const apiBaseUrl = appConfig.apiBaseUrl.replace(/\/$/, "");
+  return `${apiBaseUrl}/v1/attachments/${encodeURIComponent(resourceId)}/download?conversation_id=${encodeURIComponent(conversationId)}`;
 }
 
 function artifactValues(result: Record<string, unknown>) {

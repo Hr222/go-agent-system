@@ -8,7 +8,7 @@ Define subject, conversation, and lifecycle controls for server-managed attachme
 
 ### Requirement: 附件访问主体绑定
 
-系统 MUST 将附件绑定到创建主体和可选会话，并在读取、消费和删除时重新校验绑定。
+系统 MUST 将附件绑定到创建主体和可选会话，并在读取、消费和删除时重新校验绑定。创建附件的访问上下文 MUST 包含非空的可信主体标识；系统 MUST 拒绝缺少主体标识的创建请求。
 
 #### Scenario: 所有者读取
 
@@ -25,6 +25,12 @@ Define subject, conversation, and lifecycle controls for server-managed attachme
 
 - **WHEN** 主体相同但会话绑定不匹配
 - **THEN** 系统拒绝读取或消费
+
+#### Scenario: 匿名主体尝试创建附件
+
+- **WHEN** 附件创建上下文没有可信主体标识
+- **THEN** 系统拒绝创建
+- **AND** 系统不返回可用于后续读取或消费的附件引用
 
 ### Requirement: 附件生命周期状态
 

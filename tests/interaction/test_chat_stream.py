@@ -11,6 +11,7 @@ from app.interfaces.http.dependencies import (
     get_interaction_chat_stream_application,
 )
 from app.main import create_app
+from app.modules.conversation.errors import ConversationAccessDeniedError
 from app.modules.interaction.application.chat_stream import (
     InteractionChatStreamApplication,
     InteractionChatStreamCommand,
@@ -34,6 +35,12 @@ class RecordingGateway:
     def recognize(self, command):  # noqa: ANN001
         self.commands.append(command)
         return self.result
+
+
+class DenyingConversationAccess:
+    def resolve(self, query):  # noqa: ANN001
+        del query
+        raise ConversationAccessDeniedError("会话不可用。")
 
 
 class FakeStreamingChat:
@@ -140,6 +147,31 @@ def test_chat_stream_passes_conversation_context_to_gateway() -> None:
 
     assert preparation.kind == "single_event"
     assert gateway.commands[0].conversation_id == conversation_id
+
+
+def test_chat_stream_rejects_inaccessible_conversation_before_gateway() -> None:
+    gateway = RecordingGateway(
+        GatewayResult(status="needs_clarification", message="不应识别请求。")
+    )
+    application = InteractionChatStreamApplication(
+        gateway,  # type: ignore[arg-type]
+        FakeStreamingChat([]),  # type: ignore[arg-type]
+        conversation_access=DenyingConversationAccess(),  # type: ignore[arg-type]
+    )
+
+    preparation = application.prepare(
+        InteractionChatStreamCommand(
+            user_input="处理附件",
+            principal=RequestPrincipal(subject="user-2", authenticated=True),
+            provided_inputs={"source_document": "a" * 32},
+            conversation_id=UUID("00000000-0000-0000-0000-000000000001"),
+        )
+    )
+
+    assert preparation.event is not None
+    assert preparation.event.name == "error"
+    assert preparation.event.data["code"] == "CONVERSATION_ACCESS_DENIED"
+    assert gateway.commands == []
 
 
 def test_chat_stream_emits_approval_without_starting_model_execution() -> None:

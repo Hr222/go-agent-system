@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+from app.modules.conversation.application import ConversationAccessService
 from app.modules.conversation.domain import Conversation, ConversationEvent
+from app.modules.conversation.errors import ConversationAccessDeniedError
 from app.modules.dialogue.application import (
     AgentResultProjector,
     DialogueAgentInvocationCommand,
@@ -19,21 +21,10 @@ from app.modules.security.domain.principal import RequestPrincipal
 
 
 @dataclass
-class FakeRead:
-    conversations: set = field(default_factory=set)
-
-    def read_history(self, *, conversation_id, limit, after_sequence):  # noqa: ANN001, ARG002
-        if conversation_id not in self.conversations:
-            from app.modules.conversation.errors import ConversationNotFoundError
-
-            raise ConversationNotFoundError("missing")
-        return object()
-
-
-@dataclass
 class FakeWrite:
     conversations: dict = field(default_factory=dict)
     messages: list = field(default_factory=list)
+    access_queries: list = field(default_factory=list)
 
     def save_conversation(self, conversation: Conversation) -> Conversation:
         self.conversations[conversation.id] = conversation
@@ -42,6 +33,13 @@ class FakeWrite:
     def append_message(self, *, conversation_id, role, content):  # noqa: ANN001
         self.messages.append((conversation_id, role, content))
         return object()
+
+    def get_owned_conversation(self, *, conversation_id, owner_subject):  # noqa: ANN001
+        self.access_queries.append((conversation_id, owner_subject))
+        conversation = self.conversations.get(conversation_id)
+        if conversation is None or conversation.owner_subject != owner_subject:
+            return None
+        return conversation
 
 
 @dataclass
@@ -75,12 +73,11 @@ def _principal() -> RequestPrincipal:
 
 def _service(dispatch_result: AgentCallDispatchResult):
     write = FakeWrite()
-    conversation = write.save_conversation(Conversation())
-    read = FakeRead({conversation.id})
+    conversation = write.save_conversation(Conversation(owner_subject="user-1"))
     events = FakeEvents()
     dispatcher = FakeDispatcher(dispatch_result)
     service = DialogueAgentInvocationService(
-        conversation_read=read,
+        conversation_access=ConversationAccessService(write),  # type: ignore[arg-type]
         conversation_write=write,
         event_write=events,
         dispatcher=dispatcher,  # type: ignore[arg-type]
@@ -108,6 +105,7 @@ def test_projector_keeps_tender_metadata_and_drops_binary_and_provider_details()
                     "media_type": (
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     ),
+                    "resource_id": "a" * 32,
                     "content": {"__agent_bytes__": True, "size": 42, "base64": "secret"},
                     "provider_response": {"token": "secret"},
                 }
@@ -118,6 +116,7 @@ def test_projector_keeps_tender_metadata_and_drops_binary_and_provider_details()
 
     assert projected["analysis"] == {"status": "completed", "summary": "完成"}
     assert projected["artifacts"][0]["file_name"] == "骨架.docx"  # type: ignore[index]
+    assert projected["artifacts"][0]["resource_id"] == "a" * 32  # type: ignore[index]
     assert "content" not in projected["artifacts"][0]  # type: ignore[operator]
     assert "provider_response" not in projected["artifacts"][0]  # type: ignore[operator]
 
@@ -216,6 +215,7 @@ def test_prepare_confirmation_does_not_invoke_dispatcher_and_cancel_is_persisted
     cancelled = service.cancel_confirmation(
         conversation_id=conversation.id,
         call=pending.call,
+        principal=_principal(),
     )
 
     assert dispatcher.calls == []
@@ -263,7 +263,7 @@ def test_invocation_creates_conversation_when_the_request_has_none() -> None:
     events = FakeEvents()
     dispatcher = FakeDispatcher(result)
     service = DialogueAgentInvocationService(
-        conversation_read=FakeRead(),
+        conversation_access=ConversationAccessService(write),  # type: ignore[arg-type]
         conversation_write=write,
         event_write=events,
         dispatcher=dispatcher,  # type: ignore[arg-type]
@@ -280,5 +280,56 @@ def test_invocation_creates_conversation_when_the_request_has_none() -> None:
     )
 
     assert response.conversation_id in write.conversations
+    assert write.conversations[response.conversation_id].owner_subject == "user-1"
     assert response.call.conversation_id == str(response.conversation_id)
     assert [event.event_type for event in events.events] == ["agent_call", "agent_result"]
+
+
+def test_invocation_rejects_automatic_conversation_creation_without_subject() -> None:
+    call = _call(str(uuid4()))
+    write = FakeWrite()
+    service = DialogueAgentInvocationService(
+        conversation_access=ConversationAccessService(write),  # type: ignore[arg-type]
+        conversation_write=write,
+        event_write=FakeEvents(),
+        dispatcher=FakeDispatcher(AgentCallDispatchResult(status="failed", call=call)),
+        projector=AgentResultProjector(),
+    )
+
+    import pytest
+
+    with pytest.raises(ConversationAccessDeniedError, match="会话不可用"):
+        service.invoke(
+            DialogueAgentInvocationCommand(
+                conversation_id=None,
+                capability_code=call.capability_code,
+                inputs=dict(call.inputs),
+                principal=RequestPrincipal.anonymous(),
+            )
+        )
+
+    assert write.conversations == {}
+
+
+def test_invocation_rejects_another_subject_before_writing_or_dispatching() -> None:
+    call = _call(str(uuid4()))
+    service, conversation, write, events, dispatcher = _service(
+        AgentCallDispatchResult(status="failed", call=call)
+    )
+
+    import pytest
+
+    with pytest.raises(ConversationAccessDeniedError, match="会话不可用"):
+        service.invoke(
+            DialogueAgentInvocationCommand(
+                conversation_id=conversation.id,
+                capability_code=call.capability_code,
+                inputs=dict(call.inputs),
+                principal=RequestPrincipal(subject="user-2", authenticated=True),
+                user_input="不应写入",
+            )
+        )
+
+    assert write.messages == []
+    assert events.events == []
+    assert dispatcher.calls == []

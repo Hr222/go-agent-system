@@ -1,9 +1,16 @@
 -- 会话与消息的最小持久化模型；不包含 HTTP、LLM 或 Agent 行为。
 CREATE TABLE IF NOT EXISTS conversation (
     id UUID PRIMARY KEY,
+    owner_subject TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_conversation_owner_subject_not_blank CHECK (
+        btrim(owner_subject) <> ''
+    )
 );
+
+CREATE INDEX IF NOT EXISTS idx_conversation_owner_subject
+    ON conversation(owner_subject);
 
 CREATE TABLE IF NOT EXISTS conversation_message (
     id UUID PRIMARY KEY,

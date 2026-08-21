@@ -36,7 +36,7 @@ class FakeConversationReadPort:
 
 def _empty_page() -> ConversationHistoryPage:
     return ConversationHistoryPage(
-        conversation=Conversation(),
+        conversation=Conversation(owner_subject="user-1"),
         messages=(),
         has_more=False,
         next_after_sequence=None,
@@ -98,7 +98,7 @@ def test_history_read_service_rejects_non_uuid_conversation() -> None:
 
 
 def test_history_page_can_carry_ordered_domain_messages() -> None:
-    conversation = Conversation()
+    conversation = Conversation(owner_subject="user-1")
     messages = (
         Message(
             conversation_id=conversation.id,

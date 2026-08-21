@@ -1,5 +1,7 @@
 """Composition root for bounded intent recognition and confirmation."""
 
+from typing import Any
+
 from app.modules.attachment.ports.read_port import AttachmentReadPort
 from app.modules.dialogue.application import (
     DialogueAgentContinuationService,
@@ -66,6 +68,7 @@ def build_interaction_chat_stream_application(
     dialogue_agent_invocation: DialogueAgentInvocationService | None = None,
     dialogue_agent_continuation: DialogueAgentContinuationService | None = None,
     pending_agent_invocations: InMemoryPendingAgentInvocationStore | None = None,
+    conversation_access: Any | None = None,
 ) -> InteractionChatStreamApplication:
     return InteractionChatStreamApplication(
         gateway,
@@ -73,4 +76,5 @@ def build_interaction_chat_stream_application(
         dialogue_agent_invocation=dialogue_agent_invocation,
         dialogue_agent_continuation=dialogue_agent_continuation,
         pending_agent_invocations=pending_agent_invocations,
+        conversation_access=conversation_access,
     )

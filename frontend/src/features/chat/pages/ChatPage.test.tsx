@@ -50,6 +50,7 @@ function emitApproval(handlers: Parameters<typeof streamInteractionChat>[1]) {
     state: "pending",
     summary: "生成投标骨架",
     confirmationPrompt: "批准后才会执行。",
+    conversationId: "00000000-0000-0000-0000-000000000001",
   });
 }
 
@@ -197,7 +198,7 @@ describe("ChatPage interaction stream", () => {
             file_name: "投标骨架.docx",
             media_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             size: 42,
-            resource_id: "agent-artifact:call-1:0",
+            resource_id: "a".repeat(32),
           },
         },
       },
@@ -216,6 +217,10 @@ describe("ChatPage interaction stream", () => {
     await screen.findByText("投标骨架已经生成。");
     await screen.findByText("投标骨架.docx");
     expect(respondToIntentProposalMock).toHaveBeenCalledWith("proposal-1", "confirm");
+    const downloadLink = screen.getByRole<HTMLAnchorElement>("link", { name: "下载文件" });
+    expect(downloadLink.getAttribute("href")).toBe(
+      "/api/v1/attachments/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/download?conversation_id=00000000-0000-0000-0000-000000000001",
+    );
   });
 
   it("submits cancellation from the same approval card", async () => {

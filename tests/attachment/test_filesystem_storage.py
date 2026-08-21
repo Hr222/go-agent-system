@@ -153,20 +153,27 @@ def test_same_subject_cannot_access_attachment_from_another_conversation(tmp_pat
     assert storage.read(reference, context=OWNER).content == b"content"
 
 
-def test_anonymous_attachment_cannot_be_consumed_across_requests(tmp_path: Path) -> None:
+def test_attachment_access_context_rejects_missing_or_blank_subject() -> None:
+    for subject in (None, "", "   "):
+        with pytest.raises(ValueError, match="subject must be non-empty"):
+            AttachmentAccessContext(subject=subject)  # type: ignore[arg-type]
+
+
+def test_storage_rejects_forged_context_without_subject_before_writing(tmp_path: Path) -> None:
     storage = _storage(tmp_path)
-    anonymous = AttachmentAccessContext()
-    reference = storage.stage_attachment(
-        file_name="policy.pdf",
-        media_type="application/pdf",
-        file_stream=BytesIO(b"content"),
-        context=anonymous,
-    )
+    anonymous = object.__new__(AttachmentAccessContext)
+    object.__setattr__(anonymous, "subject", None)
+    object.__setattr__(anonymous, "conversation_id", None)
 
-    result = storage.consume(reference.attachment_id, context=anonymous)
+    with pytest.raises(ValueError, match="访问主体无效"):
+        storage.stage_attachment(
+            file_name="policy.pdf",
+            media_type="application/pdf",
+            file_stream=BytesIO(b"content"),
+            context=anonymous,
+        )
 
-    assert result.status == "missing"
-    assert result.error_code == "ATTACHMENT_NOT_FOUND"
+    assert list(storage.attachment_root.iterdir()) == []
 
 
 def test_cleanup_expired_makes_reference_unavailable(tmp_path: Path) -> None:
@@ -193,6 +200,28 @@ def test_consume_is_one_time_and_removes_file(tmp_path: Path) -> None:
     assert second.status == "consumed"
     assert second.error_code == "ATTACHMENT_CONSUMED"
     assert not (storage.attachment_root / reference.attachment_id).exists()
+
+
+def test_storage_restores_available_attachment_after_process_restart(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    reference = _stage(storage, b"restart-safe content")
+
+    restored = _storage(tmp_path)
+
+    assert restored.read(reference.attachment_id, context=OWNER).content == b"restart-safe content"
+    assert restored.read(reference.attachment_id, context=OTHER_SUBJECT).status == "missing"
+
+
+def test_storage_removes_directory_with_invalid_manifest_on_restart(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    invalid_dir = storage.attachment_root / ("a" * 32)
+    invalid_dir.mkdir()
+    (invalid_dir / "policy.pdf").write_bytes(b"content")
+    (invalid_dir / ".attachment.json").write_text("not-json", encoding="utf-8")
+
+    _storage(tmp_path)
+
+    assert not invalid_dir.exists()
 
 
 def test_owner_can_discard_attachment_and_read_returns_missing(tmp_path: Path) -> None:

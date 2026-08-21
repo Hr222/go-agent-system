@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
+from io import BytesIO
 from typing import Literal
 
 from pydantic import BaseModel
 
+from app.modules.attachment import AttachmentAccessContext, AttachmentStoragePort
 from app.modules.interaction.application.agent_call_policy import (
     AgentCallPolicyCommand,
     AgentCallPolicyResult,
@@ -61,10 +63,12 @@ class AgentCallDispatcher:
         capability_catalog: CapabilityCatalogPort,
         policy_validator: AgentCallPolicyValidator,
         agent_runtime: AgentRuntimePort,
+        artifact_storage: AttachmentStoragePort | None = None,
     ) -> None:
         self._capability_catalog = capability_catalog
         self._policy_validator = policy_validator
         self._agent_runtime = agent_runtime
+        self._artifact_storage = artifact_storage
 
     def dispatch(self, command: AgentCallDispatchCommand) -> AgentCallDispatchResult:
         policy = self._policy_validator.validate(
@@ -110,7 +114,21 @@ class AgentCallDispatcher:
                 message="Agent 执行失败。",
             )
         try:
-            output = _as_json_object(raw_output)
+            output = _as_json_object(
+                raw_output,
+                artifact_storage=self._artifact_storage,
+                access_context=AttachmentAccessContext(
+                    subject=command.principal.subject,
+                    conversation_id=command.call.conversation_id,
+                ),
+            )
+        except _ArtifactStorageError:
+            return _error_result(
+                command.call,
+                status="failed",
+                error_code="AGENT_ARTIFACT_STORE_FAILED",
+                message="Agent 生成文件暂时无法保存。",
+            )
         except Exception:  # noqa: BLE001 - output must be safely serializable
             return _error_result(
                 command.call,
@@ -161,26 +179,126 @@ class AgentCallDispatcher:
         return capability
 
 
-def _as_json_object(value: object) -> dict[str, object]:
-    value = _json_safe(value)
+class _ArtifactStorageError(RuntimeError):
+    pass
+
+
+def _as_json_object(
+    value: object,
+    *,
+    artifact_storage: AttachmentStoragePort | None,
+    access_context: AttachmentAccessContext,
+) -> dict[str, object]:
+    value = _to_python(value)
     if not isinstance(value, Mapping):
         raise TypeError("Agent output must be a JSON object")
+    normalized_value = dict(value)
+    if artifact_storage is not None:
+        normalized_value = _stage_artifacts(
+            normalized_value,
+            artifact_storage=artifact_storage,
+            access_context=access_context,
+        )
+    value = _json_safe(normalized_value)
     normalized = json.loads(json.dumps(dict(value), ensure_ascii=False, allow_nan=False))
     if not isinstance(normalized, dict):
         raise TypeError("Agent output must be a JSON object")
     return normalized
 
 
-def _json_safe(value: object) -> object:
-    """将 Agent 的领域结果转为内部 JSON；二进制只保留不可持久化的标记。"""
+def _to_python(value: object) -> object:
+    """Normalize domain values while preserving transient binary artifacts."""
 
     if isinstance(value, BaseModel):
-        return _json_safe(value.model_dump(mode="python"))
+        return _to_python(value.model_dump(mode="python"))
     if is_dataclass(value) and not isinstance(value, type):
         return {
-            item.name: _json_safe(getattr(value, item.name))
+            item.name: _to_python(getattr(value, item.name))
             for item in fields(value)
         }
+    if isinstance(value, Mapping):
+        return {str(key): _to_python(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_to_python(item) for item in value]
+    return value
+
+
+def _stage_artifacts(
+    output: dict[str, object],
+    *,
+    artifact_storage: AttachmentStoragePort,
+    access_context: AttachmentAccessContext,
+) -> dict[str, object]:
+    staged_ids: list[str] = []
+    try:
+        artifacts = output.get("artifacts")
+        if isinstance(artifacts, list):
+            output["artifacts"] = [
+                _stage_artifact(
+                    artifact,
+                    artifact_storage=artifact_storage,
+                    access_context=access_context,
+                    staged_ids=staged_ids,
+                )
+                for artifact in artifacts
+            ]
+        artifact = output.get("artifact")
+        if artifact is not None:
+            output["artifact"] = _stage_artifact(
+                artifact,
+                artifact_storage=artifact_storage,
+                access_context=access_context,
+                staged_ids=staged_ids,
+            )
+        return output
+    except Exception as exc:
+        for attachment_id in staged_ids:
+            try:
+                artifact_storage.discard(attachment_id, context=access_context)
+            except Exception:  # noqa: BLE001 - preserve the controlled failure
+                pass
+        raise _ArtifactStorageError from exc
+
+
+def _stage_artifact(
+    value: object,
+    *,
+    artifact_storage: AttachmentStoragePort,
+    access_context: AttachmentAccessContext,
+    staged_ids: list[str],
+) -> object:
+    if not isinstance(value, Mapping):
+        return value
+    content = value.get("content")
+    if not isinstance(content, bytes):
+        return value
+    file_name = value.get("file_name")
+    media_type = value.get("media_type")
+    if not isinstance(file_name, str) or not file_name.strip():
+        raise ValueError("artifact file_name is required")
+    if not isinstance(media_type, str) or not media_type.strip():
+        raise ValueError("artifact media_type is required")
+    reference = artifact_storage.stage_attachment(
+        file_name=file_name,
+        media_type=media_type,
+        file_stream=BytesIO(content),
+        context=access_context,
+    )
+    staged_ids.append(reference.attachment_id)
+    projected = {str(key): item for key, item in value.items() if key != "content"}
+    projected.update(
+        {
+            "file_name": reference.file_name,
+            "media_type": reference.media_type,
+            "size": reference.size_bytes,
+            "resource_id": reference.attachment_id,
+        }
+    )
+    return projected
+
+
+def _json_safe(value: object) -> object:
+    """Convert staged Agent output to JSON-safe data without retaining bytes."""
     if isinstance(value, bytes):
         return {
             "__agent_bytes__": True,

@@ -17,6 +17,7 @@ from app.modules.agent.tender.contracts import (
     TenderGenerateSkeletonCommand,
     TenderVerifyExtractionBoundaryCommand,
 )
+from app.modules.attachment.ports.storage_port import AttachmentStoragePort
 from app.modules.interaction.application.agent_call_policy import AgentCallPolicyValidator
 from app.modules.interaction.application.agent_dispatch import AgentCallDispatcher
 from app.modules.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
@@ -120,6 +121,7 @@ def build_agent_call_dispatcher(
     capability_catalog: CapabilityCatalogPort,
     *,
     agent_runtime: Callable[[], AgentRuntime],
+    artifact_storage: AttachmentStoragePort | None = None,
 ) -> AgentCallDispatcher:
     """组装 V2 结构化 Agent 调用的策略后分发边界。"""
 
@@ -127,6 +129,7 @@ def build_agent_call_dispatcher(
         capability_catalog,
         AgentCallPolicyValidator(capability_catalog),
         agent_runtime(),
+        artifact_storage=artifact_storage,
     )
 
 

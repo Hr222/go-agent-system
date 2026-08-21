@@ -9,6 +9,8 @@
 .inputColumn, .resultStack { display: grid; gap: 16px; }
 .panel, .resultStack { background: #fff; border: 1px solid #e3e9f2; border-radius: 8px; box-shadow: 0 4px 16px rgba(42, 61, 91, .04); }
 .panel { padding: 18px; }
+.entryPanel { display: grid; gap: 18px; width: min(390px, 100%); }
+.entryPanel .submitButton { text-decoration: none; }
 .panelHeader, .panelHeader > div, .resultHeader, .metaRow, .blockTitle, .artifactRow, .artifactRow > div, .fileRow, .fileRow > div { display: flex; align-items: center; }
 .panelHeader, .resultHeader, .blockTitle { justify-content: space-between; }
 .panelHeader > div { gap: 8px; color: #5e7397; }

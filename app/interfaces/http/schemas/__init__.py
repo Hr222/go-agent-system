@@ -1,6 +1,12 @@
 """HTTP 请求、响应与入库流水线 Schema。"""
 
 from app.interfaces.http.schemas.attachment import AttachmentUploadResponse
+from app.interfaces.http.schemas.conversation import (
+    ConversationCreateRequest,
+    ConversationMessagePageResponse,
+    ConversationMessageResponse,
+    ConversationResponse,
+)
 from app.interfaces.http.schemas.knowledge_base import (
     KnowledgeBaseOverview,
     PolicyDocumentOption,
@@ -68,11 +74,6 @@ from app.interfaces.http.schemas.retrieval import (
     RetrievalSearchResponse,
     RetrievalStageDebug,
 )
-from app.interfaces.http.schemas.tender import (
-    TenderArtifactResponse,
-    TenderErrorResponse,
-    TenderGenerateSkeletonResponse,
-)
 
 __all__ = [
     "AnswerCitation",
@@ -84,6 +85,10 @@ __all__ = [
     "ChunkSampleItem",
     "ChunkSplitResult",
     "CleanedTextResult",
+    "ConversationCreateRequest",
+    "ConversationMessagePageResponse",
+    "ConversationMessageResponse",
+    "ConversationResponse",
     "DocumentFileType",
     "FormatNormalizationResult",
     "IntakeValidationResult",
@@ -125,9 +130,6 @@ __all__ = [
     "RetrievalSearchRequest",
     "RetrievalSearchResponse",
     "RetrievalStageDebug",
-    "TenderArtifactResponse",
-    "TenderErrorResponse",
-    "TenderGenerateSkeletonResponse",
     "SectionSplitItem",
     "SectionSplitResult",
 ]

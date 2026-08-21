@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from pydantic import BaseModel
 
 from app.composition.interaction import build_agent_call_dispatcher
+from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
+from app.modules.attachment import AttachmentAccessContext, AttachmentStoragePort
 from app.modules.interaction.application.agent_call_policy import AgentCallPolicyValidator
 from app.modules.interaction.application.agent_dispatch import (
     AgentCallDispatchCommand,
@@ -119,14 +122,19 @@ class AgentOutput(BaseModel):
     answer: str
 
 
+_DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
 def _dispatcher(
     catalog: SequenceCatalog,
     runtime: RecordingRuntime,
+    artifact_storage: AttachmentStoragePort | None = None,
 ) -> AgentCallDispatcher:
     return AgentCallDispatcher(
         catalog,  # type: ignore[arg-type]
         AgentCallPolicyValidator(catalog),  # type: ignore[arg-type]
         runtime,
+        artifact_storage=artifact_storage,
     )
 
 
@@ -283,6 +291,77 @@ def test_dispatch_rejects_non_object_or_non_serializable_runtime_output() -> Non
     assert non_serializable.status == "failed"
     assert non_serializable.error is not None
     assert non_serializable.error.error_code == "AGENT_OUTPUT_INVALID"
+
+
+def test_dispatch_stages_binary_artifact_as_controlled_resource(tmp_path: Path) -> None:
+    capability = _capability()
+    storage = FilesystemAttachmentStorage(
+        tmp_path,
+        allowed_media_types=(_DOCX_MEDIA_TYPE,),
+    )
+    result = _dispatcher(
+        SequenceCatalog([capability, capability]),
+        RecordingRuntime(
+            {
+                "artifacts": [
+                    {
+                        "file_name": "bid-skeleton.docx",
+                        "media_type": _DOCX_MEDIA_TYPE,
+                        "content": b"generated-docx-content",
+                    }
+                ]
+            }
+        ),
+        artifact_storage=storage,
+    ).dispatch(AgentCallDispatchCommand(call=_call(), principal=_principal()))
+
+    assert result.status == "completed"
+    assert result.result is not None
+    artifact = result.result.output["artifacts"][0]  # type: ignore[index]
+    assert artifact["file_name"] == "bid-skeleton.docx"  # type: ignore[index]
+    assert artifact["media_type"] == _DOCX_MEDIA_TYPE  # type: ignore[index]
+    assert artifact["size"] == len(b"generated-docx-content")  # type: ignore[index]
+    resource_id = artifact["resource_id"]  # type: ignore[index]
+    assert isinstance(resource_id, str)
+    assert len(resource_id) == 32
+    assert "content" not in artifact  # type: ignore[operator]
+    assert storage.read(
+        resource_id,
+        context=AttachmentAccessContext(subject="user-1", conversation_id="conversation-1"),
+    ).content == b"generated-docx-content"
+
+
+def test_dispatch_cleans_staged_artifacts_when_a_later_artifact_is_invalid(tmp_path: Path) -> None:
+    capability = _capability()
+    storage = FilesystemAttachmentStorage(
+        tmp_path,
+        allowed_media_types=(_DOCX_MEDIA_TYPE,),
+    )
+    result = _dispatcher(
+        SequenceCatalog([capability, capability]),
+        RecordingRuntime(
+            {
+                "artifacts": [
+                    {
+                        "file_name": "bid-skeleton.docx",
+                        "media_type": _DOCX_MEDIA_TYPE,
+                        "content": b"generated-docx-content",
+                    },
+                    {
+                        "file_name": "unsafe.exe",
+                        "media_type": "application/x-msdownload",
+                        "content": b"not-allowed",
+                    },
+                ]
+            }
+        ),
+        artifact_storage=storage,
+    ).dispatch(AgentCallDispatchCommand(call=_call(), principal=_principal()))
+
+    assert result.status == "failed"
+    assert result.error is not None
+    assert result.error.error_code == "AGENT_ARTIFACT_STORE_FAILED"
+    assert list(storage.attachment_root.iterdir()) == []
 
 
 def test_composition_can_inject_agent_runtime_for_v2_dispatcher() -> None:

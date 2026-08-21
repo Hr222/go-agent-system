@@ -4,11 +4,14 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID, uuid4
 
-from app.modules.conversation.domain import Conversation, ConversationEvent, MessageRole
-from app.modules.conversation.errors import ConversationNotFoundError
+from app.modules.conversation.application import (
+    ConversationAccessService,
+    ConversationCreateCommand,
+    ConversationResolveQuery,
+)
+from app.modules.conversation.domain import ConversationEvent, MessageRole
 from app.modules.conversation.ports import (
     ConversationEventWritePort,
-    ConversationReadPort,
     ConversationWritePort,
 )
 from app.modules.dialogue.application.agent_result_projection import AgentResultProjector
@@ -59,20 +62,23 @@ class DialogueAgentInvocationService:
     def __init__(
         self,
         *,
-        conversation_read: ConversationReadPort,
+        conversation_access: ConversationAccessService,
         conversation_write: ConversationWritePort,
         event_write: ConversationEventWritePort,
         dispatcher: AgentCallDispatcher,
         projector: AgentResultProjector,
     ) -> None:
-        self._conversation_read = conversation_read
+        self._conversation_access = conversation_access
         self._conversation_write = conversation_write
         self._event_write = event_write
         self._dispatcher = dispatcher
         self._projector = projector
 
     def invoke(self, command: DialogueAgentInvocationCommand) -> DialogueAgentInvocationResult:
-        conversation_id = self._ensure_conversation(command.conversation_id)
+        conversation_id = self._ensure_conversation(
+            command.conversation_id,
+            principal=command.principal,
+        )
         call = command.call or self._new_call(command, conversation_id)
         if call.conversation_id != str(conversation_id):
             raise ValueError("Agent 调用不能跨会话执行。")
@@ -107,7 +113,10 @@ class DialogueAgentInvocationService:
     ) -> DialogueAgentInvocationResult:
         """持久化待确认调用，但在用户确认前绝不触发 Agent Dispatcher。"""
 
-        conversation_id = self._ensure_conversation(command.conversation_id)
+        conversation_id = self._ensure_conversation(
+            command.conversation_id,
+            principal=command.principal,
+        )
         call = self._new_call(command, conversation_id)
         if command.user_input is not None:
             self._conversation_write.append_message(
@@ -137,8 +146,11 @@ class DialogueAgentInvocationService:
         *,
         conversation_id: UUID,
         call: StructuredAgentCall,
+        principal: RequestPrincipal,
     ) -> DialogueAgentInvocationResult:
         """以受控事件记录用户取消，避免留下无终态的调用记录。"""
+
+        self._ensure_conversation(conversation_id, principal=principal)
 
         self._append_event(
             conversation_id=conversation_id,
@@ -172,19 +184,24 @@ class DialogueAgentInvocationService:
             inputs=dict(command.inputs),
         )
 
-    def _ensure_conversation(self, conversation_id: UUID | None) -> UUID:
+    def _ensure_conversation(
+        self,
+        conversation_id: UUID | None,
+        *,
+        principal: RequestPrincipal,
+    ) -> UUID:
         if conversation_id is None:
-            return self._conversation_write.save_conversation(Conversation()).id
+            return self._conversation_access.create(
+                ConversationCreateCommand(principal=principal)
+            ).id
         if not isinstance(conversation_id, UUID):
             raise ValueError("会话标识必须是 UUID。")
-        try:
-            self._conversation_read.read_history(
+        self._conversation_access.resolve(
+            ConversationResolveQuery(
+                principal=principal,
                 conversation_id=conversation_id,
-                limit=1,
-                after_sequence=None,
             )
-        except ConversationNotFoundError:
-            raise
+        )
         return conversation_id
 
     def _finish(

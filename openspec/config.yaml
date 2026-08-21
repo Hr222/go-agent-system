@@ -4,7 +4,7 @@ context: |
   项目：Go Agent System。仓库名称沿用历史命名；当前实现是 Python 后端与 React/TypeScript 前端。
   后端：Python 3.11 及以上、FastAPI 风格的 HTTP 接口、PostgreSQL、pgvector，以及用于本地基础设施的 Docker。
   前端：React 18、开启严格模式的 TypeScript、Vite、Ant Design、Axios、TanStack React Query。
-  架构依据：agent.md、ARCHITECTURE.md、FRONTEND_ARCHITECTURE.md，以及 docs/ 下当前 Phase 3 的文档。
+  架构依据：agent.md、ARCHITECTURE.md，以及 docs/ 下当前 Phase 3 的文档。
   后端依赖方向：interfaces -> application/modules -> domain and ports -> infrastructure implementations。具体适配器统一在 app/composition/ 中组装。
   模块边界：online、knowledge、ingestion、llm、conversation、task management 和 agent capabilities 保持独立。Conversation 负责历史消息与上下文；Task Management 负责任务生命周期与状态。Agent 适配器必须调用应用层能力，不得直接访问 Repository 或 SDK。
   产品重点：可解释、可追溯证据的知识检索，以及投标 Agent 相关能力。当前阶段不代表已经具备完整的多 Agent 平台。

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AetherFlow AI Dashboard - Design Preview</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f7fb;
+            color: #1e293b;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 252px;
+            background: linear-gradient(180deg, #111b31 0%, #0c1529 100%);
+            border-right: 1px solid rgba(255,255,255,.07);
+            display: flex;
+            flex-direction: column;
+            padding: 24px 25px 16px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            height: 93px;
+            margin-bottom: 20px;
+        }
+
+        .brand-mark {
+            width: 38px;
+            height: 38px;
+            background: linear-gradient(135deg, #76a9ff, #b59bff);
+            border-radius: 11px;
+            box-shadow: 0 10px 25px rgba(104,148,255,.27);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #071632;
+            font-size: 21px;
+            font-weight: 800;
+        }
+
+        .brand-text {
+            color: #d9e3ff;
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: -0.4px;
+        }
+
+        .brand-caption {
+            color: #7d8aa6;
+            font-size: 10px;
+            letter-spacing: 1.7px;
+            text-transform: uppercase;
+            margin-top: 3px;
+        }
+
+        .section-label {
+            margin: 20px 25px 8px;
+            color: #66748f;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.7px;
+            text-transform: uppercase;
+        }
+
+        .menu {
+            background: transparent;
+            border: none;
+        }
+
+        .menu-item {
+            height: 42px;
+            margin: 4px 16px;
+            padding: 0 13px;
+            color: #9faac1;
+            background: transparent;
+            border: none;
+            border-radius: 9px;
+            font-size: 13px;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .menu-item:hover {
+            color: #f3f6ff;
+            background: rgba(255,255,255,.06);
+        }
+
+        .menu-item.active {
+            color: #061b42;
+            background: #82aaff;
+            font-weight: 750;
+            box-shadow: 0 7px 18px rgba(80,134,255,.18);
+        }
+
+        .user-profile {
+            margin-top: auto;
+            padding: 14px 9px 0;
+            border-top: 1px solid rgba(255,255,255,.08);
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .avatar {
+            width: 31px;
+            height: 31px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4369ad, #6c4f9c);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #dce8ff;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .user-info {
+            flex: 1;
+        }
+
+        .user-name {
+            color: #e4e9f6;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .user-role {
+            color: #76839e;
+            font-size: 10px;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            height: 72px;
+            background: rgba(255,255,255,.88);
+            border-bottom: 1px solid #e8ebf1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 38px;
+        }
+
+        .breadcrumb {
+            color: #94a0b4;
+            font-size: 12px;
+        }
+
+        .breadcrumb span {
+            color: #bdc4d0;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .search-box {
+            width: 270px;
+            background: #f3f5f9;
+            border: 1px solid #edf0f5;
+            border-radius: 8px;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .search-box input {
+            border: none;
+            background: transparent;
+            outline: none;
+            flex: 1;
+        }
+
+        .user-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #435069;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Page Content */
+        .page-content {
+            flex: 1;
+            padding: 24px 38px;
+            overflow-y: auto;
+        }
+
+        .page-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 24px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 11px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+
+        .stat-change {
+            font-size: 12px;
+            color: #2aa77c;
+        }
+
+        .content-card {
+            background: white;
+            border-radius: 11px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            margin-bottom: 24px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th {
+            text-align: left;
+            padding: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .table td {
+            padding: 12px;
+            font-size: 14px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-active {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .status-processing {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+
+        /* Responsive */
+        @media (max-width: 1280px) {
+            .header {
+                padding: 0 28px;
+            }
+            .search-box {
+                width: 230px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="brand">
+                <div class="brand-mark">✨</div>
+                <div>
+                    <div class="brand-text">AetherFlow</div>
+                    <div class="brand-caption">AI 智能工作台</div>
+                </div>
+            </div>
+
+            <div class="section-label">工作区</div>
+            <div class="menu">
+                <div class="menu-item active">
+                    <span>🏠</span>
+                    <span>控制台</span>
+                </div>
+                <div class="menu-item">
+                    <span>💬</span>
+                    <span>对话</span>
+                </div>
+                <div class="menu-item">
+                    <span>🤖</span>
+                    <span>智能体</span>
+                </div>
+                <div class="menu-item">
+                    <span>📋</span>
+                    <span>工作流</span>
+                </div>
+                <div class="menu-item">
+                    <span>📚</span>
+                    <span>知识库</span>
+                </div>
+            </div>
+
+            <div class="section-label" style="margin-top: 20px;">平台</div>
+            <div class="menu">
+                <div class="menu-item">
+                    <span>📄</span>
+                    <span>文档中心</span>
+                </div>
+                <div class="menu-item">
+                    <span>⚙️</span>
+                    <span>系统设置</span>
+                </div>
+            </div>
+
+            <div class="user-profile">
+                <div class="avatar">陈</div>
+                <div class="user-info">
+                    <div class="user-name">陈先生</div>
+                    <div class="user-role">项目负责人</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="header">
+                <div class="breadcrumb">
+                    工作区 <span>&gt;</span> 控制台
+                </div>
+                <div class="header-actions">
+                    <div class="search-box">
+                        <span>🔍</span>
+                        <input type="text" placeholder="搜索文档、智能体或任务...">
+                    </div>
+                    <div class="user-actions">
+                        <span>🔔</span>
+                        <div class="avatar" style="width: 28px; height: 28px; font-size: 11px;">陈</div>
+                        <span>陈先生 ▼</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="page-content">
+                <h1 class="page-title">控制台</h1>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">1,234</div>
+                        <div class="stat-label">文档总数</div>
+                        <div class="stat-change">+12% 本月</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">567</div>
+                        <div class="stat-label">处理中任务</div>
+                        <div class="stat-change">+8% 本月</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">89</div>
+                        <div class="stat-label">活跃智能体</div>
+                        <div class="stat-change">+23% 本月</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">98.5%</div>
+                        <div class="stat-label">系统可用性</div>
+                        <div class="stat-change">+0.3% 本月</div>
+                    </div>
+                </div>
+
+                <div class="content-card">
+                    <div class="card-title">最近活动</div>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>活动类型</th>
+                                <th>描述</th>
+                                <th>时间</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>📝 文档上传</td>
+                                <td>新政策文档《AI使用指南》已上传</td>
+                                <td>2分钟前</td>
+                                <td><span class="status-badge status-active">已完成</span></td>
+                            </tr>
+                            <tr>
+                                <td>🤖 任务完成</td>
+                                <td>Tender Agent 分析任务 #1234 完成</td>
+                                <td>15分钟前</td>
+                                <td><span class="status-badge status-active">已完成</span></td>
+                            </tr>
+                            <tr>
+                                <td>💬 新对话</td>
+                                <td>用户创建新的技术方案对话</td>
+                                <td>1小时前</td>
+                                <td><span class="status-badge status-processing">进行中</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

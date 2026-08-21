@@ -29,8 +29,10 @@ def test_event_sql_is_idempotent_and_repository_orders_by_sequence() -> None:
             connection.exec_driver_sql(event_script)
         session = harness.session_local()
         try:
-            conversation = Conversation()
-            session.add(ConversationRecord(id=conversation.id))
+            conversation = Conversation(owner_subject="user-1")
+            session.add(
+                ConversationRecord(id=conversation.id, owner_subject=conversation.owner_subject)
+            )
             session.commit()
             repository = ConversationEventRepository(session)
             event = ConversationEvent(

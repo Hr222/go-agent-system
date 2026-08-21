@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.infrastructure.persistence.conversation_mapper import (
     conversation_from_record,
@@ -24,6 +24,9 @@ from tests.support.db_test_utils import SchemaHarness
 SQL_SCRIPT = (
     Path(__file__).resolve().parents[2] / "sql" / "007_conversation_model_storage.sql"
 )
+OWNER_MIGRATION_SCRIPT = (
+    Path(__file__).resolve().parents[2] / "sql" / "010_conversation_owner_subject.sql"
+)
 
 
 def test_domain_records_round_trip_through_orm_mapping() -> None:
@@ -31,6 +34,7 @@ def test_domain_records_round_trip_through_orm_mapping() -> None:
     updated_at = datetime(2026, 8, 18, 9, 35, tzinfo=timezone.utc)
     conversation = Conversation(
         id=uuid4(),
+        owner_subject="owner-1",
         created_at=created_at,
         updated_at=updated_at,
     )
@@ -55,7 +59,12 @@ def test_conversation_orm_metadata_registers_required_tables_and_constraints() -
     message_table = ConversationMessageRecord.__table__
 
     assert conversation_table.name == "conversation"
-    assert set(conversation_table.c.keys()) == {"id", "created_at", "updated_at"}
+    assert set(conversation_table.c.keys()) == {
+        "id",
+        "owner_subject",
+        "created_at",
+        "updated_at",
+    }
     assert set(message_table.c.keys()) == {
         "id",
         "conversation_id",
@@ -72,6 +81,12 @@ def test_conversation_orm_metadata_registers_required_tables_and_constraints() -
         "chk_conversation_message_content_not_blank",
         "chk_conversation_message_sequence_positive",
         "uq_conversation_message_conversation_sequence",
+    }
+    assert {
+        constraint.name for constraint in conversation_table.constraints if constraint.name
+    } >= {"chk_conversation_owner_subject_not_blank"}
+    assert {index.name for index in conversation_table.indexes} >= {
+        "idx_conversation_owner_subject"
     }
 
 
@@ -102,12 +117,71 @@ def test_conversation_sql_script_is_executable_and_idempotent() -> None:
         assert "ON DELETE CASCADE" in script
         assert "chk_conversation_message_role" in script
         assert "uq_conversation_message_conversation_sequence" in script
+        assert "owner_subject TEXT NOT NULL" in script
+        assert "idx_conversation_owner_subject" in script
+    finally:
+        harness.drop_schema()
+
+
+def test_owner_subject_migration_requires_explicit_backfill_for_legacy_rows() -> None:
+    harness = SchemaHarness("conversation_owner_migration")
+    with harness.admin_engine.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        connection.execute(text(f'CREATE SCHEMA "{harness.schema}"'))
+    try:
+        with harness.test_engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE conversation (
+                    id UUID PRIMARY KEY,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            connection.execute(
+                text("INSERT INTO conversation (id) VALUES (:conversation_id)"),
+                {"conversation_id": str(uuid4())},
+            )
+
+        migration = OWNER_MIGRATION_SCRIPT.read_text(encoding="utf-8")
+        with pytest.raises(DBAPIError, match="回填需要受控迁移主体"):
+            with harness.test_engine.begin() as connection:
+                connection.exec_driver_sql(migration)
+
+        with harness.test_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "SELECT set_config("
+                    "'app.conversation_owner_backfill_subject', :subject, true)"
+                ),
+                {"subject": "migration-owner"},
+            )
+            connection.exec_driver_sql(migration)
+            connection.exec_driver_sql(migration)
+            owners = connection.execute(
+                text("SELECT owner_subject FROM conversation")
+            ).scalars().all()
+            is_nullable = connection.execute(
+                text(
+                    """
+                    SELECT is_nullable
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'conversation'
+                      AND column_name = 'owner_subject'
+                    """
+                )
+            ).scalar_one()
+
+        assert owners == ["migration-owner"]
+        assert is_nullable == "NO"
     finally:
         harness.drop_schema()
 
 
 def _new_domain_conversation() -> Conversation:
-    return Conversation(id=uuid4())
+    return Conversation(id=uuid4(), owner_subject="owner-1")
 
 
 def _new_domain_message(
@@ -175,6 +249,23 @@ def test_message_cannot_reference_missing_conversation() -> None:
         harness.drop_schema()
 
 
+def test_database_rejects_blank_owner_subject() -> None:
+    harness = SchemaHarness("conversation_owner_constraint")
+    harness.create_schema()
+    try:
+        session = harness.session_local()
+        try:
+            session.add(ConversationRecord(id=uuid4(), owner_subject="   "))
+            with pytest.raises(IntegrityError):
+                session.commit()
+            session.rollback()
+            assert session.query(ConversationRecord).count() == 0
+        finally:
+            session.close()
+    finally:
+        harness.drop_schema()
+
+
 @pytest.mark.parametrize(
     "record",
     [
@@ -209,7 +300,10 @@ def test_message_database_constraints_reject_invalid_values(
     try:
         session = harness.session_local()
         try:
-            conversation = ConversationRecord(id=record.conversation_id)
+            conversation = ConversationRecord(
+                id=record.conversation_id,
+                owner_subject="owner-1",
+            )
             session.add(conversation)
             session.commit()
             session.add(record)
@@ -229,8 +323,8 @@ def test_message_sequence_is_unique_per_conversation_only() -> None:
     try:
         session = harness.session_local()
         try:
-            first_conversation = ConversationRecord(id=uuid4())
-            second_conversation = ConversationRecord(id=uuid4())
+            first_conversation = ConversationRecord(id=uuid4(), owner_subject="owner-1")
+            second_conversation = ConversationRecord(id=uuid4(), owner_subject="owner-2")
             session.add_all([first_conversation, second_conversation])
             session.commit()
 

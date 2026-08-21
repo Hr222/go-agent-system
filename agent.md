@@ -21,55 +21,9 @@
 
 ## 2. 当前架构基准
 
-项目当前采用以下分层：
+当前系统的分层、模块职责、依赖方向、目录边界、前端约束和演化规则全部以 `ARCHITECTURE.md` 为准。本文件不重复维护架构摘录，避免形成第二份实现依据。
 
-```text
-外部调用
-  -> Interfaces（HTTP / Agent Adapter）
-  -> Application Modules（Online / Knowledge / Ingestion）
-  -> Domain / Ports
-  <- Infrastructure（Repository / LLM / OCR / File System）
-
-Composition Root 负责选择并组装具体实现。
-```
-
-### 2.1 `app/` 目录职责
-
-```text
-app/
-├── modules/
-│   ├── online/              # 在线 RAG 与业务决策
-│   ├── knowledge/           # 知识查询、写入、发布与检索能力
-│   └── ingestion/           # 独立文档入库能力
-├── interfaces/
-│   ├── http/                # HTTP routes、schemas、assemblers、dependencies
-│   └── agent/               # Function Calling 等 Agent 接入适配器
-├── infrastructure/
-│   ├── persistence/         # ORM、Session、Repository、数据库健康检查
-│   ├── llm/                 # LLM 与 Embedding 适配器
-│   ├── ocr/                 # OCR 适配器
-│   └── filesystem/          # 文件系统与上传暂存
-├── composition/             # Composition Root / ApplicationContainer
-└── shared/                  # 配置、日志、异常与少量共享基础类型
-```
-
-禁止重新引入旧的 `app/api`、`app/services`、`app/repositories`、`app/schemas` 等目录，除非先修改架构基准并完成评审。
-
-### 2.2 依赖方向
-
-- HTTP 路由负责接收请求、依赖注入、调用应用服务、Assembler 转换和异常映射。
-- HTTP Schema 只属于 `app/interfaces/http/schemas`，应用层不得依赖 FastAPI 或前端类型。
-- Assembler 负责 HTTP Schema 与 Application Command / Result 之间的转换。
-- `modules/online` 负责在线 RAG、规则获取、数据获取和结果编排。
-- `modules/knowledge` 负责知识查询、写入、发布、检索策略和 Ports。
-- `modules/ingestion` 负责文档接入、解析、OCR、清洗、切分和入库用例。
-- Domain 只放业务规则和业务对象，不依赖 HTTP、数据库、LLM 框架或具体外部适配器。
-- Repository、LLM、Embedding、OCR、文件系统等具体实现放在 `infrastructure`。
-- 具体适配器由 `composition` 统一组装，业务模块通过 Ports 或稳定契约使用能力。
-- `online` 与 `ingestion` 不得互相直接依赖。
-- 前端只通过稳定 HTTP API 使用后端，不直接访问数据库、Repository 或内部领域对象。
-
-此前的接口层到 Infrastructure 依赖已经完成治理。新增代码不得重新引入这类依赖；依赖方向和边界以本文件、`ARCHITECTURE.md` 以及架构边界测试为准。
+新增代码不得重新引入 `app/api`、`app/services`、`app/repositories`、`app/schemas` 等已废弃的目录约定。需要新增目录或调整跨模块依赖时，先更新 `ARCHITECTURE.md` 并完成相应 Change 评审。
 
 ## 3. 当前阶段边界
 

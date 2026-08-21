@@ -1,5 +1,6 @@
 """Conversation 应用依赖的端口。"""
 
+from app.modules.conversation.ports.access_port import ConversationAccessPort
 from app.modules.conversation.ports.context_cost_port import ContextMessageCostEstimator
 from app.modules.conversation.ports.event_port import (
     ConversationEventReadPort,
@@ -14,6 +15,7 @@ from app.modules.conversation.ports.read_port import (
 from app.modules.conversation.ports.write_port import ConversationWritePort
 
 __all__ = [
+    "ConversationAccessPort",
     "ConversationHistoryPage",
     "ContextMessageCostEstimator",
     "ConversationEventReadPort",

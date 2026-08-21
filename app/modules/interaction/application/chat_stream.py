@@ -7,6 +7,11 @@ from time import monotonic
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4
 
+from app.modules.conversation.application import (
+    ConversationAccessService,
+    ConversationResolveQuery,
+)
+from app.modules.conversation.errors import ConversationAccessDeniedError
 from app.modules.interaction.application.gateway import (
     DirectCapabilityExecution,
     GatewayConfirmationCommand,
@@ -72,12 +77,14 @@ class InteractionChatStreamApplication:
         dialogue_agent_invocation: DialogueAgentInvocationService | None = None,
         dialogue_agent_continuation: DialogueAgentContinuationService | None = None,
         pending_agent_invocations: InMemoryPendingAgentInvocationStore | None = None,
+        conversation_access: ConversationAccessService | None = None,
     ) -> None:
         self._gateway = gateway
         self._streaming_chat = streaming_chat
         self._dialogue_agent_invocation = dialogue_agent_invocation
         self._dialogue_agent_continuation = dialogue_agent_continuation
         self._pending_agent_invocations = pending_agent_invocations
+        self._conversation_access = conversation_access
 
     def prepare(
         self,
@@ -86,6 +93,13 @@ class InteractionChatStreamApplication:
         """Complete routing before model execution or an SSE response begins."""
 
         try:
+            if command.conversation_id is not None and self._conversation_access is not None:
+                self._conversation_access.resolve(
+                    ConversationResolveQuery(
+                        principal=command.principal,
+                        conversation_id=command.conversation_id,
+                    )
+                )
             result = self._gateway.recognize(
                 GatewayRecognitionCommand(
                     user_input=command.user_input,
@@ -94,6 +108,8 @@ class InteractionChatStreamApplication:
                     conversation_id=command.conversation_id,
                 )
             )
+        except ConversationAccessDeniedError:
+            return _single_error("CONVERSATION_ACCESS_DENIED", "会话不可用。")
         except Exception:  # noqa: BLE001 - never expose interaction internals
             return _single_error("INTERACTION_UNAVAILABLE", "请求暂时无法处理。")
 
@@ -158,10 +174,14 @@ class InteractionChatStreamApplication:
             )
 
         if confirmation.status == "cancelled":
-            result = self._dialogue_agent_invocation.cancel_confirmation(
-                conversation_id=consumed.command.conversation_id,
-                call=consumed.command.call,
-            )
+            try:
+                result = self._dialogue_agent_invocation.cancel_confirmation(
+                    conversation_id=consumed.command.conversation_id,
+                    call=consumed.command.call,
+                    principal=command.principal,
+                )
+            except ConversationAccessDeniedError:
+                return _conversation_access_denied_result()
             return GatewayResult(
                 status=result.status,
                 message=result.message,
@@ -176,17 +196,20 @@ class InteractionChatStreamApplication:
                 error_code="APPROVED_DISPATCH_UNAVAILABLE",
                 conversation_id=consumed.command.conversation_id,
             )
-        result = self._dialogue_agent_invocation.invoke(
-            DialogueAgentInvocationCommand(
-                conversation_id=consumed.command.conversation_id,
-                capability_code=consumed.command.capability_code,
-                inputs=dict(consumed.command.inputs),
-                principal=command.principal,
-                approved_dispatch=confirmation.approved_dispatch,
-                call=consumed.command.call,
-                persist_call_event=False,
+        try:
+            result = self._dialogue_agent_invocation.invoke(
+                DialogueAgentInvocationCommand(
+                    conversation_id=consumed.command.conversation_id,
+                    capability_code=consumed.command.capability_code,
+                    inputs=dict(consumed.command.inputs),
+                    principal=command.principal,
+                    approved_dispatch=confirmation.approved_dispatch,
+                    call=consumed.command.call,
+                    persist_call_event=False,
+                )
             )
-        )
+        except ConversationAccessDeniedError:
+            return _conversation_access_denied_result()
         if result.status == "completed" and self._dialogue_agent_continuation is not None:
             from app.modules.dialogue.application import DialogueAgentContinuationCommand
 
@@ -194,6 +217,7 @@ class InteractionChatStreamApplication:
                 DialogueAgentContinuationCommand(
                     conversation_id=result.conversation_id,
                     call_id=result.call.call_id,
+                    principal=command.principal,
                 )
             )
             if continuation.status == "completed":
@@ -264,6 +288,8 @@ class InteractionChatStreamApplication:
                     call=result.call,
                 ),
             )
+        except ConversationAccessDeniedError:
+            return _single_error("CONVERSATION_ACCESS_DENIED", "会话不可用。")
         except ValueError as exc:
             return _single_error("DIALOGUE_AGENT_INPUT_INVALID", str(exc))
         except Exception:  # noqa: BLE001 - database and invocation internals stay server-side
@@ -401,6 +427,14 @@ def _single_error(code: str, message: str) -> InteractionStreamPreparation:
     return InteractionStreamPreparation(
         kind="single_event",
         event=_error_event(code, message, retryable=False),
+    )
+
+
+def _conversation_access_denied_result() -> GatewayResult:
+    return GatewayResult(
+        status="rejected",
+        message="会话不可用。",
+        error_code="CONVERSATION_ACCESS_DENIED",
     )
 
 

@@ -38,10 +38,14 @@ def test_create_conversation_returns_isolated_persisted_conversations() -> None:
     port = FakeConversationWritePort()
     service = ConversationWriteService(port)
 
-    first = service.create_conversation()
-    second = service.create_conversation()
+    first = service.create_conversation(owner_subject="user-1")
+    second = service.create_conversation(owner_subject="user-2")
 
     assert first.id != second.id
+    assert [conversation.owner_subject for conversation in port.conversations] == [
+        "user-1",
+        "user-2",
+    ]
     assert port.conversations == [first, second]
 
 

@@ -9,8 +9,7 @@ OpenSpec 是本项目的需求变更与验收契约层，用于明确“要改�
 | 文档 | 职责 |
 |---|---|
 | `agent.md` | AI 协作、编码和验证纪律 |
-| `ARCHITECTURE.md` | 后端长期架构、模块职责和依赖边界 |
-| `FRONTEND_ARCHITECTURE.md` | 前端工程结构和前后端交互边界 |
+| `ARCHITECTURE.md` | 后端与前端架构、模块职责、依赖边界和前后端交互边界 |
 | `docs/` | 阶段目标、调研笔记、实施进度和历史记录 |
 | `openspec/specs/` | 已生效的业务能力契约 |
 | `openspec/changes/` | 正在进行的需求变更及其验收材料 |

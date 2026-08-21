@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shutil
 from collections.abc import Iterable
@@ -21,12 +22,14 @@ from app.shared.config import settings
 
 _ATTACHMENT_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$", re.IGNORECASE)
 _COPY_CHUNK_SIZE_BYTES = 1024 * 1024
+_MANIFEST_FILE_NAME = ".attachment.json"
+_MANIFEST_TEMP_SUFFIX = ".manifest.part"
 
 
 @dataclass(slots=True)
 class _AttachmentRecord:
     reference: AttachmentRef
-    owner_subject: str | None
+    owner_subject: str
     conversation_id: str | None
     expires_at: datetime
     status: AttachmentStatus = "available"
@@ -72,8 +75,8 @@ class FilesystemAttachmentStorage(AttachmentStoragePort):
         if not self.allowed_media_types:
             raise ValueError("附件媒体类型配置不能为空。")
 
-        # This state is process-local until a shared metadata store becomes necessary.
         self._records: dict[str, _AttachmentRecord] = {}
+        self._restore_records()
 
     def stage_attachment(
         self,
@@ -86,6 +89,8 @@ class FilesystemAttachmentStorage(AttachmentStoragePort):
         self.cleanup_expired()
         if not isinstance(context, AttachmentAccessContext):
             raise ValueError("附件访问上下文无效。")
+        if not isinstance(context.subject, str) or not context.subject.strip():
+            raise ValueError("附件访问主体无效。")
         normalized_file_name = Path(file_name or "").name
         if (
             not normalized_file_name
@@ -131,12 +136,18 @@ class FilesystemAttachmentStorage(AttachmentStoragePort):
             sha256=digest.hexdigest(),
         )
         created_at = datetime.now(UTC)
-        self._records[attachment_id] = _AttachmentRecord(
+        record = _AttachmentRecord(
             reference=reference,
             owner_subject=context.subject,
             conversation_id=context.conversation_id,
             expires_at=created_at + timedelta(seconds=self.retention_seconds),
         )
+        try:
+            self._write_manifest(record)
+        except Exception:
+            shutil.rmtree(target_dir, ignore_errors=True)
+            raise
+        self._records[attachment_id] = record
         return reference
 
     def stage(
@@ -255,22 +266,96 @@ class FilesystemAttachmentStorage(AttachmentStoragePort):
             if self._remove_attachment_dir(attachment_id):
                 removed_count += 1
 
-        expire_before = reference_time - timedelta(seconds=self.retention_seconds)
         for candidate in self.attachment_root.iterdir():
             if candidate.is_symlink() or not candidate.is_dir():
                 continue
             if candidate.name in self._records:
                 continue
-            try:
-                modified_at = datetime.fromtimestamp(candidate.stat().st_mtime, tz=UTC)
-            except OSError:
-                continue
-            if modified_at >= expire_before:
-                continue
             shutil.rmtree(candidate, ignore_errors=True)
             if not candidate.exists():
                 removed_count += 1
         return removed_count
+
+    def _restore_records(self) -> None:
+        """Restore valid, unexpired records after a process restart."""
+
+        reference_time = datetime.now(UTC)
+        for candidate in self.attachment_root.iterdir():
+            if candidate.is_symlink() or not candidate.is_dir():
+                continue
+            record = self._read_manifest(candidate)
+            if (
+                record is None
+                or record.status != "available"
+                or record.expires_at <= reference_time
+                or self._read_verified_content(record) is None
+            ):
+                shutil.rmtree(candidate, ignore_errors=True)
+                continue
+            self._records[record.reference.attachment_id] = record
+
+    def _read_manifest(self, target_dir: Path) -> _AttachmentRecord | None:
+        try:
+            manifest_path = target_dir / _MANIFEST_FILE_NAME
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict) or target_dir.name != raw.get("attachment_id"):
+                return None
+            reference_data = raw.get("reference")
+            if not isinstance(reference_data, dict):
+                return None
+            reference = AttachmentRef(
+                attachment_id=str(reference_data.get("attachment_id", "")),
+                file_name=str(reference_data.get("file_name", "")),
+                media_type=str(reference_data.get("media_type", "")),
+                size_bytes=reference_data.get("size_bytes"),
+                sha256=str(reference_data.get("sha256", "")),
+                status=str(reference_data.get("status", "available")),
+            )
+            if (
+                reference.attachment_id != target_dir.name
+                or reference.media_type not in self.allowed_media_types
+                or not self._is_safe_file_name(reference.file_name)
+            ):
+                return None
+            owner_subject = raw.get("owner_subject")
+            conversation_id = raw.get("conversation_id")
+            if not isinstance(owner_subject, str):
+                return None
+            if conversation_id is not None and not isinstance(conversation_id, str):
+                return None
+            access_context = AttachmentAccessContext(
+                subject=owner_subject,
+                conversation_id=conversation_id,
+            )
+            expires_at = datetime.fromisoformat(str(raw.get("expires_at", "")))
+            if expires_at.tzinfo is None:
+                return None
+            return _AttachmentRecord(
+                reference=reference,
+                owner_subject=access_context.subject,
+                conversation_id=access_context.conversation_id,
+                expires_at=expires_at.astimezone(UTC),
+                status=str(raw.get("status", "available")),
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+    def _write_manifest(self, record: _AttachmentRecord) -> None:
+        target_dir = self._resolve_attachment_dir(record.reference.attachment_id)
+        manifest_path = target_dir / _MANIFEST_FILE_NAME
+        partial_path = target_dir / f".{record.reference.attachment_id}{_MANIFEST_TEMP_SUFFIX}"
+        data = {
+            "attachment_id": record.reference.attachment_id,
+            "reference": record.reference.public_dict(),
+            "owner_subject": record.owner_subject,
+            "conversation_id": record.conversation_id,
+            "expires_at": record.expires_at.isoformat(),
+            "status": record.status,
+        }
+        with partial_path.open("w", encoding="utf-8") as handle:
+            json.dump(data, handle, ensure_ascii=True, separators=(",", ":"))
+            handle.flush()
+        partial_path.replace(manifest_path)
 
     def _record_for_context(
         self,
@@ -282,7 +367,7 @@ class FilesystemAttachmentStorage(AttachmentStoragePort):
         record = self._records.get(attachment_id)
         if record is None:
             return None
-        if not record.owner_subject or context.subject != record.owner_subject:
+        if context.subject != record.owner_subject:
             return None
         if record.conversation_id is not None and context.conversation_id != record.conversation_id:
             return None
@@ -365,6 +450,11 @@ class FilesystemAttachmentStorage(AttachmentStoragePort):
         if target_dir.parent != self.attachment_root:
             raise ValueError("attachment_id 目录层级无效。")
         return target_dir
+
+    @staticmethod
+    def _is_safe_file_name(file_name: str) -> bool:
+        normalized = Path(file_name).name
+        return bool(normalized) and normalized == file_name and not normalized.startswith(".")
 
 
 AttachmentStorageService = FilesystemAttachmentStorage

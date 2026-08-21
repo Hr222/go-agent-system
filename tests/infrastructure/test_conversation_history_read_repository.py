@@ -22,7 +22,7 @@ def _seed_conversation(harness: SchemaHarness, count: int) -> UUID:
     session = harness.session_local()
     try:
         service = build_conversation_write_service(session)
-        conversation = service.create_conversation()
+        conversation = service.create_conversation(owner_subject="user-1")
         for index in range(count):
             service.append_message(
                 conversation_id=conversation.id,

@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from app.modules.conversation.application import (
     CharacterCountContextMessageCostEstimator,
+    ConversationAccessService,
     ConversationContextBuilder,
     ConversationHistoryReadService,
     ConversationWriteService,
@@ -24,6 +25,7 @@ from app.modules.dialogue.application import (
     DialogueAgentContinuationService,
 )
 from app.modules.llm.contracts import ChatLlmResult
+from app.modules.security.domain.principal import RequestPrincipal
 
 
 def _message(
@@ -62,7 +64,7 @@ class FakeConversationReadPort:
         ]
         page_messages = tuple(candidates[:limit])
         return ConversationHistoryPage(
-            conversation=Conversation(id=conversation_id),
+            conversation=Conversation(id=conversation_id, owner_subject="user-1"),
             messages=page_messages,
             has_more=len(candidates) > limit,
             next_after_sequence=page_messages[-1].sequence
@@ -75,6 +77,7 @@ class FakeConversationWritePort:
     def __init__(self, conversation_id: UUID, messages: list[Message]) -> None:
         self.conversation_id = conversation_id
         self.messages = messages
+        self.access_queries: list[tuple[UUID, str]] = []
 
     def save_conversation(self, conversation: Conversation) -> Conversation:
         return conversation
@@ -96,6 +99,17 @@ class FakeConversationWritePort:
         )
         self.messages.append(message)
         return message
+
+    def get_owned_conversation(
+        self,
+        *,
+        conversation_id: UUID,
+        owner_subject: str,
+    ) -> Conversation | None:
+        self.access_queries.append((conversation_id, owner_subject))
+        if conversation_id != self.conversation_id or owner_subject != "user-1":
+            return None
+        return Conversation(id=conversation_id, owner_subject=owner_subject)
 
 
 class FakeEventReadPort:
@@ -198,6 +212,7 @@ def _harness(
         )
     )
     service = DialogueAgentContinuationService(
+        conversation_access=ConversationAccessService(writer),  # type: ignore[arg-type]
         conversation_read=ConversationHistoryReadService(
             FakeConversationReadPort(conversation_id, writer.messages)
         ),
@@ -213,11 +228,15 @@ def _harness(
     return ContinuationHarness(service, writer, event_reader, llm, conversation_id)
 
 
+def _principal() -> RequestPrincipal:
+    return RequestPrincipal(subject="user-1", authenticated=True)
+
+
 def test_continuation_persists_non_empty_answer_with_ordered_history() -> None:
     harness = _harness()
 
     result = harness.service.execute(
-        DialogueAgentContinuationCommand(harness.conversation_id, "call-1")
+        DialogueAgentContinuationCommand(harness.conversation_id, "call-1", _principal())
     )
 
     assert result.status == "completed"
@@ -238,7 +257,7 @@ def test_continuation_does_not_call_llm_when_agent_result_is_missing() -> None:
     harness = _harness(events=[])
 
     result = harness.service.execute(
-        DialogueAgentContinuationCommand(harness.conversation_id, "call-1")
+        DialogueAgentContinuationCommand(harness.conversation_id, "call-1", _principal())
     )
 
     assert result.status == "unavailable"
@@ -263,7 +282,7 @@ def test_continuation_rejects_sensitive_result_payload_before_calling_llm() -> N
     )
 
     result = harness.service.execute(
-        DialogueAgentContinuationCommand(conversation_id, "call-1")
+        DialogueAgentContinuationCommand(conversation_id, "call-1", _principal())
     )
 
     assert result.status == "unavailable"
@@ -282,7 +301,7 @@ def test_continuation_keeps_events_when_model_response_is_empty() -> None:
     )
 
     result = harness.service.execute(
-        DialogueAgentContinuationCommand(harness.conversation_id, "call-1")
+        DialogueAgentContinuationCommand(harness.conversation_id, "call-1", _principal())
     )
 
     assert result.status == "failed"
@@ -295,7 +314,7 @@ def test_continuation_keeps_events_when_provider_is_unavailable() -> None:
     harness = _harness(llm_result=RuntimeError("provider unavailable"))
 
     result = harness.service.execute(
-        DialogueAgentContinuationCommand(harness.conversation_id, "call-1")
+        DialogueAgentContinuationCommand(harness.conversation_id, "call-1", _principal())
     )
 
     assert result.status == "failed"
@@ -308,10 +327,28 @@ def test_continuation_does_not_call_llm_when_context_budget_is_exceeded() -> Non
     harness = _harness(budget=ContextBudget(max_cost=1))
 
     result = harness.service.execute(
-        DialogueAgentContinuationCommand(harness.conversation_id, "call-1")
+        DialogueAgentContinuationCommand(harness.conversation_id, "call-1", _principal())
     )
 
     assert result.status == "failed"
     assert result.error_code == "CONTINUATION_CONTEXT_BUDGET_EXCEEDED"
+    assert harness.llm.requests == []
+    assert [message.role for message in harness.writer.messages] == [MessageRole.USER]
+
+
+def test_continuation_rejects_another_subject_before_reading_or_calling_llm() -> None:
+    harness = _harness()
+
+    result = harness.service.execute(
+        DialogueAgentContinuationCommand(
+            harness.conversation_id,
+            "call-1",
+            RequestPrincipal(subject="user-2", authenticated=True),
+        )
+    )
+
+    assert result.status == "unavailable"
+    assert result.error_code == "CONVERSATION_ACCESS_DENIED"
+    assert harness.events.calls == []
     assert harness.llm.requests == []
     assert [message.role for message in harness.writer.messages] == [MessageRole.USER]

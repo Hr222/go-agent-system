@@ -27,7 +27,7 @@ def test_repository_creates_and_appends_messages_in_order() -> None:
         session = harness.session_local()
         try:
             service = build_conversation_write_service(session)
-            conversation = service.create_conversation()
+            conversation = service.create_conversation(owner_subject="user-1")
             created_updated_at = conversation.updated_at
 
             first = service.append_message(
@@ -88,7 +88,7 @@ def test_repository_rolls_back_when_flush_fails() -> None:
         session = harness.session_local()
         try:
             service = build_conversation_write_service(session)
-            conversation = service.create_conversation()
+            conversation = service.create_conversation(owner_subject="user-1")
             persisted_before = session.get(ConversationRecord, conversation.id)
             assert persisted_before is not None
             updated_before = persisted_before.updated_at
@@ -132,7 +132,9 @@ def test_concurrent_appends_use_unique_consecutive_sequences() -> None:
     try:
         session = harness.session_local()
         try:
-            conversation = build_conversation_write_service(session).create_conversation()
+            conversation = build_conversation_write_service(session).create_conversation(
+                owner_subject="user-1"
+            )
         finally:
             session.close()
 

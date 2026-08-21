@@ -3,6 +3,8 @@ from functools import lru_cache
 from fastapi import Depends
 
 from app.composition import ApplicationContainer, get_db_session
+from app.modules.conversation.application import ConversationAccessService
+from app.modules.conversation.application import ConversationHistoryReadService
 from app.modules.dialogue.application import (
     InMemoryPendingAgentInvocationStore,
 )
@@ -43,6 +45,22 @@ def get_application_container(
 ) -> ApplicationContainer:
     """为需要数据库能力的请求提供统一装配容器。"""
     return ApplicationContainer(session, attachment_storage=attachment_storage)
+
+
+def get_conversation_access_service(
+    container: ApplicationContainer = Depends(get_application_container),
+) -> ConversationAccessService:
+    """Provide the owner-scoped Conversation admission service for one request."""
+
+    return container.conversation_access()
+
+
+def get_conversation_history_read_service(
+    container: ApplicationContainer = Depends(get_application_container),
+) -> ConversationHistoryReadService:
+    """Provide the Conversation application service for read-only history queries."""
+
+    return container.conversation_history_read()
 
 
 @lru_cache(maxsize=1)

@@ -9,11 +9,18 @@ from app.modules.conversation.domain import Conversation, Message, MessageRole
 
 
 def test_conversation_generates_uuid_and_utc_timestamps() -> None:
-    conversation = Conversation()
+    conversation = Conversation(owner_subject=" user-1 ")
 
     assert isinstance(conversation.id, UUID)
+    assert conversation.owner_subject == "user-1"
     assert conversation.created_at.tzinfo is timezone.utc
     assert conversation.updated_at.tzinfo is timezone.utc
+
+
+@pytest.mark.parametrize("owner_subject", [None, "", "   ", 1])
+def test_conversation_rejects_invalid_owner_subject(owner_subject: object) -> None:
+    with pytest.raises(ValueError, match="归属主体"):
+        Conversation(owner_subject=owner_subject)  # type: ignore[arg-type]
 
 
 def test_message_preserves_valid_fields() -> None:

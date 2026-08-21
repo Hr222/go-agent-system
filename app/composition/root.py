@@ -61,6 +61,9 @@ from app.infrastructure.llm.embedding_client import GiteeEmbeddingClient
 from app.infrastructure.llm.llm_client import LazyRagAnswerGenerator, RagAnswerGenerator
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
 from app.infrastructure.ocr.tencent_ocr import PolicyOcrService
+from app.infrastructure.persistence.repositories.conversation_access_repository import (
+    ConversationAccessRepository,
+)
 from app.infrastructure.persistence.repositories.knowledge_read_repository import (
     KnowledgeReadRepository,
 )
@@ -74,6 +77,10 @@ from app.infrastructure.persistence.session import SessionLocal
 from app.interfaces.agent import FunctionCallingAdapter
 from app.modules.agent.runtime import AgentRuntime
 from app.modules.agent.tender.application.service import TenderApplication
+from app.modules.conversation.application import (
+    ConversationAccessService,
+    ConversationHistoryReadService,
+)
 from app.modules.dialogue.application import (
     AgentResultProjector,
     DialogueAgentContinuationService,
@@ -200,6 +207,8 @@ class ApplicationContainer:
         self._agent_call_dispatcher: AgentCallDispatcher | None = None
         self._dialogue_agent_invocation: DialogueAgentInvocationService | None = None
         self._dialogue_agent_continuation: DialogueAgentContinuationService | None = None
+        self._conversation_access: ConversationAccessService | None = None
+        self._conversation_history_read: ConversationHistoryReadService | None = None
         self._capability_candidate_retrieval: CapabilityCandidateRetrieval | None = None
         self._structured_intent_recognition: StructuredIntentRecognition | None = None
         self._explicit_capability_confirmation: ExplicitCapabilityConfirmation | None = None
@@ -253,6 +262,7 @@ class ApplicationContainer:
             self._agent_call_dispatcher = build_agent_call_dispatcher(
                 self.platform_capability_catalog(),
                 agent_runtime=self.agent_runtime,
+                artifact_storage=self.attachment_storage(),
             )
         return self._agent_call_dispatcher
 
@@ -263,7 +273,7 @@ class ApplicationContainer:
             raise RuntimeError("对话 Agent 调用需要数据库 session，但容器未提供 session。")
         if self._dialogue_agent_invocation is None:
             self._dialogue_agent_invocation = DialogueAgentInvocationService(
-                conversation_read=build_conversation_history_read_service(self.session),
+                conversation_access=self.conversation_access(),
                 conversation_write=build_conversation_write_repository(self.session),
                 event_write=build_conversation_event_repository(self.session),
                 dispatcher=self.agent_call_dispatcher(),
@@ -276,6 +286,7 @@ class ApplicationContainer:
             raise RuntimeError("对话 Agent 续写需要数据库 session，但容器未提供。")
         if self._dialogue_agent_continuation is None:
             self._dialogue_agent_continuation = DialogueAgentContinuationService(
+                conversation_access=self.conversation_access(),
                 conversation_read=build_conversation_history_read_service(self.session),
                 event_read=build_conversation_event_repository(self.session),
                 conversation_write=build_conversation_write_service(self.session),
@@ -283,6 +294,24 @@ class ApplicationContainer:
                 llm=self.chat_application().llm,
             )
         return self._dialogue_agent_continuation
+
+    def conversation_access(self) -> ConversationAccessService:
+        if self.session is None:
+            raise RuntimeError("会话访问需要数据库 session，但容器未提供。")
+        if self._conversation_access is None:
+            self._conversation_access = ConversationAccessService(
+                ConversationAccessRepository(self.session)
+            )
+        return self._conversation_access
+
+    def conversation_history_read(self) -> ConversationHistoryReadService:
+        if self.session is None:
+            raise RuntimeError("会话历史读取需要数据库 session，但容器未提供。")
+        if self._conversation_history_read is None:
+            self._conversation_history_read = build_conversation_history_read_service(
+                self.session
+            )
+        return self._conversation_history_read
 
     def capability_candidate_retrieval(self) -> CapabilityCandidateRetrieval:
         if self._capability_candidate_retrieval is None:
@@ -344,6 +373,7 @@ class ApplicationContainer:
             dialogue_agent_invocation=self.dialogue_agent_invocation(),
             dialogue_agent_continuation=self.dialogue_agent_continuation(),
             pending_agent_invocations=pending_agent_invocations,
+            conversation_access=self.conversation_access(),
         )
 
     def chat_application(self) -> ChatApplication:
