@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { streamInteractionChat } from "../../interaction/api/interactionStreamApi";
 import { respondToIntentProposal } from "../../interaction/api/interactionApi";
+import { uploadAttachment } from "../../attachment/api/attachmentApi";
 import { ChatPage } from "./ChatPage";
 
 vi.mock("../../interaction/api/interactionStreamApi", () => ({
@@ -19,8 +20,18 @@ vi.mock("../../interaction/api/interactionApi", () => ({
   respondToIntentProposal: vi.fn(),
 }));
 
+vi.mock("../../attachment/api/attachmentApi", () => ({
+  AttachmentUploadError: class AttachmentUploadError extends Error {
+    constructor(message: string, readonly retryable: boolean) {
+      super(message);
+    }
+  },
+  uploadAttachment: vi.fn(),
+}));
+
 const streamInteractionChatMock = vi.mocked(streamInteractionChat);
 const respondToIntentProposalMock = vi.mocked(respondToIntentProposal);
+const uploadAttachmentMock = vi.mocked(uploadAttachment);
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -50,6 +61,7 @@ describe("ChatPage interaction stream", () => {
   beforeEach(() => {
     streamInteractionChatMock.mockReset();
     respondToIntentProposalMock.mockReset();
+    uploadAttachmentMock.mockReset();
   });
 
   it("renders ordinary chat from real deltas without an approval card", async () => {
@@ -78,6 +90,94 @@ describe("ChatPage interaction stream", () => {
     );
     expect(screen.queryByText("需要你的批准")).toBeNull();
     expect(respondToIntentProposalMock).not.toHaveBeenCalled();
+  });
+
+  it("sends an uploaded attachment only as source_document", async () => {
+    const attachmentId = "a".repeat(32);
+    uploadAttachmentMock.mockResolvedValue({
+      attachmentId,
+      fileName: "tender.docx",
+      mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      sizeBytes: 4,
+      sha256: "b".repeat(64),
+      status: "available",
+    });
+    streamInteractionChatMock.mockImplementation(async (_input, handlers) => {
+      handlers.onResult?.({
+        status: "needs_clarification",
+        message: "more input needed",
+        errorCode: null,
+      });
+      return "result";
+    });
+
+    const { container } = renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "添加附件" }));
+    const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).not.toBeNull();
+    fireEvent.change(fileInput as HTMLInputElement, {
+      target: {
+        files: [new File(["docx"], "tender.docx", {
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        })],
+      },
+    });
+
+    await screen.findByText("tender.docx");
+    fireEvent.change(screen.getByRole("textbox", { name: "发送消息" }), {
+      target: { value: "create a tender skeleton" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => expect(streamInteractionChatMock).toHaveBeenCalledWith(
+      "create a tender skeleton",
+      expect.objectContaining({ onDelta: expect.any(Function) }),
+      expect.any(AbortSignal),
+      undefined,
+      { source_document: attachmentId },
+    ));
+    await screen.findByLabelText("附件 tender.docx");
+    expect(screen.queryByRole("button", { name: "移除 tender.docx" })).toBeNull();
+    expect(JSON.stringify(streamInteractionChatMock.mock.calls)).not.toContain("tender.docx");
+    expect(JSON.stringify(streamInteractionChatMock.mock.calls)).not.toContain("b".repeat(64));
+  });
+
+  it("blocks sending while an attachment upload is unfinished", async () => {
+    let finishUpload: (value: Awaited<ReturnType<typeof uploadAttachment>>) => void;
+    uploadAttachmentMock.mockImplementation(() => new Promise((resolve) => {
+      finishUpload = resolve;
+    }));
+
+    const { container } = renderPage();
+    fireEvent.change(screen.getByRole("textbox", { name: "发送消息" }), {
+      target: { value: "create a tender skeleton" },
+    });
+    const sendButton = screen.getByRole<HTMLButtonElement>("button", { name: "发送消息" });
+    expect(sendButton.disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "添加附件" }));
+    const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
+    fireEvent.change(fileInput as HTMLInputElement, {
+      target: {
+        files: [new File(["docx"], "tender.docx", {
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        })],
+      },
+    });
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "发送消息" })).toBeNull());
+    expect(streamInteractionChatMock).not.toHaveBeenCalled();
+
+    finishUpload!({
+      attachmentId: "a".repeat(32),
+      fileName: "tender.docx",
+      mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      sizeBytes: 4,
+      sha256: "b".repeat(64),
+      status: "available",
+    });
+    await waitFor(() => expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "发送消息" }).disabled,
+    ).toBe(false));
   });
 
   it("keeps a capability request behind the inline approval card", async () => {

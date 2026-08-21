@@ -25,6 +25,7 @@ export function useInteractionChatStream() {
     userInput: string,
     handlers: InteractionStreamHandlers,
     conversationId?: string,
+    providedInputs: Record<string, unknown> = {},
   ): Promise<InteractionStreamTerminal | undefined> => {
     const controller = new AbortController();
     controllerRef.current = controller;
@@ -37,9 +38,18 @@ export function useInteractionChatStream() {
           handlers.onMeta?.(meta);
         },
       };
-      const terminal = conversationId
-        ? await streamInteractionChat(userInput, streamHandlers, controller.signal, conversationId)
-        : await streamInteractionChat(userInput, streamHandlers, controller.signal);
+      const hasProvidedInputs = Object.keys(providedInputs).length > 0;
+      const terminal = hasProvidedInputs
+        ? await streamInteractionChat(
+          userInput,
+          streamHandlers,
+          controller.signal,
+          conversationId,
+          providedInputs,
+        )
+        : conversationId
+          ? await streamInteractionChat(userInput, streamHandlers, controller.signal, conversationId)
+          : await streamInteractionChat(userInput, streamHandlers, controller.signal);
       setPhase(terminal === "complete" ? "completed" : terminal === "result" ? "result" : "awaiting_approval");
       return terminal;
     } catch (error) {

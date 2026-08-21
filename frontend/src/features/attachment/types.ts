@@ -26,6 +26,7 @@ export type AttachmentPickerProps = {
   accept?: string;
   maxCount?: number;
   disabled?: boolean;
+  layout?: "default" | "composer";
 };
 
 export type AttachmentUploadOptions = {

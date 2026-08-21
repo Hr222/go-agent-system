@@ -70,7 +70,9 @@ class InMemoryCapabilityCandidateIndex:
 class CapabilityCandidateRetrieval:
     """从能力目录构建候选索引并返回有限候选。"""
 
-    DEFAULT_TOP_K = 5
+    # Keep the bounded candidate set large enough to include newly registered
+    # capabilities before the model performs its scoped classification.
+    DEFAULT_TOP_K = 10
     MAX_TOP_K = 50
 
     def __init__(

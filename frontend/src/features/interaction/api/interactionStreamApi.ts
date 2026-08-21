@@ -23,13 +23,14 @@ export async function streamInteractionChat(
   handlers: InteractionStreamHandlers,
   signal: AbortSignal,
   conversationId?: string,
+  providedInputs: Record<string, unknown> = {},
 ): Promise<InteractionStreamTerminal> {
   let terminal: InteractionStreamTerminal | null = null;
 
   try {
     await postSse(`${appConfig.apiBaseUrl}/v1/interaction/chat/stream`, {
       user_input: userInput,
-      provided_inputs: {},
+      provided_inputs: providedInputs,
       ...(conversationId ? { conversation_id: conversationId } : {}),
     }, {
       signal,

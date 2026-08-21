@@ -1,4 +1,7 @@
 .root { display: grid; gap: 8px; }
+.composerRoot { display: contents; }
+.composerRoot .addButton { grid-area: attachment-trigger; align-self: center; }
+.composerRoot .list { grid-area: attachment-list; width: min(100%, 360px); margin-bottom: 7px; }
 .fileInput { display: none; }
 .addButton { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; color: #667992; background: #f5f8fc; border: 1px solid #dce5ef; border-radius: 6px; cursor: pointer; }
 .addButton:hover { color: #315fbe; background: #edf3ff; border-color: #bfd2f5; }

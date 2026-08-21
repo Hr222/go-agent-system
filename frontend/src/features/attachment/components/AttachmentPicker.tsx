@@ -20,6 +20,7 @@ export function AttachmentPicker({
   accept = DEFAULT_ACCEPT,
   maxCount = DEFAULT_MAX_COUNT,
   disabled = false,
+  layout = "default",
 }: AttachmentPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef(value);
@@ -126,7 +127,10 @@ export function AttachmentPicker({
   const hasCapacity = value.length + items.filter((item) => item.status !== "uploaded").length < maxCount;
 
   return (
-    <section className={styles.root} aria-label="附件">
+    <section
+      className={layout === "composer" ? `${styles.root} ${styles.composerRoot}` : styles.root}
+      aria-label="附件"
+    >
       <input
         ref={inputRef}
         className={styles.fileInput}

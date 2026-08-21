@@ -109,7 +109,7 @@ def test_refresh_builds_index_and_returns_sorted_candidates() -> None:
     assert result.candidates[0].retrieval_metadata["aliases"] == ["high"]
 
 
-def test_default_candidate_limit_is_five() -> None:
+def test_default_candidate_limit_covers_registered_capabilities() -> None:
     capabilities = tuple(_capability(f"cap.{index}", "high") for index in range(7))
     service = CapabilityCandidateRetrieval(FakeCatalog(capabilities), FakeEmbedding())
 
@@ -117,7 +117,7 @@ def test_default_candidate_limit_is_five() -> None:
 
     result = service.search("query-high")
 
-    assert len(result.candidates) == 5
+    assert len(result.candidates) == 7
 
 
 def test_threshold_and_empty_catalog_return_no_candidates() -> None:

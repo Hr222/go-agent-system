@@ -1,6 +1,9 @@
 from app.composition import ApplicationContainer
 from app.infrastructure.llm.langchain_glm_adapter import LangChainGlmStructuredLlm
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
+from app.infrastructure.persistence.repositories.conversation_write_repository import (
+    ConversationWriteRepository,
+)
 from app.modules.agent.tender.application.service import TenderApplication
 from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
@@ -99,3 +102,12 @@ def test_application_container_shares_openai_client_factory_with_tender_agent() 
 
     assert isinstance(tender_llm, LangChainGlmStructuredLlm)
     assert tender_llm._chat_model.root_client is factory.create_client()
+
+
+def test_application_container_uses_conversation_port_for_dialogue_agent_invocation() -> None:
+    container = ApplicationContainer(session=object())
+    container.agent_call_dispatcher = lambda: object()  # type: ignore[method-assign]
+
+    invocation = container.dialogue_agent_invocation()
+
+    assert isinstance(invocation._conversation_write, ConversationWriteRepository)

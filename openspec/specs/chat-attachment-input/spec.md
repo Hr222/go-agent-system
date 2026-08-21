@@ -1,0 +1,33 @@
+# chat-attachment-input Specification
+
+## Purpose
+TBD - created by archiving change chat-attachment-input. Update Purpose after archive.
+## Requirements
+### Requirement: 聊天页提供单个受控附件输入
+
+聊天页 MUST 提供可操作的“添加附件”控件，并复用通用附件上传能力选择、上传、展示、重试和移除单个附件。该控件 MUST 在上传、流式回复和待确认操作期间禁用不安全的交互。
+
+#### Scenario: 选择并完成上传
+- **WHEN** 用户在聊天页点击“添加附件”并选择一个允许上传的文件
+- **THEN** 浏览器打开文件选择器，页面显示上传状态和进度
+- **AND** 上传成功后，页面显示文件的安全元数据并允许移除
+
+#### Scenario: 上传尚未完成
+- **WHEN** 附件处于选择、上传或失败状态
+- **THEN** 页面不得将该附件作为聊天请求输入发送
+- **AND** 用户可以重试失败的上传或移除该附件
+
+### Requirement: 聊天请求只传递安全附件引用
+
+当聊天页持有一个上传完成的附件时，前端 MUST 将其 `attachment_id` 作为 `provided_inputs.source_document` 传递给现有对话流接口。前端不得将文件二进制内容、Base64、存储路径、能力代码、分发目标或上传响应中的其他字段写入该请求。
+
+#### Scenario: 已上传附件随聊天请求提交
+- **WHEN** 用户发送文本并且单个附件已经上传完成
+- **THEN** 对话流请求包含该附件的 `attachment_id` 作为 `provided_inputs.source_document`
+- **AND** 服务端继续负责意图识别、附件约束校验、权限过滤和显式确认
+
+#### Scenario: 纯文本聊天保持兼容
+- **WHEN** 用户不选择附件而发送文本
+- **THEN** 对话流请求继续使用空的 `provided_inputs`
+- **AND** 现有流式回复和确认卡行为不变
+

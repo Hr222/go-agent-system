@@ -33,6 +33,28 @@ describe("streamInteractionChat", () => {
     );
   });
 
+  it("sends only an opaque attachment identifier in provided inputs", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(responseFor([
+      "event: result\ndata: {\"status\":\"needs_clarification\",\"message\":\"more input needed\"}\n\n",
+    ])));
+    const attachmentId = "a".repeat(32);
+
+    const terminal = await streamInteractionChat("create a tender skeleton", {}, new AbortController().signal, undefined, {
+      source_document: attachmentId,
+    });
+
+    expect(terminal).toBe("result");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/interaction/chat/stream"),
+      expect.objectContaining({
+        body: JSON.stringify({
+          user_input: "create a tender skeleton",
+          provided_inputs: { source_document: attachmentId },
+        }),
+      }),
+    );
+  });
+
   it("parses an approval event without exposing an internal dispatch target", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(responseFor([
       "event: approval_required\ndata: {\"proposal_id\":\"p1\",\"state\":\"pending\",\"summary\":\"生成投标骨架\",\"confirmation_prompt\":\"批准后才会执行。\",\"conversation_id\":\"2cd6e871-e36a-40ca-9237-68bdfca55099\"}\n\n",

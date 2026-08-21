@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID, uuid4
 
-from app.modules.conversation.domain import Conversation, ConversationEvent
+from app.modules.conversation.domain import Conversation, ConversationEvent, MessageRole
 from app.modules.conversation.errors import ConversationNotFoundError
 from app.modules.conversation.ports import (
     ConversationEventWritePort,
@@ -79,7 +79,7 @@ class DialogueAgentInvocationService:
         if command.user_input is not None:
             self._conversation_write.append_message(
                 conversation_id=conversation_id,
-                role="user",
+                role=MessageRole.USER,
                 content=command.user_input,
             )
         dispatched = self._dispatcher.dispatch(
@@ -112,7 +112,7 @@ class DialogueAgentInvocationService:
         if command.user_input is not None:
             self._conversation_write.append_message(
                 conversation_id=conversation_id,
-                role="user",
+                role=MessageRole.USER,
                 content=command.user_input,
             )
         self._append_event(

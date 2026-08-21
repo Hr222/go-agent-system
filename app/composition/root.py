@@ -11,6 +11,7 @@ from app.composition.conversation import (
     build_conversation_context_builder,
     build_conversation_event_repository,
     build_conversation_history_read_service,
+    build_conversation_write_repository,
     build_conversation_write_service,
 )
 from app.composition.ingestion import (
@@ -139,6 +140,7 @@ class ApplicationContainer:
         self,
         session: Session | None = None,
         *,
+        attachment_storage: FilesystemAttachmentStorage | None = None,
         scenario_registry: ChecklistScenarioRegistry | None = None,
         checklist_policy: RuleDrivenChecklistPolicy | None = None,
         data_provider_registry: ChecklistDataProviderRegistry | None = None,
@@ -183,7 +185,7 @@ class ApplicationContainer:
         self._retry_ingestion_use_case: RetryIngestionUseCase | None = None
         self._ask_knowledge_use_case: AskKnowledgeUseCase | None = None
         self._policy_upload_service: PolicyUploadService | None = None
-        self._attachment_storage: FilesystemAttachmentStorage | None = None
+        self._attachment_storage = attachment_storage
         self._policy_ingestion_service: PolicyIngestionService | None = None
         self._policy_candidate_scan_use_case: PolicyCandidateScanUseCase | None = None
         self._knowledge_base_service: KnowledgeBaseService | None = None
@@ -262,7 +264,7 @@ class ApplicationContainer:
         if self._dialogue_agent_invocation is None:
             self._dialogue_agent_invocation = DialogueAgentInvocationService(
                 conversation_read=build_conversation_history_read_service(self.session),
-                conversation_write=build_conversation_write_service(self.session),
+                conversation_write=build_conversation_write_repository(self.session),
                 event_write=build_conversation_event_repository(self.session),
                 dispatcher=self.agent_call_dispatcher(),
                 projector=AgentResultProjector(),

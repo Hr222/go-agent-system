@@ -4,10 +4,10 @@ import {
   Bot,
   Check,
   Clipboard,
+  FileText,
   LoaderCircle,
   MessageSquare,
   MoreHorizontal,
-  Paperclip,
   Plus,
   RotateCcw,
   Search,
@@ -26,6 +26,8 @@ import type {
   InteractionGatewayResult,
   InteractionStreamApproval,
 } from "../../interaction/types";
+import { AttachmentPicker } from "../../attachment/components/AttachmentPicker";
+import type { AttachmentRef, AttachmentUploadItem } from "../../attachment/types";
 import { useDeltaRenderQueue } from "../hooks/useDeltaRenderQueue";
 import styles from "./ChatPage.module.css";
 
@@ -43,12 +45,16 @@ type ChatMessageStatus =
   | "rejected"
   | "failed";
 
+type ChatAttachmentSummary = Pick<AttachmentRef, "fileName" | "mediaType" | "sizeBytes">;
+
 type ChatMessage = {
   id: string;
   role: ChatRole;
   content: string;
   timestamp: string;
   request?: string;
+  providedInputs?: Record<string, unknown>;
+  attachmentSummaries?: readonly ChatAttachmentSummary[];
   approval?: InteractionStreamApproval;
   agentResult?: Record<string, unknown>;
   status?: ChatMessageStatus;
@@ -66,6 +72,9 @@ export function ChatPage() {
   const [activeConversation, setActiveConversation] = useState("new-conversation");
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [inputValue, setInputValue] = useState("");
+  const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
+  const [attachmentItems, setAttachmentItems] = useState<readonly AttachmentUploadItem[]>([]);
+  const [attachmentPickerKey, setAttachmentPickerKey] = useState(0);
   const interactionStream = useInteractionChatStream();
   const proposalResponse = useIntentProposalResponse();
   const deltaRenderer = useDeltaRenderQueue();
@@ -73,7 +82,16 @@ export function ChatPage() {
   const messageStreamRef = useRef<HTMLDivElement>(null);
   const hasPendingApproval = messages.some((message) => message.status === "awaiting_confirmation");
   const isStreaming = interactionStream.isActive || deltaRenderer.isRendering;
-  const isComposerBusy = isStreaming || proposalResponse.isPending || hasPendingApproval;
+  const hasAttachmentUploadInProgress = attachmentItems.some(
+    (item) => item.status === "selected" || item.status === "uploading",
+  );
+  const hasFailedAttachmentUpload = attachmentItems.some((item) => item.status === "failed");
+  const isInteractionBusy = isStreaming || proposalResponse.isPending || hasPendingApproval;
+  const isComposerBusy = isInteractionBusy || hasAttachmentUploadInProgress || hasFailedAttachmentUpload;
+  const isAttachmentInteractionDisabled = isInteractionBusy || hasAttachmentUploadInProgress;
+  const attachmentConversationId = activeConversation === "new-conversation"
+    ? undefined
+    : activeConversation;
 
   useEffect(() => {
     const stream = messageStreamRef.current;
@@ -107,6 +125,7 @@ export function ChatPage() {
     setActiveConversation("new-conversation");
     setMessages([]);
     setInputValue("");
+    resetAttachments();
   };
 
   const handleConversationSelect = (conversationId: string) => {
@@ -114,28 +133,51 @@ export function ChatPage() {
     setActiveConversation(conversationId);
     setMessages(conversationId === "tender-response" ? initialMessages : []);
     setInputValue("");
+    resetAttachments();
   };
 
-  const handleSend = async (suggestion?: string) => {
+  const resetAttachments = () => {
+    setAttachments([]);
+    setAttachmentItems([]);
+    setAttachmentPickerKey((current) => current + 1);
+  };
+
+  const handleSend = async (
+    suggestion?: string,
+    providedInputsOverride?: Record<string, unknown>,
+    attachmentSummariesOverride?: readonly ChatAttachmentSummary[],
+  ) => {
     const content = (suggestion ?? inputValue).trim();
     if (!content || isComposerBusy) return;
 
     const requestId = Date.now().toString();
     const now = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
     const assistantId = "assistant-" + requestId;
+    const isRetry = providedInputsOverride !== undefined;
+    const providedInputs = providedInputsOverride ?? chatProvidedInputs(attachments);
+    const attachmentSummaries = attachmentSummariesOverride ?? attachmentSummariesFor(attachments);
     setMessages((current) => [
       ...current,
-      { id: "user-" + requestId, role: "user", content, timestamp: "今天 " + now },
+      {
+        id: "user-" + requestId,
+        role: "user",
+        content,
+        timestamp: "今天 " + now,
+        attachmentSummaries,
+      },
       {
         id: assistantId,
         role: "assistant",
         content: "",
         timestamp: "今天 " + now,
         request: content,
+        providedInputs,
+        attachmentSummaries,
         status: "connecting",
       },
     ]);
     setInputValue("");
+    if (!isRetry) resetAttachments();
     deltaRenderer.start((delta) => {
       updateAssistant(assistantId, (message) => ({
         ...message,
@@ -171,7 +213,7 @@ export function ChatPage() {
             content: result.message || "请求已处理。",
           }));
         },
-      }, activeConversation === "new-conversation" ? undefined : activeConversation);
+      }, attachmentConversationId, providedInputs);
       if (terminal === undefined) {
         settleAssistant(assistantId, "cancelled", "已取消本次回答。");
       }
@@ -290,7 +332,11 @@ export function ChatPage() {
               isProposalResponding={proposalResponse.isPending}
               onCopy={handleCopy}
               onProposalResponse={handleProposalResponse}
-              onRetry={() => handleSend(message.request ?? message.content)}
+              onRetry={() => handleSend(
+                message.request ?? message.content,
+                message.providedInputs,
+                message.attachmentSummaries,
+              )}
             />
           ))}
         </div>
@@ -304,6 +350,16 @@ export function ChatPage() {
             ))}
           </div>
           <div className={styles.composer}>
+            <AttachmentPicker
+              key={attachmentPickerKey}
+              value={attachments}
+              onChange={setAttachments}
+              onUploadStateChange={setAttachmentItems}
+              conversationId={attachmentConversationId}
+              maxCount={1}
+              disabled={isAttachmentInteractionDisabled}
+              layout="composer"
+            />
             <textarea
               aria-label="发送消息"
               value={inputValue}
@@ -316,19 +372,18 @@ export function ChatPage() {
               }}
               placeholder="输入你想了解的内容…"
               rows={2}
-              disabled={isComposerBusy}
+              disabled={isInteractionBusy}
             />
             <div className={styles.composerToolbar}>
               <div className={styles.composerTools}>
-                <button type="button" title="添加附件" aria-label="添加附件" disabled={isComposerBusy}><Paperclip size={16} /></button>
-                <button type="button" title="添加工作流" aria-label="添加工作流" disabled={isComposerBusy}><Workflow size={16} /></button>
+                <button className={styles.workflowButton} type="button" title="添加工作流" aria-label="添加工作流" disabled={isComposerBusy}><Workflow size={16} /></button>
               </div>
               {isStreaming ? (
                 <button className={styles.cancelButton} type="button" onClick={handleCancelStream}>取消生成</button>
-              ) : isComposerBusy ? (
+              ) : isInteractionBusy || hasAttachmentUploadInProgress ? (
                 <span className={styles.processingLabel}><LoaderCircle size={14} /> 处理中</span>
               ) : (
-                <button className={styles.sendButton} type="button" title="发送消息" aria-label="发送消息" onClick={() => void handleSend()} disabled={!inputValue.trim()}>
+                <button className={styles.sendButton} type="button" title="发送消息" aria-label="发送消息" onClick={() => void handleSend()} disabled={!inputValue.trim() || isComposerBusy}>
                   <Send size={16} />
                 </button>
               )}
@@ -354,7 +409,25 @@ function MessageBubble({
   onRetry: () => void;
 }) {
   if (message.role === "user") {
-    return <div className={styles.userMessageRow}><div className={styles.userMessage}><p>{message.content}</p><small>{message.timestamp}</small></div></div>;
+    return (
+      <div className={styles.userMessageRow}>
+        <div className={styles.userMessage}>
+          <p>{message.content}</p>
+          {message.attachmentSummaries?.map((attachment) => (
+            <div
+              className={styles.userAttachment}
+              key={`${attachment.fileName}-${attachment.sizeBytes}`}
+              aria-label={`附件 ${attachment.fileName}`}
+            >
+              <FileText size={14} aria-hidden="true" />
+              <span>{attachment.fileName}</span>
+              <small>{attachment.mediaType} · {formatAttachmentSize(attachment.sizeBytes)}</small>
+            </div>
+          ))}
+          <small>{message.timestamp}</small>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -422,6 +495,21 @@ function applyConfirmationResult(message: ChatMessage, result: InteractionGatewa
       : undefined,
     agentResult: agentResult ?? undefined,
   };
+}
+
+function chatProvidedInputs(attachments: readonly AttachmentRef[]): Record<string, unknown> {
+  const attachment = attachments[0];
+  return attachment ? { source_document: attachment.attachmentId } : {};
+}
+
+function attachmentSummariesFor(attachments: readonly AttachmentRef[]): ChatAttachmentSummary[] {
+  return attachments.map(({ fileName, mediaType, sizeBytes }) => ({ fileName, mediaType, sizeBytes }));
+}
+
+function formatAttachmentSize(sizeBytes: number): string {
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${Math.ceil(sizeBytes / 1024)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function AgentResultSummary({ result }: { result: Record<string, unknown> }) {

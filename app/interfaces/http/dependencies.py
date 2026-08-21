@@ -24,11 +24,25 @@ from app.modules.online.application.policy_decision import PolicyDecisionApplica
 from app.shared.config import settings
 
 
+@lru_cache(maxsize=1)
+def get_stateless_application_container() -> ApplicationContainer:
+    """Provide one process-wide container for stateless capabilities."""
+    return ApplicationContainer()
+
+
+def get_attachment_storage(
+    container: ApplicationContainer = Depends(get_stateless_application_container),
+):
+    """Provide the process-wide attachment staging service."""
+    return container.attachment_storage()
+
+
 def get_application_container(
     session=Depends(get_db_session),  # noqa: ANN001
+    attachment_storage=Depends(get_attachment_storage),  # noqa: ANN001
 ) -> ApplicationContainer:
     """为需要数据库能力的请求提供统一装配容器。"""
-    return ApplicationContainer(session)
+    return ApplicationContainer(session, attachment_storage=attachment_storage)
 
 
 @lru_cache(maxsize=1)
@@ -68,7 +82,7 @@ def get_interaction_chat_stream_application(
 
 
 @lru_cache(maxsize=1)
-def get_stateless_application_container() -> ApplicationContainer:
+def get_stateless_application_container_legacy() -> ApplicationContainer:
     """为纯内存或文件系统能力提供无会话容器。"""
     return ApplicationContainer()
 
@@ -122,8 +136,8 @@ def get_policy_upload_service(
     return container.policy_upload_service()
 
 
-def get_attachment_storage(
-    container: ApplicationContainer = Depends(get_stateless_application_container),
+def get_attachment_storage_legacy(
+    container: ApplicationContainer = Depends(get_stateless_application_container_legacy),
 ):
     """提供通用附件暂存服务。"""
     return container.attachment_storage()
