@@ -76,10 +76,10 @@ TBD - created by archiving change conversation-message-write. Update Purpose aft
 
 ### Requirement: Conversation 写入不新增独立外部接口
 
-本能力 MUST 通过模块应用服务和端口提供，不得新增 Conversation HTTP 路由、前端调用、LLM 调用或 Agent 调用。
+消息追加能力 MUST 通过模块应用服务和 Port 提供，不得新增独立的 Message 写入 HTTP、前端、LLM 或 Agent 调用。系统可以通过受主体范围保护的 `POST /api/v1/conversations` 创建空 Conversation；该接口不得追加 Message、调用 LLM 或 Agent。
 
 #### Scenario: 部署写入能力后访问统一对话入口
 
-- **WHEN** 仅部署 Conversation 写入能力并访问 `/api/v1/interaction/chat/stream`
+- **WHEN** 部署 Conversation 写入和受主体范围保护的创建接口，并访问 `/api/v1/interaction/chat/stream`
 - **THEN** 统一入口仍负责请求识别和确认策略
-- **AND** 本能力不新增独立 Conversation HTTP 路由
+- **AND** 系统不新增独立的 Message 写入 HTTP 路由
