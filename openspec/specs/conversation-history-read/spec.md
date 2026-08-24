@@ -53,7 +53,7 @@ TBD - created by archiving change conversation-history-read. Update Purpose afte
 
 ### Requirement: 历史读取保持只读和模块边界
 
-历史读取 MUST 只通过 Conversation 读取应用服务和 Port 查询，不得修改 Conversation/Message，不得新增 HTTP、前端、LLM 或 Agent 调用。
+历史读取 MUST 只通过 Conversation 读取应用服务和 Port 查询，不得修改 Conversation/Message 或调用 LLM、Agent。系统可以在 Conversation Access 主体校验通过后，通过专用 HTTP 查询适配器向浏览器返回消息历史页；该适配器不得绕过应用服务或把 HTTP Schema 传入 Domain。
 
 #### Scenario: 历史读取期间追加新消息
 
@@ -64,6 +64,6 @@ TBD - created by archiving change conversation-history-read. Update Purpose afte
 
 #### Scenario: 部署读取能力后访问统一对话入口
 
-- **WHEN** 仅部署 Conversation 历史读取能力并访问 `/api/v1/interaction/chat/stream`
+- **WHEN** 部署 Conversation 历史读取能力及受主体保护的只读历史 HTTP 适配器，并访问 `/api/v1/interaction/chat/stream`
 - **THEN** 统一入口的识别、授权和确认边界 MUST 保持不变
-- **AND** 系统 MUST 不新增 Conversation HTTP 路由
+- **AND** 历史查询适配器 MUST 不改变统一入口行为
