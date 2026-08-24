@@ -7,10 +7,6 @@ from time import monotonic
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4
 
-from app.modules.conversation.application import (
-    ConversationAccessService,
-    ConversationResolveQuery,
-)
 from app.modules.conversation.errors import ConversationAccessDeniedError
 from app.modules.interaction.application.gateway import (
     DirectCapabilityExecution,
@@ -19,9 +15,6 @@ from app.modules.interaction.application.gateway import (
     GatewayResult,
     IntentInteractionGateway,
 )
-from app.modules.llm.application.chat import ChatCommand
-from app.modules.llm.application.streaming_chat import StreamingChatApplication
-from app.modules.llm.contracts import ChatLlmStreamChunk
 from app.modules.security.domain.principal import RequestPrincipal
 from app.shared.config import settings
 
@@ -30,6 +23,8 @@ if TYPE_CHECKING:
         DialogueAgentContinuationService,
         DialogueAgentInvocationService,
         InMemoryPendingAgentInvocationStore,
+        StreamingConversationEvent,
+        StreamingConversationRuntime,
     )
 
 InteractionStreamEventName = Literal[
@@ -65,6 +60,8 @@ class InteractionStreamPreparation:
     kind: Literal["chat", "single_event"]
     event: InteractionStreamEvent | None = None
     direct_execution: DirectCapabilityExecution | None = None
+    principal: RequestPrincipal | None = None
+    conversation_id: UUID | None = None
 
 
 class InteractionChatStreamApplication:
@@ -73,18 +70,16 @@ class InteractionChatStreamApplication:
     def __init__(
         self,
         gateway: IntentInteractionGateway,
-        streaming_chat: StreamingChatApplication,
+        streaming_conversation: StreamingConversationRuntime,
         dialogue_agent_invocation: DialogueAgentInvocationService | None = None,
         dialogue_agent_continuation: DialogueAgentContinuationService | None = None,
         pending_agent_invocations: InMemoryPendingAgentInvocationStore | None = None,
-        conversation_access: ConversationAccessService | None = None,
     ) -> None:
         self._gateway = gateway
-        self._streaming_chat = streaming_chat
+        self._streaming_conversation = streaming_conversation
         self._dialogue_agent_invocation = dialogue_agent_invocation
         self._dialogue_agent_continuation = dialogue_agent_continuation
         self._pending_agent_invocations = pending_agent_invocations
-        self._conversation_access = conversation_access
 
     def prepare(
         self,
@@ -93,13 +88,6 @@ class InteractionChatStreamApplication:
         """Complete routing before model execution or an SSE response begins."""
 
         try:
-            if command.conversation_id is not None and self._conversation_access is not None:
-                self._conversation_access.resolve(
-                    ConversationResolveQuery(
-                        principal=command.principal,
-                        conversation_id=command.conversation_id,
-                    )
-                )
             result = self._gateway.recognize(
                 GatewayRecognitionCommand(
                     user_input=command.user_input,
@@ -131,6 +119,8 @@ class InteractionChatStreamApplication:
         return InteractionStreamPreparation(
             kind="chat",
             direct_execution=direct_execution,
+            principal=command.principal,
+            conversation_id=command.conversation_id,
         )
 
     def confirm_agent(
@@ -333,13 +323,30 @@ class InteractionChatStreamApplication:
 
         message = direct_execution.inputs["message"]
         assert isinstance(message, str)
-        stream: AsyncIterator[ChatLlmStreamChunk] | None = None
+        # Delay Dialogue imports until the package graph has finished loading:
+        # Dialogue Agent services depend on Interaction dispatch contracts.
+        from app.modules.dialogue.application import (
+            StreamingConversationCommand,
+            StreamingConversationPersistenceError,
+        )
+
+        stream: AsyncIterator[StreamingConversationEvent] | None = None
         try:
-            stream = await self._streaming_chat.execute(ChatCommand(message=message))
-            first_chunk = await asyncio.wait_for(
+            if preparation.principal is None:
+                raise ValueError("请求主体无效。")
+            stream = await self._streaming_conversation.execute(
+                StreamingConversationCommand(
+                    principal=preparation.principal,
+                    message=message,
+                    conversation_id=preparation.conversation_id,
+                )
+            )
+            conversation_id, first_event = await asyncio.wait_for(
                 _prime_stream(stream),
                 timeout=settings.llm_stream_first_token_timeout_seconds,
             )
+            assert first_event.chunk is not None
+            first_chunk = first_event.chunk
         except asyncio.TimeoutError:
             if stream is not None:
                 await _close_stream(stream)
@@ -349,6 +356,16 @@ class InteractionChatStreamApplication:
             if stream is not None:
                 await _close_stream(stream)
             yield _error_event("CHAT_INPUT_INVALID", "请求内容无效。", retryable=False)
+            return
+        except ConversationAccessDeniedError:
+            if stream is not None:
+                await _close_stream(stream)
+            yield _error_event("CONVERSATION_ACCESS_DENIED", "会话不可用。")
+            return
+        except StreamingConversationPersistenceError:
+            if stream is not None:
+                await _close_stream(stream)
+            yield _error_event("CONVERSATION_PERSISTENCE_ERROR", "对话暂时无法保存。")
             return
         except Exception:  # noqa: BLE001 - never expose provider internals
             if stream is not None:
@@ -365,38 +382,51 @@ class InteractionChatStreamApplication:
                 "meta",
                 {
                     "request_id": request_id,
+                    "conversation_id": str(conversation_id),
                     "model": model,
                     "prompt_version": prompt_version,
                 },
             )
-            async for chunk in _stream_with_heartbeats(
+            completed_result = None
+            async for event in _stream_with_heartbeats(
                 stream,
-                first_chunk,
+                first_event,
                 is_disconnected=is_disconnected,
             ):
                 if await is_disconnected():
                     return
-                if chunk is None:
+                if event is None:
                     yield InteractionStreamEvent("heartbeat", {"request_id": request_id})
                     continue
-                latest = chunk
-                if chunk.content:
+                if event.kind == "completed":
+                    completed_result = event.result
+                    continue
+                if event.kind != "delta" or event.chunk is None:
+                    continue
+                latest = event.chunk
+                if event.chunk.content:
                     yield InteractionStreamEvent(
                         "delta",
-                        {"request_id": request_id, "content": chunk.content},
+                        {"request_id": request_id, "content": event.chunk.content},
                     )
             if await is_disconnected():
                 return
+            if completed_result is None:
+                raise RuntimeError("流式 Conversation 未正常完成。")
             yield InteractionStreamEvent(
                 "complete",
                 {
                     "request_id": request_id,
-                    "model": latest.model or model,
-                    "prompt_version": latest.prompt_version or prompt_version,
+                    "model": completed_result.model or latest.model or model,
+                    "prompt_version": (
+                        completed_result.prompt_version
+                        or latest.prompt_version
+                        or prompt_version
+                    ),
                     "usage": {
-                        "input_tokens": latest.input_tokens,
-                        "output_tokens": latest.output_tokens,
-                        "total_tokens": latest.total_tokens,
+                        "input_tokens": completed_result.input_tokens,
+                        "output_tokens": completed_result.output_tokens,
+                        "total_tokens": completed_result.total_tokens,
                     },
                 },
             )
@@ -404,6 +434,8 @@ class InteractionChatStreamApplication:
             raise
         except asyncio.TimeoutError:
             yield _error_event("UPSTREAM_TIMEOUT", "上游模型响应超时。")
+        except StreamingConversationPersistenceError:
+            yield _error_event("CONVERSATION_PERSISTENCE_ERROR", "对话暂时无法保存。")
         except Exception:  # noqa: BLE001 - never expose provider internals
             yield _error_event("UPSTREAM_STREAM_ERROR", "模型生成过程中发生错误。")
         finally:
@@ -483,12 +515,18 @@ def _error_event(
 
 
 async def _prime_stream(
-    stream: AsyncIterator[ChatLlmStreamChunk],
-) -> ChatLlmStreamChunk:
+    stream: AsyncIterator[StreamingConversationEvent],
+) -> tuple[UUID, StreamingConversationEvent]:
+    conversation_id: UUID | None = None
     try:
-        async for chunk in stream:
-            if chunk.content.strip():
-                return chunk
+        async for event in stream:
+            if event.kind == "started":
+                conversation_id = event.conversation_id
+                continue
+            if event.kind == "delta" and event.chunk is not None and event.chunk.content.strip():
+                if conversation_id is None:
+                    raise RuntimeError("流式 Conversation 缺少会话标识。")
+                return conversation_id, event
     except Exception:
         await _close_stream(stream)
         raise
@@ -498,15 +536,15 @@ async def _prime_stream(
 
 
 async def _stream_with_heartbeats(
-    stream: AsyncIterator[ChatLlmStreamChunk],
-    first_chunk: ChatLlmStreamChunk,
+    stream: AsyncIterator[StreamingConversationEvent],
+    first_event: StreamingConversationEvent,
     *,
     is_disconnected: DisconnectChecker,
-) -> AsyncIterator[ChatLlmStreamChunk | None]:
-    yield first_chunk
+) -> AsyncIterator[StreamingConversationEvent | None]:
+    yield first_event
     deadline = monotonic() + settings.llm_stream_total_timeout_seconds
     last_chunk_at = monotonic()
-    next_chunk = asyncio.create_task(anext(stream))
+    next_event = asyncio.create_task(anext(stream))
     try:
         while True:
             now = monotonic()
@@ -517,26 +555,30 @@ async def _stream_with_heartbeats(
             )
             if remaining <= 0:
                 raise asyncio.TimeoutError
-            done, _ = await asyncio.wait({next_chunk}, timeout=remaining)
+            done, _ = await asyncio.wait({next_event}, timeout=remaining)
             if not done:
                 if await is_disconnected():
                     return
                 yield None
                 continue
             try:
-                chunk = next_chunk.result()
+                event = next_event.result()
             except StopAsyncIteration:
                 return
             last_chunk_at = monotonic()
-            yield chunk
-            next_chunk = asyncio.create_task(anext(stream))
+            yield event
+            if event.kind == "completed":
+                return
+            next_event = asyncio.create_task(anext(stream))
     finally:
-        if not next_chunk.done():
-            next_chunk.cancel()
-            await asyncio.gather(next_chunk, return_exceptions=True)
+        if not next_event.done():
+            next_event.cancel()
+            await asyncio.gather(next_event, return_exceptions=True)
 
 
-async def _close_stream(stream: AsyncIterator[ChatLlmStreamChunk]) -> None:
+async def _close_stream(stream: AsyncIterator[object] | None) -> None:
+    if stream is None:
+        return
     close = getattr(stream, "aclose", None)
     if close is not None:
         await close()

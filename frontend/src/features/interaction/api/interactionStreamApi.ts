@@ -59,6 +59,7 @@ function handleEvent(
   if (event.event === "meta") {
     handlers.onMeta?.({
       requestId: stringValue(event.data.request_id),
+      conversationId: stringValue(event.data.conversation_id),
       model: stringValue(event.data.model),
       promptVersion: stringValue(event.data.prompt_version),
     });

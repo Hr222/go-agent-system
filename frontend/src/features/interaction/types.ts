@@ -23,11 +23,15 @@ export type InteractionStreamResult = {
 
 export type InteractionStreamMeta = {
   requestId: string;
+  conversationId: string;
   model: string;
   promptVersion: string;
 };
 
-export type InteractionStreamComplete = InteractionStreamMeta & {
+export type InteractionStreamComplete = {
+  requestId: string;
+  model: string;
+  promptVersion: string;
   usage: {
     input_tokens?: number | null;
     output_tokens?: number | null;

@@ -1,6 +1,7 @@
 """Composition root for bounded intent recognition and confirmation."""
 
-from typing import Any
+from collections.abc import AsyncIterator
+from typing import Protocol
 
 from app.modules.attachment.ports.read_port import AttachmentReadPort
 from app.modules.dialogue.application import (
@@ -25,8 +26,11 @@ from app.modules.interaction.application.gateway import (
 from app.modules.interaction.application.intent_recognition import StructuredIntentRecognition
 from app.modules.interaction.ports.capability_catalog import CapabilityCatalogPort
 from app.modules.interaction.ports.proposal_store import PendingProposalStorePort
-from app.modules.llm.application.streaming_chat import StreamingChatApplication
 from app.modules.llm.contracts import StructuredLlmPort
+
+
+class StreamingRuntime(Protocol):
+    async def execute(self, command: object) -> AsyncIterator[object]: ...
 
 
 def build_structured_intent_recognition(
@@ -64,17 +68,15 @@ def build_intent_interaction_gateway(
 
 def build_interaction_chat_stream_application(
     gateway: IntentInteractionGateway,
-    streaming_chat: StreamingChatApplication,
+    streaming_conversation: StreamingRuntime,
     dialogue_agent_invocation: DialogueAgentInvocationService | None = None,
     dialogue_agent_continuation: DialogueAgentContinuationService | None = None,
     pending_agent_invocations: InMemoryPendingAgentInvocationStore | None = None,
-    conversation_access: Any | None = None,
 ) -> InteractionChatStreamApplication:
     return InteractionChatStreamApplication(
         gateway,
-        streaming_chat,
+        streaming_conversation,
         dialogue_agent_invocation=dialogue_agent_invocation,
         dialogue_agent_continuation=dialogue_agent_continuation,
         pending_agent_invocations=pending_agent_invocations,
-        conversation_access=conversation_access,
     )

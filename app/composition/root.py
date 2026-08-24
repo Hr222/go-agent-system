@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.composition.agent import build_tender_application, build_tender_structured_llm
 from app.composition.attachment import build_attachment_storage
 from app.composition.conversation import (
+    build_conversation_access_service,
     build_conversation_context_builder,
     build_conversation_event_repository,
     build_conversation_history_read_service,
@@ -15,7 +16,9 @@ from app.composition.conversation import (
     build_conversation_management_service,
     build_conversation_write_repository,
     build_conversation_write_service,
+    build_conversation_topic_summary_update_service,
 )
+from app.composition.dialogue import build_streaming_conversation_runtime
 from app.composition.ingestion import (
     build_ingestion_service,
     build_ingestion_use_case,
@@ -181,6 +184,7 @@ class ApplicationContainer:
         self._chat_application: ChatApplication | None = None
         self._streaming_chat_llm = streaming_chat_llm
         self._streaming_chat_application: StreamingChatApplication | None = None
+        self._streaming_conversation_runtime: StreamingConversationRuntime | None = None
         self._openai_client_factory = openai_client_factory
         self._persistence_gateway: PolicyPersistenceGateway | None = None
         self._write_repository: KnowledgeWriteRepository | None = None
@@ -283,6 +287,7 @@ class ApplicationContainer:
             self._dialogue_agent_invocation = DialogueAgentInvocationService(
                 conversation_access=self.conversation_access(),
                 conversation_write=build_conversation_write_repository(self.session),
+                topic_summary_writer=build_conversation_write_service(self.session),
                 event_write=build_conversation_event_repository(self.session),
                 dispatcher=self.agent_call_dispatcher(),
                 projector=AgentResultProjector(),
@@ -307,10 +312,13 @@ class ApplicationContainer:
         if self.session is None:
             raise RuntimeError("会话访问需要数据库 session，但容器未提供。")
         if self._conversation_access is None:
-            self._conversation_access = ConversationAccessService(
-                ConversationAccessRepository(self.session)
-            )
+            self._conversation_access = build_conversation_access_service(self.session)
         return self._conversation_access
+
+    def conversation_topic_summary_update(self) -> ConversationTopicSummaryUpdateService:
+        if self.session is None:
+            raise RuntimeError("会话话题概括修改需要数据库 session，但容器未提供。")
+        return build_conversation_topic_summary_update_service(self.session)
 
     def conversation_history_read(self) -> ConversationHistoryReadService:
         if self.session is None:
@@ -391,11 +399,10 @@ class ApplicationContainer:
     ) -> InteractionChatStreamApplication:
         return build_interaction_chat_stream_application(
             self.intent_interaction_gateway(proposal_store),
-            self.streaming_chat_application(),
+            self.streaming_conversation_runtime(),
             dialogue_agent_invocation=self.dialogue_agent_invocation(),
             dialogue_agent_continuation=self.dialogue_agent_continuation(),
             pending_agent_invocations=pending_agent_invocations,
-            conversation_access=self.conversation_access(),
         )
 
     def chat_application(self) -> ChatApplication:
@@ -419,6 +426,23 @@ class ApplicationContainer:
                 self._streaming_chat_llm
             )
         return self._streaming_chat_application
+
+    def streaming_conversation_runtime(self) -> StreamingConversationRuntime:
+        """提供依赖 Conversation 事实写入的流式 Dialogue 用例。"""
+
+        if self.session is None:
+            raise RuntimeError("流式 Conversation 对话需要数据库 session，但容器未提供。")
+        if self._streaming_conversation_runtime is None:
+            if self._streaming_chat_llm is None:
+                self._streaming_chat_llm = build_streaming_chat_llm(
+                    self.openai_client_factory()
+                )
+            self._streaming_conversation_runtime = build_streaming_conversation_runtime(
+                self.session,
+                self._streaming_chat_llm,
+                self.conversation_access(),
+            )
+        return self._streaming_conversation_runtime
 
     def openai_client_factory(self) -> OpenAICompatibleClientFactory:
         """返回供 RAG 和 Agent 共享的 OpenAI-compatible Client Factory。"""

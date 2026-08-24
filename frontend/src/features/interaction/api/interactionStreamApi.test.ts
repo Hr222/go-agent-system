@@ -11,7 +11,7 @@ afterEach(() => {
 describe("streamInteractionChat", () => {
   it("sends user chat context and parses ordinary chat deltas in order", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(responseFor([
-      "event: meta\ndata: {\"request_id\":\"r1\",\"model\":\"glm\",\"prompt_version\":\"v1\"}\n\n",
+      "event: meta\ndata: {\"request_id\":\"r1\",\"conversation_id\":\"00000000-0000-0000-0000-000000000001\",\"model\":\"glm\",\"prompt_version\":\"v1\"}\n\n",
       "event: delta\ndata: {\"content\":\"你\"}\n\nevent: delta\ndata: {\"content\":\"好\"}\n\n",
       "event: complete\ndata: {\"request_id\":\"r1\",\"model\":\"glm\",\"prompt_version\":\"v1\",\"usage\":{\"total_tokens\":2}}\n\n",
     ])));

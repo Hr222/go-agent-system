@@ -22,7 +22,12 @@ afterEach(() => {
 describe("useInteractionChatStream", () => {
   it("moves from connecting to completed only after the stream terminal event", async () => {
     streamMock.mockImplementation(async (_input, handlers) => {
-      handlers.onMeta?.({ requestId: "r1", model: "glm", promptVersion: "v1" });
+      handlers.onMeta?.({
+        requestId: "r1",
+        conversationId: "00000000-0000-0000-0000-000000000001",
+        model: "glm",
+        promptVersion: "v1",
+      });
       handlers.onDelta?.("你好");
       handlers.onComplete?.({
         requestId: "r1",
