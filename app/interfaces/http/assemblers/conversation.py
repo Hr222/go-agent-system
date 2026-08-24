@@ -19,6 +19,8 @@ def conversation_response(conversation: Conversation) -> ConversationResponse:
         id=conversation.id,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
+        topic_summary=conversation.topic_summary,
+        is_pinned=conversation.is_pinned,
     )
 
 

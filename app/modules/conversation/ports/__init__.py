@@ -19,6 +19,8 @@ from app.modules.conversation.ports.read_port import (
     ConversationSummaryPage,
 )
 from app.modules.conversation.ports.write_port import ConversationWritePort
+from app.modules.conversation.ports.topic_summary import ConversationTopicSummaryGenerator
+from app.modules.conversation.domain import MAX_TOPIC_SUMMARY_LENGTH
 
 __all__ = [
     "ConversationAccessPort",

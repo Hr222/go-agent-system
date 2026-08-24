@@ -14,8 +14,10 @@ def conversation_to_record(conversation: Conversation) -> ConversationRecord:
     return ConversationRecord(
         id=conversation.id,
         owner_subject=conversation.owner_subject,
+        topic_summary=conversation.topic_summary,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
+        is_pinned=conversation.is_pinned,
     )
 
 
@@ -25,8 +27,10 @@ def conversation_from_record(record: ConversationRecord) -> Conversation:
     return Conversation(
         id=record.id,
         owner_subject=record.owner_subject,
+        topic_summary=record.topic_summary,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        is_pinned=record.is_pinned,
     )
 
 

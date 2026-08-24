@@ -27,6 +27,12 @@ SQL_SCRIPT = (
 OWNER_MIGRATION_SCRIPT = (
     Path(__file__).resolve().parents[2] / "sql" / "010_conversation_owner_subject.sql"
 )
+TOPIC_SUMMARY_MIGRATION_SCRIPT = (
+    Path(__file__).resolve().parents[2] / "sql" / "011_conversation_topic_summary.sql"
+)
+MANAGEMENT_MIGRATION_SCRIPT = (
+    Path(__file__).resolve().parents[2] / "sql" / "012_conversation_management.sql"
+)
 
 
 def test_domain_records_round_trip_through_orm_mapping() -> None:
@@ -62,6 +68,8 @@ def test_conversation_orm_metadata_registers_required_tables_and_constraints() -
     assert set(conversation_table.c.keys()) == {
         "id",
         "owner_subject",
+        "topic_summary",
+        "is_pinned",
         "created_at",
         "updated_at",
     }
@@ -84,9 +92,13 @@ def test_conversation_orm_metadata_registers_required_tables_and_constraints() -
     }
     assert {
         constraint.name for constraint in conversation_table.constraints if constraint.name
-    } >= {"chk_conversation_owner_subject_not_blank"}
+    } >= {
+        "chk_conversation_owner_subject_not_blank",
+        "chk_conversation_topic_summary_valid",
+    }
     assert {index.name for index in conversation_table.indexes} >= {
-        "idx_conversation_owner_subject"
+        "idx_conversation_owner_subject",
+        "idx_conversation_owner_pinned_updated",
     }
 
 
@@ -176,6 +188,66 @@ def test_owner_subject_migration_requires_explicit_backfill_for_legacy_rows() ->
 
         assert owners == ["migration-owner"]
         assert is_nullable == "NO"
+    finally:
+        harness.drop_schema()
+
+
+def test_topic_summary_migration_is_idempotent_and_preserves_legacy_nulls() -> None:
+    harness = SchemaHarness("conversation_topic_migration")
+    harness.create_schema()
+    try:
+        session = harness.session_local()
+        try:
+            legacy_id = uuid4()
+            session.execute(
+                text(
+                    "INSERT INTO conversation (id, owner_subject) "
+                    "VALUES (:conversation_id, 'legacy-owner')"
+                ),
+                {"conversation_id": legacy_id},
+            )
+            session.commit()
+            migration = TOPIC_SUMMARY_MIGRATION_SCRIPT.read_text(encoding="utf-8")
+            session.connection().exec_driver_sql(migration)
+            session.connection().exec_driver_sql(migration)
+            topic_summary = session.execute(
+                text("SELECT topic_summary FROM conversation WHERE id = :conversation_id"),
+                {"conversation_id": legacy_id},
+            ).scalar_one()
+            assert topic_summary is None
+        finally:
+            session.close()
+    finally:
+        harness.drop_schema()
+
+
+def test_conversation_management_migration_is_idempotent_and_defaults_unpinned() -> None:
+    harness = SchemaHarness("conversation_management_migration")
+    harness.create_schema()
+    try:
+        session = harness.session_local()
+        try:
+            migration = MANAGEMENT_MIGRATION_SCRIPT.read_text(encoding="utf-8")
+            session.connection().exec_driver_sql(migration)
+            session.connection().exec_driver_sql(migration)
+            is_pinned = session.execute(
+                text(
+                    "SELECT is_pinned FROM conversation "
+                    "WHERE owner_subject = 'missing-owner'"
+                )
+            ).all()
+            assert is_pinned == []
+            column = session.execute(
+                text(
+                    "SELECT column_default, is_nullable FROM information_schema.columns "
+                    "WHERE table_schema = current_schema() AND table_name = 'conversation' "
+                    "AND column_name = 'is_pinned'"
+                )
+            ).one()
+            assert "false" in (column.column_default or "").lower()
+            assert column.is_nullable == "NO"
+        finally:
+            session.close()
     finally:
         harness.drop_schema()
 

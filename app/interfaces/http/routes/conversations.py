@@ -114,7 +114,7 @@ def create_conversation(
     del request
     try:
         conversation = access.create(ConversationCreateCommand(principal=principal))
-    except ConversationAccessDeniedError as exc:
+    except (ConversationAccessDeniedError, ConversationNotFoundError) as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -123,6 +123,100 @@ def create_conversation(
             },
         ) from exc
     return conversation_response(conversation)
+
+
+@router.patch(
+    "/{conversation_id}/topic-summary",
+    response_model=ConversationSummaryResponse,
+    responses={404: {"description": "会话不可用。"}},
+)
+def update_conversation_topic_summary(
+    conversation_id: UUID,
+    request: ConversationTopicSummaryUpdateRequest,
+    updater: ConversationTopicSummaryUpdateService = Depends(
+        get_conversation_topic_summary_update_service
+    ),
+    principal: RequestPrincipal = Depends(get_request_principal),
+) -> ConversationSummaryResponse:
+    """Update or clear a topic summary within the current owner's scope."""
+
+    try:
+        conversation = updater.update(
+            ConversationTopicSummaryUpdateCommand(
+                principal=principal,
+                conversation_id=conversation_id,
+                topic_summary=request.topic_summary,
+            )
+        )
+    except ConversationAccessDeniedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "CONVERSATION_UNAVAILABLE",
+                "message": "会话不可用。",
+            },
+        ) from exc
+    return ConversationSummaryResponse(
+        id=conversation.id,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
+        topic_summary=conversation.topic_summary,
+        is_pinned=conversation.is_pinned,
+    )
+
+
+@router.patch(
+    "/{conversation_id}/pin",
+    response_model=ConversationSummaryResponse,
+    responses={404: {"description": "会话不可用。"}},
+)
+def update_conversation_pin(
+    conversation_id: UUID,
+    request: ConversationPinRequest,
+    manager: ConversationManagementService = Depends(get_conversation_management_service),
+    principal: RequestPrincipal = Depends(get_request_principal),
+) -> ConversationSummaryResponse:
+    try:
+        conversation = manager.pin(
+            ConversationPinCommand(
+                principal=principal,
+                conversation_id=conversation_id,
+                is_pinned=request.is_pinned,
+            )
+        )
+    except ConversationAccessDeniedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "CONVERSATION_UNAVAILABLE", "message": "会话不可用。"},
+        ) from exc
+    return ConversationSummaryResponse(
+        id=conversation.id,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
+        topic_summary=conversation.topic_summary,
+        is_pinned=conversation.is_pinned,
+    )
+
+
+@router.delete(
+    "/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "会话不可用。"}},
+)
+def delete_conversation(
+    conversation_id: UUID,
+    manager: ConversationManagementService = Depends(get_conversation_management_service),
+    principal: RequestPrincipal = Depends(get_request_principal),
+) -> None:
+    try:
+        manager.delete(
+            ConversationDeleteCommand(principal=principal, conversation_id=conversation_id)
+        )
+    except ConversationAccessDeniedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "CONVERSATION_UNAVAILABLE", "message": "会话不可用。"},
+        ) from exc
 
 
 @router.get(

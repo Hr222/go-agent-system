@@ -19,6 +19,14 @@ from app.modules.conversation.application.management_service import (
     ConversationPinCommand,
 )
 from app.modules.conversation.application.write_service import ConversationWriteService
+from app.modules.conversation.application.topic_summary import (
+    RuleBasedConversationTopicSummaryGenerator,
+    normalize_topic_summary,
+)
+from app.modules.conversation.application.topic_summary_update_service import (
+    ConversationTopicSummaryUpdateCommand,
+    ConversationTopicSummaryUpdateService,
+)
 
 __all__ = [
     "CharacterCountContextMessageCostEstimator",

@@ -15,6 +15,32 @@ def test_conversation_generates_uuid_and_utc_timestamps() -> None:
     assert conversation.owner_subject == "user-1"
     assert conversation.created_at.tzinfo is timezone.utc
     assert conversation.updated_at.tzinfo is timezone.utc
+    assert conversation.topic_summary is None
+    assert conversation.is_pinned is False
+
+
+def test_conversation_normalizes_valid_topic_summary() -> None:
+    conversation = Conversation(owner_subject="user-1", topic_summary="  讨论采购方案  ")
+
+    assert conversation.topic_summary == "讨论采购方案"
+
+
+def test_conversation_accepts_pinned_state() -> None:
+    assert Conversation(owner_subject="user-1", is_pinned=True).is_pinned is True
+
+
+def test_conversation_rejects_invalid_pinned_state() -> None:
+    with pytest.raises(ValueError, match="置顶"):
+        Conversation(owner_subject="user-1", is_pinned=1)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "topic_summary",
+    ["\n换行", "主题\n说明", " " + "长" * 81, 1],
+)
+def test_conversation_rejects_invalid_topic_summary(topic_summary: object) -> None:
+    with pytest.raises(ValueError, match="话题概括"):
+        Conversation(owner_subject="user-1", topic_summary=topic_summary)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("owner_subject", [None, "", "   ", 1])

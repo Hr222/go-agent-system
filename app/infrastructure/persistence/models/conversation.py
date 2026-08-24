@@ -5,12 +5,14 @@ from uuid import UUID
 
 from sqlalchemy import (
     BIGINT,
+    Boolean,
     TIMESTAMP,
     CheckConstraint,
     ForeignKey,
     Index,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -29,11 +31,28 @@ class ConversationRecord(Base):
             "btrim(owner_subject) <> ''",
             name="chk_conversation_owner_subject_not_blank",
         ),
+        CheckConstraint(
+            "topic_summary IS NULL OR (btrim(topic_summary) <> '' AND topic_summary = btrim(topic_summary) AND position(E'\\n' in topic_summary) = 0 AND position(E'\\r' in topic_summary) = 0 AND char_length(topic_summary) <= 80)",
+            name="chk_conversation_topic_summary_valid",
+        ),
         Index("idx_conversation_owner_subject", "owner_subject"),
+        Index(
+            "idx_conversation_owner_pinned_updated",
+            "owner_subject",
+            "is_pinned",
+            "updated_at",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
     owner_subject: Mapped[str] = mapped_column(Text, nullable=False)
+    topic_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_pinned: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,

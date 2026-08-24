@@ -38,6 +38,94 @@ class ConversationWriteRepository(ConversationWritePort):
             self.session.rollback()
             raise
 
+    def update_topic_summary(
+        self,
+        *,
+        conversation_id: UUID,
+        topic_summary: str | None,
+    ) -> Conversation:
+        try:
+            record = self.session.scalar(
+                select(ConversationRecord)
+                .where(ConversationRecord.id == conversation_id)
+                .with_for_update()
+            )
+            if record is None:
+                raise ConversationNotFoundError(f"会话不存在：{conversation_id}")
+            record.topic_summary = topic_summary
+            record.updated_at = datetime.now(timezone.utc)
+            self.session.commit()
+            self.session.refresh(record)
+            return conversation_from_record(record)
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def update_topic_summary_if_empty(
+        self,
+        *,
+        conversation_id: UUID,
+        topic_summary: str,
+    ) -> Conversation | None:
+        try:
+            record = self.session.scalar(
+                select(ConversationRecord)
+                .where(
+                    ConversationRecord.id == conversation_id,
+                    ConversationRecord.topic_summary.is_(None),
+                )
+                .with_for_update()
+            )
+            if record is None:
+                return None
+            record.topic_summary = topic_summary
+            record.updated_at = datetime.now(timezone.utc)
+            self.session.commit()
+            self.session.refresh(record)
+            return conversation_from_record(record)
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def update_pinned(
+        self,
+        *,
+        conversation_id: UUID,
+        is_pinned: bool,
+    ) -> Conversation:
+        try:
+            record = self.session.scalar(
+                select(ConversationRecord)
+                .where(ConversationRecord.id == conversation_id)
+                .with_for_update()
+            )
+            if record is None:
+                raise ConversationNotFoundError(f"会话不存在：{conversation_id}")
+            record.is_pinned = is_pinned
+            record.updated_at = datetime.now(timezone.utc)
+            self.session.commit()
+            self.session.refresh(record)
+            return conversation_from_record(record)
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def delete_conversation(self, *, conversation_id: UUID) -> None:
+        """Delete the parent row and let database foreign keys cascade facts."""
+        try:
+            record = self.session.scalar(
+                select(ConversationRecord)
+                .where(ConversationRecord.id == conversation_id)
+                .with_for_update()
+            )
+            if record is None:
+                raise ConversationNotFoundError(f"会话不存在：{conversation_id}")
+            self.session.delete(record)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+
     def append_message(
         self,
         *,

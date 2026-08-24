@@ -8,6 +8,7 @@ from app.modules.conversation.application import (
     ConversationAccessService,
     ConversationCreateCommand,
     ConversationResolveQuery,
+    ConversationWriteService,
 )
 from app.modules.conversation.domain import ConversationEvent, MessageRole
 from app.modules.conversation.ports import (
@@ -64,12 +65,14 @@ class DialogueAgentInvocationService:
         *,
         conversation_access: ConversationAccessService,
         conversation_write: ConversationWritePort,
+        topic_summary_writer: ConversationWriteService | None = None,
         event_write: ConversationEventWritePort,
         dispatcher: AgentCallDispatcher,
         projector: AgentResultProjector,
     ) -> None:
         self._conversation_access = conversation_access
         self._conversation_write = conversation_write
+        self._topic_summary_writer = topic_summary_writer
         self._event_write = event_write
         self._dispatcher = dispatcher
         self._projector = projector
@@ -83,11 +86,19 @@ class DialogueAgentInvocationService:
         if call.conversation_id != str(conversation_id):
             raise ValueError("Agent 调用不能跨会话执行。")
         if command.user_input is not None:
-            self._conversation_write.append_message(
+            message = self._conversation_write.append_message(
                 conversation_id=conversation_id,
                 role=MessageRole.USER,
                 content=command.user_input,
             )
+            if self._topic_summary_writer is not None:
+                from app.modules.conversation.domain import Message
+
+                if isinstance(message, Message):
+                    self._topic_summary_writer.maybe_generate_topic_summary(
+                        conversation_id=conversation_id,
+                        message=message,
+                    )
         dispatched = self._dispatcher.dispatch(
             AgentCallDispatchCommand(
                 call=call,
@@ -119,11 +130,19 @@ class DialogueAgentInvocationService:
         )
         call = self._new_call(command, conversation_id)
         if command.user_input is not None:
-            self._conversation_write.append_message(
+            message = self._conversation_write.append_message(
                 conversation_id=conversation_id,
                 role=MessageRole.USER,
                 content=command.user_input,
             )
+            if self._topic_summary_writer is not None:
+                from app.modules.conversation.domain import Message
+
+                if isinstance(message, Message):
+                    self._topic_summary_writer.maybe_generate_topic_summary(
+                        conversation_id=conversation_id,
+                        message=message,
+                    )
         self._append_event(
             conversation_id=conversation_id,
             call=call,
