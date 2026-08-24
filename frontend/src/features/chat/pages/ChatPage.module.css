@@ -1,5 +1,5 @@
 .page { display: grid; grid-template-columns: 238px minmax(520px, 1fr); height: calc(100vh - 72px); min-height: 0; overflow: hidden; background: #fff; border-top: 1px solid #edf0f5; }
-.conversationList { display: flex; flex-direction: column; min-width: 0; padding: 26px 15px 18px; background: #fbfcfe; border-right: 1px solid #e8edf4; }
+.conversationList { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; padding: 26px 15px 18px; background: #fbfcfe; border-right: 1px solid #e8edf4; }
 .listHeading, .inspectorHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .eyebrow { display: block; color: #9aa6b8; font-size: 9px; font-weight: 800; letter-spacing: 1.4px; }
 .listHeading h1, .inspectorHeading h2 { margin: 5px 0 0; color: #25334b; font-size: 20px; letter-spacing: 0; }
@@ -11,14 +11,58 @@
 .conversationSearch input { width: 100%; min-width: 0; color: #41506a; background: transparent; border: 0; outline: 0; font-size: 11px; }
 .conversationSearch input::placeholder { color: #a2adbb; }
 .listSectionLabel { margin: 27px 8px 9px; color: #9aa6b8; font-size: 10px; font-weight: 750; }
-.conversationItems { display: grid; gap: 4px; }
-.conversationItem { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 54px; padding: 10px 9px; color: #8a97aa; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
+.conversationItems { display: grid; flex: 1; min-height: 0; align-content: start; gap: 4px; overflow-y: auto; }
+.conversationItemRow { position: relative; display: flex; align-items: stretch; min-width: 0; }
+.topicEditor { display: grid; gap: 8px; margin-top: 18px; padding: 12px 8px 14px; border-top: 1px solid #e9edf3; }
+.topicEditorHeading { display: flex; align-items: center; justify-content: space-between; color: #718096; font-size: 10px; font-weight: 750; }
+.topicEditorHeading small { color: #a0aabb; font-size: 9px; font-weight: 500; }
+.topicEditor input { width: 100%; min-width: 0; padding: 7px 8px; color: #435069; background: #fff; border: 1px solid #dfe6f0; border-radius: 6px; outline: 0; font-size: 10px; }
+.topicEditor input:focus { border-color: #94b0f4; box-shadow: 0 0 0 2px rgba(100, 143, 246, .1); }
+.topicEditorActions { display: flex; justify-content: flex-end; gap: 4px; }
+.topicEditorActions button { display: grid; place-items: center; width: 25px; height: 24px; color: #6f83ae; background: #edf3ff; border: 1px solid #dbe6ff; border-radius: 5px; cursor: pointer; }
+.topicEditorActions button:hover { color: #315dbf; background: #e4edff; }
+.topicEditorActions button:disabled { cursor: not-allowed; opacity: .5; }
+.topicEditorError { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: #a33d3d; font-size: 9px; line-height: 1.4; }
+.topicEditorError button { padding: 0; color: #a33d3d; background: transparent; border: 0; cursor: pointer; font-size: 9px; text-decoration: underline; }
+.conversationListStatus { padding: 10px 8px; color: #9aa6b8; font-size: 10px; line-height: 1.5; }
+.conversationListError { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 8px 0; padding: 7px 8px; color: #a33d3d; background: #fff5f2; border: 1px solid #f1d2cb; border-radius: 6px; font-size: 10px; line-height: 1.4; }
+.conversationItem { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 54px; padding: 10px 34px 10px 9px; color: #8a97aa; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
 .conversationItem:hover { color: #476bc5; background: #f0f4fb; }
 .conversationItemActive { color: #416fdb; background: #edf3ff; border-color: #e1eaff; }
 .conversationCopy { display: grid; gap: 5px; min-width: 0; }
 .conversationCopy strong { overflow: hidden; color: #435069; font-size: 11px; font-weight: 650; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .conversationItemActive .conversationCopy strong { color: #315dbf; }
 .conversationCopy small { color: #a0aabb; font-size: 9px; }
+.conversationCopy strong { display: flex; align-items: center; gap: 4px; }
+.conversationCopy strong svg { flex: 0 0 auto; color: #7696e7; }
+.conversationMenuWrap { position: absolute; top: 8px; right: 5px; z-index: 5; }
+.conversationMenuButton { display: grid; place-items: center; width: 25px; height: 25px; padding: 0; color: #9ca8b8; background: transparent; border: 0; border-radius: 5px; cursor: pointer; }
+.conversationMenuButton:hover { color: #466fd6; background: #e4edff; }
+.conversationMenu { position: absolute; top: 28px; right: 0; display: grid; min-width: 124px; padding: 5px; background: #383a3e; border-radius: 8px; box-shadow: 0 8px 20px rgba(31, 35, 44, .2); }
+.conversationMenu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 8px; color: #f5f6f8; text-align: left; background: transparent; border: 0; border-radius: 5px; cursor: pointer; font-size: 10px; }
+.conversationMenu button:hover { background: #4a4c51; }
+.conversationMenu .dangerMenuItem { color: #ff6969; }
+.selectionBox { display: grid; place-items: center; width: 15px; height: 15px; margin-top: 1px; color: #fff; background: #5c85ed; border: 1px solid #7fa0ef; border-radius: 4px; }
+.bulkActionBar { display: flex; align-items: center; gap: 5px; margin: 0 0 7px; padding: 6px 7px; color: #667894; background: #edf3ff; border: 1px solid #dce7ff; border-radius: 6px; font-size: 9px; }
+.bulkActionBar span { margin-right: auto; }
+.bulkActionBar button { display: inline-flex; align-items: center; gap: 3px; padding: 4px 5px; color: #5475c3; background: transparent; border: 0; border-radius: 4px; cursor: pointer; font-size: 9px; }
+.bulkActionBar button:hover { background: #dce8ff; }
+.bulkActionBar button:disabled { cursor: not-allowed; opacity: .5; }
+.listActionNotice { display: flex; align-items: center; justify-content: space-between; gap: 5px; margin: 0 0 7px; padding: 6px 7px; color: #55719f; background: #f0f5ff; border: 1px solid #dbe6fb; border-radius: 5px; font-size: 9px; }
+.listActionNotice button { display: grid; place-items: center; padding: 1px; color: inherit; background: transparent; border: 0; cursor: pointer; }
+.deleteConfirmBackdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(34, 44, 63, .28); }
+.deleteConfirmDialog { display: grid; justify-items: center; width: min(340px, 100%); padding: 22px 20px 18px; text-align: center; background: #fff; border: 1px solid #e2e8f1; border-radius: 10px; box-shadow: 0 18px 45px rgba(39, 53, 78, .2); }
+.deleteConfirmIcon { display: grid; place-items: center; width: 34px; height: 34px; color: #b54d4d; background: #fff2ef; border: 1px solid #f1d2cb; border-radius: 9px; }
+.deleteConfirmDialog h2 { margin: 12px 0 5px; color: #35445d; font-size: 14px; }
+.deleteConfirmDialog p { max-width: 270px; margin: 0; color: #8794a7; font-size: 10px; line-height: 1.6; }
+.deleteConfirmActions { display: flex; justify-content: center; gap: 8px; width: 100%; margin-top: 18px; }
+.deleteCancelButton, .deleteConfirmButton { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 84px; min-height: 30px; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 10px; font-weight: 700; }
+.deleteCancelButton { color: #687991; background: #fff; border: 1px solid #ccd7e8; }
+.deleteCancelButton:hover { color: #456fd4; border-color: #b7c8e7; }
+.deleteConfirmButton { color: #fff; background: #b54d4d; border: 1px solid #b54d4d; }
+.deleteConfirmButton:hover { background: #9f4141; border-color: #9f4141; }
+.deleteCancelButton:disabled, .deleteConfirmButton:disabled { cursor: not-allowed; opacity: .55; }
+.spinIcon { animation: spin .9s linear infinite; }
 .storageHint { display: flex; align-items: center; gap: 7px; margin-top: auto; padding: 13px 8px 0; color: #a0abbc; border-top: 1px solid #edf0f5; font-size: 10px; }
 .storageHint strong { color: #71819a; }
 .chatWorkspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
@@ -34,6 +78,7 @@
 .chatHeaderActions { gap: 12px; }.secondaryButton, .textButton { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; color: #8592a5; background: transparent; border: 0; border-radius: 6px; cursor: pointer; font-size: 10px; }.secondaryButton:hover, .textButton:hover { color: #456fda; background: #f0f4fb; }
 .cancelButton { padding: 7px 12px; color: #a33d3d; background: #fff4f2; border: 1px solid #efb8ae; border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 700; }
 .messageStream { flex: 1; min-height: 0; overflow-y: auto; padding: 32px clamp(26px, 6vw, 84px) 20px; }
+.historyPagination { display: flex; justify-content: center; padding: 2px 0 16px; }
 .userMessageRow { display: flex; justify-content: flex-end; margin: 0 0 27px; }
 .userMessage { max-width: min(74%, 560px); padding: 12px 15px 9px; color: #fff; background: #5d85e9; border-radius: 12px 12px 3px 12px; box-shadow: 0 7px 16px rgba(85, 126, 221, .14); }
 .userMessage p, .assistantMessage p { margin: 0; white-space: pre-line; font-size: 12px; line-height: 1.75; }.userMessage > small { display: block; margin-top: 6px; color: rgba(255,255,255,.68); text-align: right; font-size: 9px; }.userAttachment { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 6px; margin-top: 9px; padding: 7px 8px; color: #f4f7ff; background: rgba(39, 72, 151, .23); border: 1px solid rgba(255,255,255,.22); border-radius: 6px; font-size: 10px; }.userAttachment svg { color: #e5edff; }.userAttachment > span { overflow: hidden; min-width: 0; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.userAttachment > small { grid-column: 2; margin-top: 2px; overflow: hidden; color: rgba(255,255,255,.7); text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }

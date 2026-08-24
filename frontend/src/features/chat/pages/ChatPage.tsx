@@ -10,6 +10,9 @@ import {
   MessageSquare,
   MoreHorizontal,
   Plus,
+  Pin,
+  Pencil,
+  Trash2,
   RotateCcw,
   Search,
   Send,
@@ -30,7 +33,18 @@ import type {
 import { AttachmentPicker } from "../../attachment/components/AttachmentPicker";
 import type { AttachmentRef, AttachmentUploadItem } from "../../attachment/types";
 import { appConfig } from "../../../app/appConfig";
+import type { ConversationHistoryMessage } from "../api/conversationHistoryApi";
+import type { ConversationSummary } from "../api/conversationListApi";
 import { useDeltaRenderQueue } from "../hooks/useDeltaRenderQueue";
+import { useActiveConversation } from "../hooks/useActiveConversation";
+import {
+  useConversationList,
+  useCreateConversation,
+  useDeleteConversation,
+  useUpdateConversationPin,
+  useUpdateConversationTopicSummary,
+} from "../hooks/useConversationList";
+import { useConversationHistory } from "../hooks/useConversationHistory";
 import styles from "./ChatPage.module.css";
 
 type ChatRole = "user" | "assistant";
@@ -63,7 +77,6 @@ type ChatMessage = {
 };
 
 const initialMessages: ChatMessage[] = [];
-const conversationItems: Array<{ id: string; title: string; meta: string }> = [];
 const promptSuggestions = [
   "介绍一下你的能力",
   "解释什么是 LangChain",
@@ -71,7 +84,11 @@ const promptSuggestions = [
 ];
 
 export function ChatPage() {
-  const [activeConversation, setActiveConversation] = useState("new-conversation");
+  const {
+    activeConversation,
+    setActiveConversation,
+    clearActiveConversation,
+  } = useActiveConversation();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [inputValue, setInputValue] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
@@ -80,8 +97,25 @@ export function ChatPage() {
   const interactionStream = useInteractionChatStream();
   const proposalResponse = useIntentProposalResponse();
   const deltaRenderer = useDeltaRenderQueue();
+  const conversationList = useConversationList();
+  const createConversationMutation = useCreateConversation();
+  const deleteConversationMutation = useDeleteConversation();
+  const updatePinMutation = useUpdateConversationPin();
+  const updateTopicSummaryMutation = useUpdateConversationTopicSummary();
+  const conversationHistory = useConversationHistory(activeConversation);
+  const [conversationActionError, setConversationActionError] = useState<string | null>(null);
+  const [topicSummaryError, setTopicSummaryError] = useState<string | null>(null);
+  const [openConversationMenu, setOpenConversationMenu] = useState<string | null>(null);
+  const [renameConversationId, setRenameConversationId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
+  const [listActionNotice, setListActionNotice] = useState<string | null>(null);
   const respondingProposalIds = useRef(new Set<string>());
   const messageStreamRef = useRef<HTMLDivElement>(null);
+  const historyConversationRef = useRef<string | null>(null);
+  const historyMessagesRef = useRef<ChatMessage[]>([]);
+  const historyMessageIdsRef = useRef(new Set<string>());
   const hasPendingApproval = messages.some((message) => message.status === "awaiting_confirmation");
   const isStreaming = interactionStream.isActive || deltaRenderer.isRendering;
   const hasAttachmentUploadInProgress = attachmentItems.some(
@@ -91,9 +125,74 @@ export function ChatPage() {
   const isInteractionBusy = isStreaming || proposalResponse.isPending || hasPendingApproval;
   const isComposerBusy = isInteractionBusy || hasAttachmentUploadInProgress || hasFailedAttachmentUpload;
   const isAttachmentInteractionDisabled = isInteractionBusy || hasAttachmentUploadInProgress;
-  const attachmentConversationId = activeConversation === "new-conversation"
-    ? undefined
-    : activeConversation;
+  const attachmentConversationId = activeConversation ?? undefined;
+  const historyUnavailable = isConversationUnavailableError(conversationHistory.error);
+  const conversationSummaries = conversationList.data?.pages.flatMap((page) => page.conversations) ?? [];
+  const showHistoryLoading = activeConversation !== null
+    && conversationHistory.isPending
+    && messages.length === 0;
+  const showHistoryError = activeConversation !== null
+    && conversationHistory.isError
+    && !historyUnavailable;
+
+  useEffect(() => {
+    if (historyConversationRef.current === activeConversation) return;
+    historyConversationRef.current = activeConversation;
+    historyMessagesRef.current = [];
+    historyMessageIdsRef.current = new Set();
+  }, [activeConversation]);
+
+  useEffect(() => {
+    if (!openConversationMenu) return;
+
+    const closeMenuOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-conversation-menu]")) return;
+      setOpenConversationMenu(null);
+    };
+
+    document.addEventListener("pointerdown", closeMenuOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeMenuOnOutsidePointer);
+  }, [openConversationMenu]);
+
+  useEffect(() => {
+    if (activeConversation === null) return;
+    if (isStreaming) return;
+    if (conversationHistory.isError) {
+      if (historyUnavailable) {
+        clearActiveConversation();
+        historyMessagesRef.current = [];
+        historyMessageIdsRef.current = new Set();
+        setMessages([]);
+      }
+      return;
+    }
+    if (!conversationHistory.data) return;
+
+    const incomingMessages = conversationHistory.data.pages
+      .flatMap((page) => page.messages)
+      .map(historyMessageToChatMessage)
+      .filter((message) => !historyMessageIdsRef.current.has(message.id));
+    if (incomingMessages.length === 0) return;
+
+    incomingMessages.forEach((message) => historyMessageIdsRef.current.add(message.id));
+    historyMessagesRef.current = [...historyMessagesRef.current, ...incomingMessages];
+    const incomingKeys = new Set(incomingMessages.map(messageKey));
+    setMessages((current) => [
+      ...historyMessagesRef.current,
+      ...current.filter((message) => (
+        !historyMessageIdsRef.current.has(message.id)
+        && (!isLocalMessage(message) || !incomingKeys.has(messageKey(message)))
+      )),
+    ]);
+  }, [
+    activeConversation,
+    clearActiveConversation,
+    conversationHistory.data,
+    conversationHistory.isError,
+    historyUnavailable,
+    isStreaming,
+  ]);
 
   useEffect(() => {
     const stream = messageStreamRef.current;
@@ -122,20 +221,93 @@ export function ChatPage() {
     });
   };
 
-  const handleNewConversation = () => {
+  const handleNewConversation = async () => {
+    if (createConversationMutation.isPending) return;
     interactionStream.cancel();
-    setActiveConversation("new-conversation");
-    setMessages([]);
-    setInputValue("");
-    resetAttachments();
+    setConversationActionError(null);
+    try {
+      const conversation = await createConversationMutation.mutateAsync();
+      setActiveConversation(conversation.id);
+      setMessages([]);
+      setInputValue("");
+      resetAttachments();
+      await conversationList.refetch();
+    } catch (error) {
+      setConversationActionError(apiErrorMessage(error, "创建会话失败，请重试。"));
+    }
   };
 
   const handleConversationSelect = (conversationId: string) => {
     interactionStream.cancel();
+    setConversationActionError(null);
     setActiveConversation(conversationId);
     setMessages(conversationId === "tender-response" ? initialMessages : []);
     setInputValue("");
     resetAttachments();
+  };
+
+  const beginRename = (conversation: ConversationSummary) => {
+    setOpenConversationMenu(null);
+    setRenameConversationId(conversation.id);
+    setRenameDraft(conversation.topicSummary ?? "");
+    setTopicSummaryError(null);
+  };
+
+  const saveRename = async () => {
+    if (!renameConversationId || updateTopicSummaryMutation.isPending) return;
+    setTopicSummaryError(null);
+    try {
+      await updateTopicSummaryMutation.mutateAsync({
+        conversationId: renameConversationId,
+        topicSummary: renameDraft.trim() || null,
+      });
+      setRenameConversationId(null);
+      setRenameDraft("");
+      setListActionNotice("会话名称已更新");
+    } catch (error) {
+      setTopicSummaryError(apiErrorMessage(error, "会话名称保存失败，请重试。"));
+    }
+  };
+
+  const togglePin = async (conversation: ConversationSummary) => {
+    setOpenConversationMenu(null);
+    try {
+      await updatePinMutation.mutateAsync({
+        conversationId: conversation.id,
+        isPinned: !conversation.isPinned,
+      });
+      setListActionNotice(conversation.isPinned ? "已取消置顶" : "已置顶会话");
+    } catch (error) {
+      setListActionNotice(apiErrorMessage(error, "置顶操作失败，请重试。"));
+    }
+  };
+
+  const requestDelete = (conversationId: string) => {
+    setOpenConversationMenu(null);
+    setDeleteConfirmId(conversationId);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteInProgress || !deleteConfirmId) return;
+    const conversationId = deleteConfirmId;
+    setDeleteInProgress(true);
+    try {
+      await deleteConversationMutation.mutateAsync(conversationId);
+      if (activeConversation === conversationId) {
+        clearActiveConversation();
+        setMessages([]);
+        setRenameConversationId(null);
+        setRenameDraft("");
+      }
+      setDeleteConfirmId(null);
+      setListActionNotice("会话已删除");
+      await conversationList.refetch();
+    } catch (error) {
+      setDeleteConfirmId(null);
+      setListActionNotice(apiErrorMessage(error, "会话删除失败，请重试。"));
+    } finally {
+      setDeleteInProgress(false);
+    }
   };
 
   const resetAttachments = () => {
@@ -190,7 +362,9 @@ export function ChatPage() {
 
     try {
       const terminal = await interactionStream.send(content, {
-        onMeta: () => {
+        onMeta: (meta) => {
+          setActiveConversation(meta.conversationId);
+          void conversationList.refetch();
           updateAssistant(assistantId, (message) => ({ ...message, status: "streaming" }));
         },
         onDelta: (delta) => deltaRenderer.enqueue(delta),
@@ -275,32 +449,179 @@ export function ChatPage() {
             <MoreHorizontal size={17} />
           </button>
         </div>
-        <button className={styles.newConversationButton} type="button" onClick={handleNewConversation}>
+        <button
+          className={styles.newConversationButton}
+          type="button"
+          onClick={() => void handleNewConversation()}
+          disabled={createConversationMutation.isPending}
+        >
           <Plus size={16} /> 新建对话
         </button>
+        {conversationActionError && (
+          <div className={styles.conversationListError} role="alert">
+            {conversationActionError}
+          </div>
+        )}
         <label className={styles.conversationSearch}>
           <Search size={14} />
           <input aria-label="搜索会话" placeholder="搜索会话" />
         </label>
         <div className={styles.listSectionLabel}>最近对话</div>
+        {listActionNotice && (
+          <div className={styles.listActionNotice} role="status">
+            <span>{listActionNotice}</span>
+            <button type="button" aria-label="关闭提示" onClick={() => setListActionNotice(null)}><X size={12} /></button>
+          </div>
+        )}
         <div className={styles.conversationItems}>
-          {conversationItems.map((conversation) => (
-            <button
-              className={styles.conversationItem + (activeConversation === conversation.id ? " " + styles.conversationItemActive : "")}
+          {conversationList.isPending && (
+            <div className={styles.conversationListStatus} role="status">正在加载会话</div>
+          )}
+          {conversationList.isError && (
+            <div className={styles.conversationListError} role="alert">
+              <span>会话列表暂时无法加载。</span>
+              <button
+                className={styles.retryButton}
+                type="button"
+                onClick={() => void conversationList.refetch()}
+                disabled={conversationList.isFetching}
+              >
+                <RotateCcw size={12} /> 重试
+              </button>
+            </div>
+          )}
+          {!conversationList.isPending && !conversationList.isError && conversationSummaries.length === 0 && (
+            <div className={styles.conversationListStatus}>暂无历史会话</div>
+          )}
+          {conversationSummaries.map((conversation) => (
+            <div
+              className={styles.conversationItemRow}
               key={conversation.id}
-              type="button"
-              onClick={() => handleConversationSelect(conversation.id)}
             >
-              <MessageSquare size={15} />
-              <span className={styles.conversationCopy}>
-                <strong>{conversation.title}</strong>
-                <small>{conversation.meta}</small>
-              </span>
-            </button>
+              <button
+                className={styles.conversationItem + (activeConversation === conversation.id ? " " + styles.conversationItemActive : "")}
+                type="button"
+                onClick={() => handleConversationSelect(conversation.id)}
+              >
+                <MessageSquare size={15} />
+                <span className={styles.conversationCopy}>
+                  <strong>{conversationTitle(conversation)} {conversation.isPinned && <Pin size={11} aria-label="已置顶" />}</strong>
+                  <small>{conversationMeta(conversation)}</small>
+                </span>
+              </button>
+              <div className={styles.conversationMenuWrap} data-conversation-menu>
+                  <button
+                    className={styles.conversationMenuButton}
+                    type="button"
+                    aria-label={`会话操作：${conversationTitle(conversation)}`}
+                    title="更多操作"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setOpenConversationMenu((current) => current === conversation.id ? null : conversation.id);
+                    }}
+                  >
+                    <MoreHorizontal size={15} />
+                  </button>
+                  {openConversationMenu === conversation.id && (
+                    <div className={styles.conversationMenu} role="menu">
+                      <button type="button" role="menuitem" onClick={() => beginRename(conversation)}><Pencil size={14} /> 重命名</button>
+                      <button type="button" role="menuitem" onClick={() => void togglePin(conversation)}><Pin size={14} /> {conversation.isPinned ? "取消置顶" : "置顶"}</button>
+                      <button type="button" role="menuitem">分享</button>
+                      <button className={styles.dangerMenuItem} type="button" role="menuitem" onClick={() => requestDelete(conversation.id)}><Trash2 size={14} /> 删除</button>
+                    </div>
+                  )}
+                </div>
+            </div>
           ))}
+          {conversationList.hasNextPage && (
+            <button
+              className={styles.textButton}
+              type="button"
+              onClick={() => void conversationList.fetchNextPage()}
+              disabled={conversationList.isFetchingNextPage}
+            >
+              {conversationList.isFetchingNextPage ? "正在加载" : "加载更多会话"}
+            </button>
+          )}
         </div>
+        {renameConversationId && (
+          <div className={styles.topicEditor}>
+            <div className={styles.topicEditorHeading}>
+              <span>重命名会话</span>
+              <small>{renameDraft.length}/80</small>
+            </div>
+            <input
+              aria-label="会话名称"
+              maxLength={80}
+              value={renameDraft}
+              onChange={(event) => setRenameDraft(event.target.value)}
+              placeholder="输入会话名称"
+              disabled={updateTopicSummaryMutation.isPending}
+            />
+            <div className={styles.topicEditorActions}>
+              <button
+                type="button"
+                title="保存会话名称"
+                aria-label="保存会话名称"
+                onClick={() => void saveRename()}
+                disabled={updateTopicSummaryMutation.isPending}
+              >
+                <Check size={13} />
+              </button>
+              <button
+                type="button"
+                title="取消重命名"
+                aria-label="取消重命名"
+                onClick={() => setRenameConversationId(null)}
+                disabled={updateTopicSummaryMutation.isPending}
+              >
+                <X size={13} />
+              </button>
+            </div>
+            {topicSummaryError && (
+              <div className={styles.topicEditorError} role="alert">
+                <span>{topicSummaryError}</span>
+              </div>
+            )}
+          </div>
+        )}
+        {deleteConfirmId && (
+          <div className={styles.deleteConfirmBackdrop} role="presentation">
+            <div
+              className={styles.deleteConfirmDialog}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-conversation-title"
+            >
+              <div className={styles.deleteConfirmIcon}><Trash2 size={18} /></div>
+              <h2 id="delete-conversation-title">
+                删除这个会话？
+              </h2>
+              <p>删除后会话消息和相关记录将一并移除，且无法恢复。</p>
+              <div className={styles.deleteConfirmActions}>
+                <button
+                  type="button"
+                  className={styles.deleteCancelButton}
+                  onClick={() => setDeleteConfirmId(null)}
+                  disabled={deleteInProgress}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className={styles.deleteConfirmButton}
+                  onClick={() => void confirmDelete()}
+                  disabled={deleteInProgress}
+                >
+                  {deleteInProgress ? <LoaderCircle size={14} className={styles.spinIcon} /> : <Trash2 size={14} />}
+                  {deleteInProgress ? "删除中" : "确认删除"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className={styles.storageHint}>
-          <Archive size={14} /> <span>当前不保存会话历史</span>
+          <Archive size={14} /> <span>会话历史已保存</span>
         </div>
       </aside>
 
@@ -320,10 +641,35 @@ export function ChatPage() {
         </header>
 
         <div className={styles.messageStream} ref={messageStreamRef}>
-          {messages.length === 0 && (
+          {showHistoryLoading && (
+            <div className={styles.thinkingBubble} role="status">
+              <span /><span /><span /><em>正在加载会话历史</em>
+            </div>
+          )}
+          {showHistoryError && (
+            <div className={styles.errorMessage} role="alert">
+              <span>会话历史暂时无法加载。</span>
+              <button
+                className={styles.retryButton}
+                type="button"
+                onClick={() => void conversationHistory.refetch()}
+                disabled={conversationHistory.isFetching}
+              >
+                <RotateCcw size={12} /> 重试加载
+              </button>
+            </div>
+          )}
+          {messages.length === 0 && activeConversation === null && (
             <div className={styles.emptyConversation}>
               <div className={styles.emptyIcon}><Sparkles size={20} /></div>
               <h2>开始一段新的工作对话</h2>
+              <p>发送一条消息开始工作。</p>
+            </div>
+          )}
+          {messages.length === 0 && activeConversation !== null && conversationHistory.isSuccess && (
+            <div className={styles.emptyConversation}>
+              <div className={styles.emptyIcon}><MessageSquare size={20} /></div>
+              <h2>这是一个空会话</h2>
               <p>发送一条消息开始工作。</p>
             </div>
           )}
@@ -342,6 +688,18 @@ export function ChatPage() {
               )}
             />
           ))}
+          {activeConversation !== null && conversationHistory.hasNextPage && (
+            <div className={styles.historyPagination}>
+              <button
+                className={styles.textButton}
+                type="button"
+                onClick={() => void conversationHistory.fetchNextPage()}
+                disabled={conversationHistory.isFetchingNextPage}
+              >
+                {conversationHistory.isFetchingNextPage ? "正在加载" : "加载更多消息"}
+              </button>
+            </div>
+          )}
         </div>
 
         <footer className={styles.composerArea}>
@@ -583,6 +941,58 @@ function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function historyMessageToChatMessage(message: ConversationHistoryMessage): ChatMessage {
+  return {
+    id: message.id,
+    role: message.role === "user" ? "user" : "assistant",
+    content: message.content,
+    timestamp: historyMessageTimestamp(message.createdAt),
+    status: "completed",
+  };
+}
+
+function historyMessageTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return value;
+  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function conversationTitle(summary: ConversationSummary): string {
+  return summary.topicSummary?.trim() || `会话 ${formatConversationDate(summary.createdAt)}`;
+}
+
+function conversationMeta(summary: ConversationSummary): string {
+  return `更新于 ${formatConversationDate(summary.updatedAt)}`;
+}
+
+function formatConversationDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "未知时间";
+  return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+}
+
+function apiErrorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallback;
+}
+
+function isLocalMessage(message: ChatMessage): boolean {
+  return message.id.startsWith("user-") || message.id.startsWith("assistant-");
+}
+
+function messageKey(message: Pick<ChatMessage, "role" | "content">): string {
+  return `${message.role}:${message.content}`;
+}
+
+function isConversationUnavailableError(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("status" in error)) return false;
+  const status = (error as { status?: unknown }).status;
+  return status === 403 || status === 404;
 }
 
 function statusLabel(status: ChatMessage["status"]): string {

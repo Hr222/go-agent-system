@@ -29,6 +29,44 @@ vi.mock("../../attachment/api/attachmentApi", () => ({
   uploadAttachment: vi.fn(),
 }));
 
+vi.mock("../hooks/useConversationHistory", () => ({
+  useConversationHistory: vi.fn(() => ({
+    data: undefined,
+    error: null,
+    fetchNextPage: vi.fn(),
+    hasNextPage: false,
+    isError: false,
+    isFetching: false,
+    isFetchingNextPage: false,
+    isPending: false,
+    isSuccess: false,
+    refetch: vi.fn(),
+  })),
+}));
+
+vi.mock("../hooks/useConversationList", () => ({
+  useConversationList: vi.fn(() => ({
+    data: undefined,
+    fetchNextPage: vi.fn(),
+    hasNextPage: false,
+    isError: false,
+    isFetching: false,
+    isFetchingNextPage: false,
+    isPending: false,
+    refetch: vi.fn(),
+  })),
+  useCreateConversation: vi.fn(() => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  })),
+  useDeleteConversation: vi.fn(() => ({ isPending: false, mutateAsync: vi.fn() })),
+  useUpdateConversationPin: vi.fn(() => ({ isPending: false, mutateAsync: vi.fn() })),
+  useUpdateConversationTopicSummary: vi.fn(() => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  })),
+}));
+
 const streamInteractionChatMock = vi.mocked(streamInteractionChat);
 const respondToIntentProposalMock = vi.mocked(respondToIntentProposal);
 const uploadAttachmentMock = vi.mocked(uploadAttachment);
@@ -60,6 +98,7 @@ describe("ChatPage interaction stream", () => {
   });
 
   beforeEach(() => {
+    window.localStorage.clear();
     streamInteractionChatMock.mockReset();
     respondToIntentProposalMock.mockReset();
     uploadAttachmentMock.mockReset();
@@ -67,7 +106,12 @@ describe("ChatPage interaction stream", () => {
 
   it("renders ordinary chat from real deltas without an approval card", async () => {
     streamInteractionChatMock.mockImplementation(async (_input, handlers) => {
-      handlers.onMeta?.({ requestId: "r1", model: "glm", promptVersion: "v1" });
+      handlers.onMeta?.({
+        requestId: "r1",
+        conversationId: "00000000-0000-0000-0000-000000000001",
+        model: "glm",
+        promptVersion: "v1",
+      });
       handlers.onDelta?.("你好，");
       handlers.onDelta?.("这是流式回答。");
       handlers.onComplete?.({
@@ -91,6 +135,57 @@ describe("ChatPage interaction stream", () => {
     );
     expect(screen.queryByText("需要你的批准")).toBeNull();
     expect(respondToIntentProposalMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the ordinary chat meta conversation for the next request", async () => {
+    streamInteractionChatMock
+      .mockImplementationOnce(async (_input, handlers) => {
+        handlers.onMeta?.({
+          requestId: "r1",
+          conversationId: "00000000-0000-0000-0000-000000000001",
+          model: "glm",
+          promptVersion: "v1",
+        });
+        handlers.onComplete?.({
+          requestId: "r1",
+          model: "glm",
+          promptVersion: "v1",
+          usage: {},
+        });
+        return "complete";
+      })
+      .mockImplementationOnce(async (_input, handlers) => {
+        handlers.onMeta?.({
+          requestId: "r2",
+          conversationId: "00000000-0000-0000-0000-000000000001",
+          model: "glm",
+          promptVersion: "v1",
+        });
+        handlers.onComplete?.({
+          requestId: "r2",
+          model: "glm",
+          promptVersion: "v1",
+          usage: {},
+        });
+        return "complete";
+      });
+
+    renderPage();
+    const composer = screen.getByRole("textbox", { name: "发送消息" });
+    fireEvent.change(composer, { target: { value: "第一条" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(streamInteractionChatMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "取消生成" })).toBeNull());
+
+    fireEvent.change(composer, { target: { value: "第二条" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => expect(streamInteractionChatMock).toHaveBeenCalledWith(
+      "第二条",
+      expect.objectContaining({ onDelta: expect.any(Function) }),
+      expect.any(AbortSignal),
+      "00000000-0000-0000-0000-000000000001",
+    ));
   });
 
   it("sends an uploaded attachment only as source_document", async () => {
