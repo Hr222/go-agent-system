@@ -28,6 +28,14 @@ from app.modules.dialogue.application.pending_invocation import (
     InMemoryPendingAgentInvocationStore,
     PendingAgentInvocation,
 )
+from app.modules.dialogue.application.streaming_conversation import (
+    StreamingConversationCommand,
+    StreamingConversationEvent,
+    StreamingConversationEventKind,
+    StreamingConversationPersistenceError,
+    StreamingConversationResult,
+    StreamingConversationRuntime,
+)
 
 __all__ = [
     "DEFAULT_DIALOGUE_CONTEXT_BUDGET",
@@ -50,4 +58,10 @@ __all__ = [
     "DialogueAgentInvocationService",
     "InMemoryPendingAgentInvocationStore",
     "PendingAgentInvocation",
+    "StreamingConversationCommand",
+    "StreamingConversationEvent",
+    "StreamingConversationEventKind",
+    "StreamingConversationPersistenceError",
+    "StreamingConversationResult",
+    "StreamingConversationRuntime",
 ]

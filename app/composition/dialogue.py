@@ -7,12 +7,14 @@ from app.composition.conversation import (
     build_conversation_history_read_service,
     build_conversation_write_service,
 )
+from app.modules.conversation.application import ConversationAccessService
 from app.modules.dialogue.application import (
     DEFAULT_DIALOGUE_CONTEXT_BUDGET,
     DEFAULT_DIALOGUE_CONTEXT_POLICY,
     BasicDialogueRuntime,
+    StreamingConversationRuntime,
 )
-from app.modules.llm.contracts import ChatLlmPort
+from app.modules.llm.contracts import ChatLlmPort, StreamingChatLlmPort
 
 
 def build_basic_dialogue_runtime(
@@ -31,4 +33,18 @@ def build_basic_dialogue_runtime(
         llm=llm,
         context_policy=context_policy,
         context_budget=context_budget,
+    )
+
+
+def build_streaming_conversation_runtime(
+    session: Session,
+    streaming_llm: StreamingChatLlmPort,
+    conversation_access: ConversationAccessService,
+) -> StreamingConversationRuntime:
+    """组装不读取历史上下文的流式 Conversation 事实运行时。"""
+
+    return StreamingConversationRuntime(
+        conversation_access=conversation_access,
+        conversation_writer=build_conversation_write_service(session),
+        llm=streaming_llm,
     )
