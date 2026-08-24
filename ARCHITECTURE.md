@@ -38,7 +38,7 @@
 | Interaction Gateway | 已实现基础 | 候选识别、能力策略、显式确认、受控分发、流式对话入口。 |
 | Tender Agent 与附件 | 已实现当前链路 | 已授权的 Tender 调用、动态附件解析、上传、访问绑定与结果下载。 |
 | 请求主体插口 | 已实现 Mock | HTTP 注入 `RequestPrincipal`，可使用匿名或静态 resolver；没有真实用户模块。 |
-| 会话 owner 隔离 | 未实施 | `owner_subject + conversation_id` 的存储和访问校验是下一步独立 Change。 |
+| 会话 owner 隔离 | 已实现基础 | Conversation `owner_subject`、Access 以及创建/列表/历史/流式入口的主体范围校验已实现；当前主体由 Mock resolver 提供。 |
 | 真实认证、授权和用户模块 | 未实施 | JWT、Session、SSO、用户表与权限服务均不在当前范围。 |
 | Redis、上下文压缩、长期摘要 | 未实施 | PostgreSQL 保持长期事实源；缓存与压缩另行设计。 |
 | SubAgent、Workflow、Task Management、Harness | 未实施 | 仅保留扩展边界，不提前决定其运行时实现。 |
@@ -168,7 +168,7 @@ Conversation History
 
 Dialogue Runtime 编排一轮对话，连接 Conversation、Context Builder、Interaction Gateway、LLM 和 Agent Runtime。它负责在恰当位置记录用户消息、模型回答、Agent 调用和 Agent 结果。
 
-它不拥有用户认证、权限来源或会话所有权规则。后续接入 owner 隔离后，Dialogue 只能使用已通过 Conversation Access 验证的会话，不能仅凭客户端 `conversation_id` 读取或写入历史。
+它不拥有用户认证或权限来源。当前 Dialogue 只能使用已通过 Conversation Access 验证的会话，不能仅凭客户端 `conversation_id` 读取或写入历史。
 
 #### 1.5.4 Security 与主体边界
 
@@ -185,11 +185,11 @@ HTTP 请求
 
 | 字段 | 用途 | 当前/未来规则 |
 |---|---|---|
-| `subject` | 资源归属的稳定、不透明标识 | 未来作为 `Conversation.owner_subject` 和附件归属的键；不等同于展示名。 |
+| `subject` | 资源归属的稳定、不透明标识 | 当前作为 `Conversation.owner_subject` 和附件归属的键；不等同于展示名。 |
 | `permissions` | 能力调用授权 | 由 Interaction Gateway 按服务端目录校验；不是资源归属依据。 |
 | `authenticated` | 持久化会话等准入信号 | 真实用户模块接入后由认证适配器决定。 |
 
-当前还没有 User 表、JWT、Session、SSO 或 owner-scoped Conversation Access。未来会话读写必须同时以 `owner_subject + conversation_id` 查询；客户端 UUID、请求体权限、角色和模型输出都不能构成授权依据。未来用户模块只替换 resolver，不改变 Dialogue、Conversation、Gateway 的契约方向。
+当前还没有 User 表、JWT、Session 或 SSO；owner-scoped Conversation Access 已实现，但主体仍由匿名或静态 resolver 提供。会话读写必须同时以 `owner_subject + conversation_id` 查询；客户端 UUID、请求体权限、角色和模型输出都不能构成授权依据。未来用户模块只替换 resolver，不改变 Dialogue、Conversation、Gateway 的契约方向。
 
 #### 1.5.5 Interaction Gateway 与能力目录
 
@@ -440,11 +440,10 @@ TypeScript 不使用默认 `any`；请求和响应分别建模；组件 Props �
 
 下列能力均需独立小 Change，且不得反向修改当前模块职责：
 
-1. **会话 owner 隔离。** 实现 `Conversation.owner_subject`、Conversation Access 和仓储层 `owner_subject + conversation_id` 条件；先验证不同行主体不能读取或追加彼此会话。
+1. **普通 Chat 历史上下文与压缩。** 将流式 Conversation Runtime 接入 Context Builder、上下文策略和 token 预算；必要时增加摘要检查点与可恢复压缩流程，保持原始消息和摘要的可追溯关系。
 2. **真实认证与授权。** 实现 JWT、Session、SSO、用户模块或权限服务时，只替换 Security resolver 与授权适配器。
-3. **上下文压缩。** 增加摘要检查点、上下文策略、token 预算与可恢复压缩流程，保持原始消息和摘要的可追溯关系。
-4. **缓存。** Redis 仅用于可丢弃的热数据、短 TTL Proposal 或速率控制；不得作为 Conversation 的事实源。
-5. **多 Agent 编排。** 只有出现真实多步骤、分支、失败回退、可恢复状态或协作需求后，才选择 Workflow/Task/Agent Runtime Adapter。
+3. **缓存。** Redis 仅用于可丢弃的热数据、短 TTL Proposal 或速率控制；不得作为 Conversation 的事实源。
+4. **多 Agent 编排。** 只有出现真实多步骤、分支、失败回退、可恢复状态或协作需求后，才选择 Workflow/Task/Agent Runtime Adapter。
 
 每个 Change 要小到可以独立验证，不将认证、会话 owner、缓存、压缩和多 Agent 编排打包到同一改动中。
 

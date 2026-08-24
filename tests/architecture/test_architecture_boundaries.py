@@ -291,10 +291,11 @@ def test_dialogue_change_does_not_add_http_route() -> None:
     assert not any("dialogue" in route_path.lower() for route_path in route_paths)
 
 
-def test_conversation_change_does_not_add_http_route() -> None:
+def test_conversation_http_routes_stay_in_the_interface_adapter() -> None:
     route_paths = _literal_route_paths(APP_ROOT / "interfaces" / "http" / "routes")
 
-    assert not any("conversation" in route_path.lower() for route_path in route_paths)
+    assert "" in route_paths
+    assert "/{conversation_id}/messages" in route_paths
 
 
 def test_conversation_history_repository_is_read_only() -> None:

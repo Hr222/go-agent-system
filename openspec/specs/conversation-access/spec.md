@@ -2,7 +2,7 @@
 
 ## Purpose
 
-定义 Conversation 在可信主体范围内的创建、解析与拒绝行为。
+定义 Conversation 在可信主体范围内的创建、解析、访问校验与拒绝行为，确保会话使用始终受主体边界约束。
 
 ## Requirements
 

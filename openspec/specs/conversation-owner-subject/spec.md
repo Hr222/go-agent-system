@@ -2,7 +2,7 @@
 
 ## Purpose
 
-定义 Conversation 的可信主体归属及其可审查迁移规则。
+定义 Conversation 的可信主体归属、历史数据回填及其可审查迁移规则，保证既有会话不会被无依据地重新归属。
 
 ## Requirements
 
