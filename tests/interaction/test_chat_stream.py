@@ -11,7 +11,11 @@ from app.interfaces.http.dependencies import (
     get_interaction_chat_stream_application,
 )
 from app.main import create_app
-from app.modules.conversation.errors import ConversationAccessDeniedError
+from app.modules.conversation.domain import Message, MessageRole
+from app.modules.dialogue.application import (
+    StreamingConversationEvent,
+    StreamingConversationResult,
+)
 from app.modules.interaction.application.chat_stream import (
     InteractionChatStreamApplication,
     InteractionChatStreamCommand,
@@ -37,13 +41,15 @@ class RecordingGateway:
         return self.result
 
 
-class DenyingConversationAccess:
-    def resolve(self, query):  # noqa: ANN001
-        del query
+class DenyingStreamingConversation:
+    async def execute(self, command):  # noqa: ANN001
+        del command
+        from app.modules.conversation.errors import ConversationAccessDeniedError
+
         raise ConversationAccessDeniedError("会话不可用。")
 
 
-class FakeStreamingChat:
+class FakeStreamingConversation:
     def __init__(
         self,
         chunks: list[ChatLlmStreamChunk],
@@ -55,12 +61,41 @@ class FakeStreamingChat:
 
     async def execute(self, command):  # noqa: ANN001
         self.commands.append(command)
+        conversation_id = command.conversation_id or UUID(
+            "00000000-0000-0000-0000-000000000099"
+        )
 
-        async def generate() -> AsyncIterator[ChatLlmStreamChunk]:
+        async def generate() -> AsyncIterator[StreamingConversationEvent]:
+            yield StreamingConversationEvent("started", conversation_id)
             for chunk in self.chunks:
-                yield chunk
+                yield StreamingConversationEvent("delta", conversation_id, chunk=chunk)
             if self.error is not None:
                 raise self.error
+            latest = self.chunks[-1] if self.chunks else ChatLlmStreamChunk(content="")
+            yield StreamingConversationEvent(
+                "completed",
+                conversation_id,
+                result=StreamingConversationResult(
+                    conversation_id=conversation_id,
+                    user_message=Message(
+                        conversation_id=conversation_id,
+                        role=MessageRole.USER,
+                        content=command.message,
+                        sequence=1,
+                    ),
+                    assistant_message=Message(
+                        conversation_id=conversation_id,
+                        role=MessageRole.ASSISTANT,
+                        content="".join(chunk.content for chunk in self.chunks),
+                        sequence=2,
+                    ),
+                    model=latest.model,
+                    prompt_version=latest.prompt_version,
+                    input_tokens=latest.input_tokens,
+                    output_tokens=latest.output_tokens,
+                    total_tokens=latest.total_tokens,
+                ),
+            )
 
         return generate()
 
@@ -89,7 +124,7 @@ def test_chat_stream_emits_ordered_chat_events_after_server_authorization() -> N
             ),
         )
     )
-    chat = FakeStreamingChat(
+    chat = FakeStreamingConversation(
         [
             ChatLlmStreamChunk(content="向量检索", model="glm-test"),
             ChatLlmStreamChunk(content="用于语义召回。", total_tokens=8),
@@ -111,6 +146,7 @@ def test_chat_stream_emits_ordered_chat_events_after_server_authorization() -> N
     events = asyncio.run(scenario())
 
     assert [event.name for event in events] == ["meta", "delta", "delta", "complete"]
+    assert events[0].data["conversation_id"] == "00000000-0000-0000-0000-000000000099"
     assert [event.data.get("content") for event in events if event.name == "delta"] == [
         "向量检索",
         "用于语义召回。",
@@ -121,6 +157,7 @@ def test_chat_stream_emits_ordered_chat_events_after_server_authorization() -> N
         "total_tokens": 8,
     }
     assert chat.commands[0].message == "解释一下向量检索"
+    assert chat.commands[0].conversation_id is None
 
 
 def test_chat_stream_passes_conversation_context_to_gateway() -> None:
@@ -132,7 +169,7 @@ def test_chat_stream_passes_conversation_context_to_gateway() -> None:
     )
     application = InteractionChatStreamApplication(
         gateway,  # type: ignore[arg-type]
-        FakeStreamingChat([]),  # type: ignore[arg-type]
+        FakeStreamingConversation([]),  # type: ignore[arg-type]
     )
     conversation_id = UUID("00000000-0000-0000-0000-000000000001")
 
@@ -149,14 +186,21 @@ def test_chat_stream_passes_conversation_context_to_gateway() -> None:
     assert gateway.commands[0].conversation_id == conversation_id
 
 
-def test_chat_stream_rejects_inaccessible_conversation_before_gateway() -> None:
+def test_chat_stream_maps_inaccessible_conversation_without_interaction_access() -> None:
     gateway = RecordingGateway(
-        GatewayResult(status="needs_clarification", message="不应识别请求。")
+        GatewayResult(
+            status="authorized",
+            message="server authorized",
+            direct_execution=DirectCapabilityExecution(
+                capability_code="chat.general",
+                dispatch_key="llm.chat",
+                inputs={"message": "处理附件"},
+            ),
+        )
     )
     application = InteractionChatStreamApplication(
         gateway,  # type: ignore[arg-type]
-        FakeStreamingChat([]),  # type: ignore[arg-type]
-        conversation_access=DenyingConversationAccess(),  # type: ignore[arg-type]
+        DenyingStreamingConversation(),  # type: ignore[arg-type]
     )
 
     preparation = application.prepare(
@@ -168,10 +212,22 @@ def test_chat_stream_rejects_inaccessible_conversation_before_gateway() -> None:
         )
     )
 
-    assert preparation.event is not None
-    assert preparation.event.name == "error"
-    assert preparation.event.data["code"] == "CONVERSATION_ACCESS_DENIED"
-    assert gateway.commands == []
+    assert preparation.kind == "chat"
+
+    async def scenario() -> list[object]:
+        return [
+            event
+            async for event in application.stream(
+                preparation,
+                is_disconnected=_connected,
+            )
+        ]
+
+    events = asyncio.run(scenario())
+
+    assert events[0].name == "error"
+    assert events[0].data["code"] == "CONVERSATION_ACCESS_DENIED"
+    assert len(gateway.commands) == 1
 
 
 def test_chat_stream_emits_approval_without_starting_model_execution() -> None:
@@ -186,7 +242,7 @@ def test_chat_stream_emits_approval_without_starting_model_execution() -> None:
     gateway = RecordingGateway(
         GatewayResult(status="pending", message="awaiting approval", proposal=proposal)
     )
-    chat = FakeStreamingChat([])
+    chat = FakeStreamingConversation([])
     application = InteractionChatStreamApplication(gateway, chat)  # type: ignore[arg-type]
 
     async def scenario() -> list[object]:
@@ -225,7 +281,7 @@ def test_chat_stream_does_not_emit_complete_after_partial_model_failure() -> Non
             ),
         )
     )
-    chat = FakeStreamingChat(
+    chat = FakeStreamingConversation(
         [ChatLlmStreamChunk(content="部分内容", model="glm-test")],
         error=RuntimeError("provider internal error"),
     )
@@ -261,22 +317,35 @@ def test_chat_stream_cancellation_closes_the_model_stream_without_complete() -> 
         )
     )
 
-    class ClosableStreamingChat(FakeStreamingChat):
+    class ClosableStreamingConversation(FakeStreamingConversation):
         closed = False
 
         async def execute(self, command):  # noqa: ANN001
             self.commands.append(command)
 
-            async def generate() -> AsyncIterator[ChatLlmStreamChunk]:
+            conversation_id = command.conversation_id or UUID(
+                "00000000-0000-0000-0000-000000000099"
+            )
+
+            async def generate() -> AsyncIterator[StreamingConversationEvent]:
                 try:
-                    yield ChatLlmStreamChunk(content="部分内容", model="glm-test")
-                    yield ChatLlmStreamChunk(content="不会继续显示")
+                    yield StreamingConversationEvent("started", conversation_id)
+                    yield StreamingConversationEvent(
+                        "delta",
+                        conversation_id,
+                        chunk=ChatLlmStreamChunk(content="部分内容", model="glm-test"),
+                    )
+                    yield StreamingConversationEvent(
+                        "delta",
+                        conversation_id,
+                        chunk=ChatLlmStreamChunk(content="不会继续显示"),
+                    )
                 finally:
                     self.closed = True
 
             return generate()
 
-    chat = ClosableStreamingChat([])
+    chat = ClosableStreamingConversation([])
     application = InteractionChatStreamApplication(gateway, chat)  # type: ignore[arg-type]
     checks = 0
 
