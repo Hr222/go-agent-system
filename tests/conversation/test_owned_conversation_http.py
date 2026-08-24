@@ -57,7 +57,7 @@ def test_create_owned_conversation_returns_only_empty_conversation_metadata() ->
     assert response.status_code == 201
     payload = response.json()
     conversation_id = UUID(payload["id"])
-    assert set(payload) == {"id", "created_at", "updated_at"}
+    assert set(payload) == {"id", "created_at", "updated_at", "topic_summary", "is_pinned"}
     assert conversation_id in port.conversations
     assert port.conversations[conversation_id].owner_subject == "current-user"
     assert port.messages == []
