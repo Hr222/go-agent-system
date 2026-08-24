@@ -44,6 +44,11 @@ class ConversationAccessService:
             raise ConversationAccessDeniedError("会话不可用。")
         return conversation
 
+    def require_owner_subject(self, principal: RequestPrincipal) -> str:
+        """Return the server-resolved owner key for owner-scoped read models."""
+
+        return self._owner_subject(principal)
+
     @staticmethod
     def _owner_subject(principal: RequestPrincipal) -> str:
         if not isinstance(principal, RequestPrincipal):

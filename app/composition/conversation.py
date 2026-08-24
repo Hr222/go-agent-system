@@ -8,6 +8,9 @@ from app.infrastructure.persistence.repositories.conversation_event_repository i
 from app.infrastructure.persistence.repositories.conversation_history_read_repository import (
     ConversationHistoryReadRepository,
 )
+from app.infrastructure.persistence.repositories.conversation_list_read_repository import (
+    ConversationListReadRepository,
+)
 from app.infrastructure.persistence.repositories.conversation_write_repository import (
     ConversationWriteRepository,
 )
@@ -15,6 +18,8 @@ from app.modules.conversation.application import (
     CharacterCountContextMessageCostEstimator,
     ConversationContextBuilder,
     ConversationHistoryReadService,
+    ConversationListReadService,
+    ConversationManagementService,
     ConversationWriteService,
 )
 
@@ -45,6 +50,20 @@ def build_conversation_history_read_service(
     """组装 Conversation 历史读取应用服务及其只读适配器。"""
 
     return ConversationHistoryReadService(build_conversation_history_read_repository(session))
+
+
+def build_conversation_list_read_repository(session: Session) -> ConversationListReadRepository:
+    """根据外部注入的数据库会话组装会话摘要只读仓储。"""
+
+    return ConversationListReadRepository(session)
+
+
+def build_conversation_list_read_service(
+    session: Session,
+) -> ConversationListReadService:
+    """组装主体范围 Conversation 摘要列表应用服务。"""
+
+    return ConversationListReadService(build_conversation_list_read_repository(session))
 
 
 def build_conversation_context_builder() -> ConversationContextBuilder:

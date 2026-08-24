@@ -6,6 +6,9 @@ from app.interfaces.http.schemas.conversation import (
     ConversationMessagePageResponse,
     ConversationMessageResponse,
     ConversationResponse,
+    ConversationSummaryPageResponse,
+    ConversationSummaryResponse,
+    ConversationTopicSummaryUpdateRequest,
 )
 from app.interfaces.http.schemas.knowledge_base import (
     KnowledgeBaseOverview,
@@ -89,6 +92,9 @@ __all__ = [
     "ConversationMessagePageResponse",
     "ConversationMessageResponse",
     "ConversationResponse",
+    "ConversationSummaryPageResponse",
+    "ConversationSummaryResponse",
+    "ConversationTopicSummaryUpdateRequest",
     "DocumentFileType",
     "FormatNormalizationResult",
     "IntakeValidationResult",

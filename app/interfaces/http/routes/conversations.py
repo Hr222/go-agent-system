@@ -6,31 +6,96 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from app.interfaces.http.assemblers.conversation import (
     conversation_message_page_response,
     conversation_response,
+    conversation_summary_page_response,
+)
+from app.interfaces.http.conversation_cursor import (
+    InvalidConversationCursor,
+    decode_conversation_cursor,
 )
 from app.interfaces.http.dependencies import (
     get_conversation_access_service,
     get_conversation_history_read_service,
+    get_conversation_list_read_service,
+    get_conversation_management_service,
+    get_conversation_topic_summary_update_service,
 )
 from app.interfaces.http.schemas.conversation import (
     ConversationCreateRequest,
     ConversationMessagePageResponse,
     ConversationResponse,
+    ConversationSummaryPageResponse,
+    ConversationSummaryResponse,
+    ConversationTopicSummaryUpdateRequest,
+    ConversationPinRequest,
 )
 from app.interfaces.http.security import get_request_principal
 from app.modules.conversation.application import (
     ConversationAccessService,
     ConversationCreateCommand,
     ConversationHistoryReadService,
+    ConversationListReadService,
+    ConversationDeleteCommand,
+    ConversationManagementService,
+    ConversationPinCommand,
+    ConversationTopicSummaryUpdateCommand,
+    ConversationTopicSummaryUpdateService,
     ConversationResolveQuery,
 )
 from app.modules.conversation.errors import (
     ConversationAccessDeniedError,
     ConversationNotFoundError,
 )
-from app.modules.conversation.ports import DEFAULT_HISTORY_PAGE_SIZE, MAX_HISTORY_PAGE_SIZE
+from app.modules.conversation.ports import (
+    DEFAULT_CONVERSATION_LIST_PAGE_SIZE,
+    DEFAULT_HISTORY_PAGE_SIZE,
+    MAX_CONVERSATION_LIST_PAGE_SIZE,
+    MAX_HISTORY_PAGE_SIZE,
+)
 from app.modules.security.domain.principal import RequestPrincipal
 
 router = APIRouter()
+
+
+@router.get(
+    "",
+    response_model=ConversationSummaryPageResponse,
+    responses={403: {"description": "会话列表读取需要可信主体。"}},
+)
+def list_conversations(
+    access: ConversationAccessService = Depends(get_conversation_access_service),
+    summaries: ConversationListReadService = Depends(get_conversation_list_read_service),
+    principal: RequestPrincipal = Depends(get_request_principal),
+    limit: Annotated[
+        int,
+        Query(ge=1, le=MAX_CONVERSATION_LIST_PAGE_SIZE),
+    ] = DEFAULT_CONVERSATION_LIST_PAGE_SIZE,
+    cursor: str | None = Query(default=None),
+) -> ConversationSummaryPageResponse:
+    """Return owner-scoped Conversation summaries without message facts."""
+
+    try:
+        owner_subject = access.require_owner_subject(principal)
+        list_cursor = decode_conversation_cursor(cursor)
+    except (ConversationAccessDeniedError, ConversationNotFoundError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "CONVERSATION_ACCESS_DENIED",
+                "message": "会话不可用。",
+            },
+        ) from exc
+    except InvalidConversationCursor as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "INVALID_CONVERSATION_CURSOR", "message": "分页游标无效。"},
+        ) from exc
+
+    page = summaries.list_owned(
+        owner_subject=owner_subject,
+        limit=limit,
+        cursor=list_cursor,
+    )
+    return conversation_summary_page_response(page)
 
 
 @router.post(

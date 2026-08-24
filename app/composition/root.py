@@ -11,6 +11,8 @@ from app.composition.conversation import (
     build_conversation_context_builder,
     build_conversation_event_repository,
     build_conversation_history_read_service,
+    build_conversation_list_read_service,
+    build_conversation_management_service,
     build_conversation_write_repository,
     build_conversation_write_service,
 )
@@ -80,11 +82,15 @@ from app.modules.agent.tender.application.service import TenderApplication
 from app.modules.conversation.application import (
     ConversationAccessService,
     ConversationHistoryReadService,
+    ConversationListReadService,
+    ConversationManagementService,
+    ConversationTopicSummaryUpdateService,
 )
 from app.modules.dialogue.application import (
     AgentResultProjector,
     DialogueAgentContinuationService,
     DialogueAgentInvocationService,
+    StreamingConversationRuntime,
 )
 from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
@@ -209,6 +215,8 @@ class ApplicationContainer:
         self._dialogue_agent_continuation: DialogueAgentContinuationService | None = None
         self._conversation_access: ConversationAccessService | None = None
         self._conversation_history_read: ConversationHistoryReadService | None = None
+        self._conversation_list_read: ConversationListReadService | None = None
+        self._conversation_management: ConversationManagementService | None = None
         self._capability_candidate_retrieval: CapabilityCandidateRetrieval | None = None
         self._structured_intent_recognition: StructuredIntentRecognition | None = None
         self._explicit_capability_confirmation: ExplicitCapabilityConfirmation | None = None
@@ -312,6 +320,20 @@ class ApplicationContainer:
                 self.session
             )
         return self._conversation_history_read
+
+    def conversation_list_read(self) -> ConversationListReadService:
+        if self.session is None:
+            raise RuntimeError("会话列表读取需要数据库 session，但容器未提供。")
+        if self._conversation_list_read is None:
+            self._conversation_list_read = build_conversation_list_read_service(self.session)
+        return self._conversation_list_read
+
+    def conversation_management(self) -> ConversationManagementService:
+        if self.session is None:
+            raise RuntimeError("会话管理需要数据库 session，但容器未提供。")
+        if self._conversation_management is None:
+            self._conversation_management = build_conversation_management_service(self.session)
+        return self._conversation_management
 
     def capability_candidate_retrieval(self) -> CapabilityCandidateRetrieval:
         if self._capability_candidate_retrieval is None:

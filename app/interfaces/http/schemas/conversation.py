@@ -34,3 +34,19 @@ class ConversationMessagePageResponse(BaseModel):
     messages: list[ConversationMessageResponse]
     has_more: bool
     next_after_sequence: int | None
+
+
+class ConversationSummaryResponse(BaseModel):
+    """The minimum browser-safe representation used in conversation lists."""
+
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    topic_summary: str | None = None
+    is_pinned: bool = False
+
+
+class ConversationSummaryPageResponse(BaseModel):
+    conversations: list[ConversationSummaryResponse]
+    has_more: bool
+    next_cursor: str | None

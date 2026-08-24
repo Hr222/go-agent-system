@@ -3,8 +3,13 @@ from functools import lru_cache
 from fastapi import Depends
 
 from app.composition import ApplicationContainer, get_db_session
-from app.modules.conversation.application import ConversationAccessService
-from app.modules.conversation.application import ConversationHistoryReadService
+from app.modules.conversation.application import (
+    ConversationAccessService,
+    ConversationHistoryReadService,
+    ConversationListReadService,
+    ConversationManagementService,
+    ConversationTopicSummaryUpdateService,
+)
 from app.modules.dialogue.application import (
     InMemoryPendingAgentInvocationStore,
 )
@@ -61,6 +66,28 @@ def get_conversation_history_read_service(
     """Provide the Conversation application service for read-only history queries."""
 
     return container.conversation_history_read()
+
+
+def get_conversation_list_read_service(
+    container: ApplicationContainer = Depends(get_application_container),
+) -> ConversationListReadService:
+    """Provide the owner-scoped Conversation summary read service."""
+
+    return container.conversation_list_read()
+
+
+def get_conversation_topic_summary_update_service(
+    container: ApplicationContainer = Depends(get_application_container),
+) -> ConversationTopicSummaryUpdateService:
+    """提供 owner-scoped 话题概括修改服务。"""
+
+    return container.conversation_topic_summary_update()
+
+
+def get_conversation_management_service(
+    container: ApplicationContainer = Depends(get_application_container),
+) -> ConversationManagementService:
+    return container.conversation_management()
 
 
 @lru_cache(maxsize=1)
