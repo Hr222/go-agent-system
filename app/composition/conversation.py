@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session
 from app.infrastructure.persistence.repositories.conversation_event_repository import (
     ConversationEventRepository,
 )
+from app.infrastructure.persistence.repositories.conversation_access_repository import (
+    ConversationAccessRepository,
+)
 from app.infrastructure.persistence.repositories.conversation_history_read_repository import (
     ConversationHistoryReadRepository,
 )
@@ -17,10 +20,13 @@ from app.infrastructure.persistence.repositories.conversation_write_repository i
 from app.modules.conversation.application import (
     CharacterCountContextMessageCostEstimator,
     ConversationContextBuilder,
+    ConversationAccessService,
     ConversationHistoryReadService,
     ConversationListReadService,
     ConversationManagementService,
     ConversationWriteService,
+    RuleBasedConversationTopicSummaryGenerator,
+    ConversationTopicSummaryUpdateService,
 )
 
 
@@ -30,10 +36,17 @@ def build_conversation_write_repository(session: Session) -> ConversationWriteRe
     return ConversationWriteRepository(session)
 
 
+def build_conversation_access_service(session: Session) -> ConversationAccessService:
+    return ConversationAccessService(ConversationAccessRepository(session))
+
+
 def build_conversation_write_service(session: Session) -> ConversationWriteService:
     """组装 Conversation 写入应用服务及其具体持久化适配器。"""
 
-    return ConversationWriteService(build_conversation_write_repository(session))
+    return ConversationWriteService(
+        build_conversation_write_repository(session),
+        topic_summary_generator=RuleBasedConversationTopicSummaryGenerator(),
+    )
 
 
 def build_conversation_history_read_repository(
@@ -42,6 +55,22 @@ def build_conversation_history_read_repository(
     """根据外部注入的数据库会话组装 Conversation 历史读仓储。"""
 
     return ConversationHistoryReadRepository(session)
+
+
+def build_conversation_topic_summary_update_service(
+    session: Session,
+) -> ConversationTopicSummaryUpdateService:
+    return ConversationTopicSummaryUpdateService(
+        access=build_conversation_access_service(session),
+        writer=build_conversation_write_service(session),
+    )
+
+
+def build_conversation_management_service(session: Session) -> ConversationManagementService:
+    return ConversationManagementService(
+        access=build_conversation_access_service(session),
+        writer=build_conversation_write_repository(session),
+    )
 
 
 def build_conversation_history_read_service(

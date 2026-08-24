@@ -11,6 +11,29 @@ class ConversationWritePort(Protocol):
 
     def save_conversation(self, conversation: Conversation) -> Conversation: ...
 
+    def update_topic_summary(
+        self,
+        *,
+        conversation_id: UUID,
+        topic_summary: str | None,
+    ) -> Conversation: ...
+
+    def update_topic_summary_if_empty(
+        self,
+        *,
+        conversation_id: UUID,
+        topic_summary: str,
+    ) -> Conversation | None: ...
+
+    def update_pinned(
+        self,
+        *,
+        conversation_id: UUID,
+        is_pinned: bool,
+    ) -> Conversation: ...
+
+    def delete_conversation(self, *, conversation_id: UUID) -> None: ...
+
     def append_message(
         self,
         *,

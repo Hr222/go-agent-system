@@ -9,13 +9,17 @@ from sqlalchemy import func, select
 
 from app.composition.conversation import build_conversation_write_service
 from app.infrastructure.persistence.models.conversation import (
+    ConversationEventRecord,
     ConversationMessageRecord,
     ConversationRecord,
+)
+from app.infrastructure.persistence.repositories.conversation_event_repository import (
+    ConversationEventRepository,
 )
 from app.infrastructure.persistence.repositories.conversation_write_repository import (
     ConversationWriteRepository,
 )
-from app.modules.conversation.domain import MessageRole
+from app.modules.conversation.domain import ConversationEvent, MessageRole
 from app.modules.conversation.errors import ConversationNotFoundError
 from tests.support.db_test_utils import SchemaHarness
 
@@ -53,7 +57,40 @@ def test_repository_creates_and_appends_messages_in_order() -> None:
 
             persisted_conversation = session.get(ConversationRecord, conversation.id)
             assert persisted_conversation is not None
+            assert persisted_conversation.topic_summary == "第一条"
             assert persisted_conversation.updated_at >= created_updated_at
+        finally:
+            session.close()
+    finally:
+        harness.drop_schema()
+
+
+def test_manual_topic_summary_is_preserved_on_follow_up_messages() -> None:
+    harness = SchemaHarness("conversation_topic_write")
+    harness.create_schema()
+    try:
+        session = harness.session_local()
+        try:
+            service = build_conversation_write_service(session)
+            conversation = service.create_conversation(owner_subject="user-1")
+            service.append_message(
+                conversation_id=conversation.id,
+                role=MessageRole.USER,
+                content="首条消息",
+            )
+            service.update_topic_summary(
+                conversation_id=conversation.id,
+                topic_summary="人工修正标题",
+            )
+            service.append_message(
+                conversation_id=conversation.id,
+                role=MessageRole.USER,
+                content="后续消息",
+            )
+
+            persisted = session.get(ConversationRecord, conversation.id)
+            assert persisted is not None
+            assert persisted.topic_summary == "人工修正标题"
         finally:
             session.close()
     finally:
@@ -107,6 +144,97 @@ def test_repository_rolls_back_when_flush_fails() -> None:
             persisted_after = session.get(ConversationRecord, conversation.id)
             assert persisted_after is not None
             assert persisted_after.updated_at == updated_before
+        finally:
+            session.close()
+    finally:
+        harness.drop_schema()
+
+
+def test_repository_deletes_conversation_and_cascades_messages_and_events() -> None:
+    harness = SchemaHarness("conversation_delete_cascade")
+    harness.create_schema()
+    try:
+        session = harness.session_local()
+        try:
+            service = build_conversation_write_service(session)
+            conversation = service.create_conversation(owner_subject="user-1")
+            service.append_message(
+                conversation_id=conversation.id,
+                role=MessageRole.USER,
+                content="待删除消息",
+            )
+            event = ConversationEvent(
+                conversation_id=conversation.id,
+                event_type="agent_call",
+                call_id="delete-call",
+                capability_code="agent.tender.generate_bid_skeleton",
+                sequence=1,
+                payload={"status": "requested"},
+            )
+            ConversationEventRepository(session).save_event(event)
+
+            ConversationWriteRepository(session).delete_conversation(
+                conversation_id=conversation.id,
+            )
+
+            session.expire_all()
+            assert session.get(ConversationRecord, conversation.id) is None
+            assert session.scalar(
+                select(func.count(ConversationMessageRecord.id)).where(
+                    ConversationMessageRecord.conversation_id == conversation.id
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count(ConversationEventRecord.id)).where(
+                    ConversationEventRecord.conversation_id == conversation.id
+                )
+            ) == 0
+        finally:
+            session.close()
+    finally:
+        harness.drop_schema()
+
+
+def test_repository_rolls_back_failed_conversation_delete() -> None:
+    harness = SchemaHarness("conversation_delete_rollback")
+    harness.create_schema()
+    try:
+        session = harness.session_local()
+        try:
+            service = build_conversation_write_service(session)
+            conversation = service.create_conversation(owner_subject="user-1")
+            service.append_message(
+                conversation_id=conversation.id,
+                role=MessageRole.USER,
+                content="保留消息",
+            )
+            event = ConversationEvent(
+                conversation_id=conversation.id,
+                event_type="agent_result",
+                call_id="rollback-call",
+                capability_code="agent.tender.generate_bid_skeleton",
+                sequence=1,
+                payload={"status": "completed"},
+            )
+            ConversationEventRepository(session).save_event(event)
+
+            repository = ConversationWriteRepository(session)
+            with patch.object(session, "commit", side_effect=RuntimeError("模拟删除失败")):
+                with pytest.raises(RuntimeError, match="模拟删除失败"):
+                    repository.delete_conversation(conversation_id=conversation.id)
+
+            session.expire_all()
+            assert session.get(ConversationRecord, conversation.id) is not None
+            assert session.scalar(
+                select(func.count(ConversationMessageRecord.id)).where(
+                    ConversationMessageRecord.conversation_id == conversation.id
+                )
+            ) == 1
+            assert session.scalar(
+                select(func.count(ConversationEventRecord.id)).where(
+                    ConversationEventRecord.conversation_id == conversation.id
+                )
+            ) == 1
         finally:
             session.close()
     finally:
