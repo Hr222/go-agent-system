@@ -1,8 +1,4 @@
-## Purpose
-
-定义 Chat 侧栏对当前主体会话执行重命名和清除名称的交互契约，复用既有话题概括更新接口，并保证保存失败时不会丢失用户草稿或覆盖服务端名称。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Chat 可以从会话菜单重命名当前主体的会话
 

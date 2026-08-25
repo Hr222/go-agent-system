@@ -13,11 +13,13 @@ const mocks = vi.hoisted(() => ({
   useUpdateConversationPin: vi.fn(),
   useUpdateConversationTopicSummary: vi.fn(),
   messageError: vi.fn(),
+  messageSuccess: vi.fn(),
 }));
 
 vi.mock("antd", () => ({
   message: {
     error: mocks.messageError,
+    success: mocks.messageSuccess,
   },
 }));
 
@@ -99,6 +101,7 @@ describe("ChatPage conversation list", () => {
     mocks.useUpdateConversationPin.mockReset();
     mocks.useUpdateConversationTopicSummary.mockReset();
     mocks.messageError.mockReset();
+    mocks.messageSuccess.mockReset();
     mocks.useConversationHistory.mockReturnValue(emptyHistoryState);
     mocks.useConversationList.mockReturnValue(listState([]));
     mocks.useCreateConversation.mockReturnValue({
@@ -147,6 +150,8 @@ describe("ChatPage conversation list", () => {
       conversationId: FIRST_ID,
       topicSummary: "人工修正主题",
     }));
+    expect(mocks.messageSuccess).toHaveBeenCalledWith("会话名称已更新");
+    expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getByRole("button", { name: "会话操作：首轮自动概括" })).toBeTruthy();
   });
 

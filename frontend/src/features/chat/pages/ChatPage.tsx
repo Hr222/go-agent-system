@@ -271,7 +271,7 @@ export function ChatPage() {
       });
       setRenameConversationId(null);
       setRenameDraft("");
-      setListActionNotice("会话名称已更新");
+      message.success("会话名称已更新");
     } catch (error) {
       setTopicSummaryError(apiErrorMessage(error, "会话名称保存失败，请重试。"));
     }
