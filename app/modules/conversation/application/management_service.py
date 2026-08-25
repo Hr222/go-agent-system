@@ -37,9 +37,10 @@ class ConversationManagementService:
             raise ValueError("会话置顶命令无效。")
         if not isinstance(command.conversation_id, UUID) or not isinstance(command.is_pinned, bool):
             raise ValueError("会话置顶命令无效。")
-        self._resolve(command.principal, command.conversation_id)
+        conversation = self._resolve(command.principal, command.conversation_id)
         return self._writer.update_pinned(
             conversation_id=command.conversation_id,
+            owner_subject=conversation.owner_subject,
             is_pinned=command.is_pinned,
         )
 

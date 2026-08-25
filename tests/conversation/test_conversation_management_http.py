@@ -16,7 +16,10 @@ from app.modules.conversation.application import (
     ConversationManagementService,
 )
 from app.modules.conversation.domain import Conversation
-from app.modules.conversation.errors import ConversationNotFoundError
+from app.modules.conversation.errors import (
+    ConversationNotFoundError,
+    ConversationPinLimitExceededError,
+)
 from app.modules.security.domain.principal import RequestPrincipal
 
 CONVERSATION_ID = UUID("00000000-0000-4000-8000-000000000301")
@@ -37,18 +40,31 @@ class FakeAccessPort:
         owner_subject: str,
     ) -> Conversation | None:
         conversation = self.conversations.get(conversation_id)
-        return conversation if conversation and conversation.owner_subject == owner_subject else None
+        return (
+            conversation
+            if conversation and conversation.owner_subject == owner_subject
+            else None
+        )
 
 
 @dataclass
 class FakeWriter:
     conversations: dict[UUID, Conversation]
     deleted: list[UUID] = field(default_factory=list)
+    pin_limit_reached: bool = False
 
-    def update_pinned(self, *, conversation_id: UUID, is_pinned: bool) -> Conversation:
+    def update_pinned(
+        self,
+        *,
+        conversation_id: UUID,
+        owner_subject: str,
+        is_pinned: bool,
+    ) -> Conversation:
         current = self.conversations.get(conversation_id)
-        if current is None:
+        if current is None or current.owner_subject != owner_subject:
             raise ConversationNotFoundError("missing")
+        if self.pin_limit_reached:
+            raise ConversationPinLimitExceededError("limit")
         updated = Conversation(
             id=current.id,
             owner_subject=current.owner_subject,
@@ -138,6 +154,28 @@ def test_management_rejects_anonymous_and_invalid_payload() -> None:
         json={"is_pinned": True, "extra": "forbidden"},
     )
     assert invalid.status_code == 422
+
+
+def test_pin_limit_conflict_is_controlled_and_preserves_the_conversation() -> None:
+    own = Conversation(id=CONVERSATION_ID, owner_subject="current-user")
+    access = FakeAccessPort({own.id: own})
+    client = _client(
+        access,
+        FakeWriter(access.conversations, pin_limit_reached=True),
+        RequestPrincipal(subject="current-user", authenticated=True),
+    )
+
+    response = client.patch(
+        f"/api/v1/conversations/{CONVERSATION_ID}/pin",
+        json={"is_pinned": True},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "CONVERSATION_PIN_LIMIT_REACHED",
+        "message": "最多置顶 10 个会话，请先取消一个。",
+    }
+    assert access.conversations[CONVERSATION_ID].is_pinned is False
 
 
 def test_delete_rejects_anonymous_other_invalid_and_missing_targets() -> None:

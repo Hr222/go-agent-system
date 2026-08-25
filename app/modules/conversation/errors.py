@@ -9,5 +9,9 @@ class ConversationAccessDeniedError(PermissionError):
     """主体缺失、会话不存在或会话不属于当前主体。"""
 
 
+class ConversationPinLimitExceededError(RuntimeError):
+    """当前主体的置顶会话数量已经达到服务端上限。"""
+
+
 class ContextBudgetExceededError(ValueError):
     """最新上下文消息无法放入给定预算。"""

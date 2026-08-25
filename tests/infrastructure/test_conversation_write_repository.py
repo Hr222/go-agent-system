@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from threading import Barrier
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.composition.conversation import build_conversation_write_service
 from app.infrastructure.persistence.models.conversation import (
@@ -19,8 +21,12 @@ from app.infrastructure.persistence.repositories.conversation_event_repository i
 from app.infrastructure.persistence.repositories.conversation_write_repository import (
     ConversationWriteRepository,
 )
-from app.modules.conversation.domain import ConversationEvent, MessageRole
-from app.modules.conversation.errors import ConversationNotFoundError
+from app.modules.conversation.domain import Conversation, ConversationEvent, MessageRole
+from app.modules.conversation.errors import (
+    ConversationNotFoundError,
+    ConversationPinLimitExceededError,
+)
+from app.modules.conversation.ports import DEFAULT_PINNED_CONVERSATION_LIMIT
 from tests.support.db_test_utils import SchemaHarness
 
 
@@ -237,6 +243,157 @@ def test_repository_rolls_back_failed_conversation_delete() -> None:
             ) == 1
         finally:
             session.close()
+    finally:
+        harness.drop_schema()
+
+
+def test_repository_limits_pins_per_owner_without_updating_recent_activity() -> None:
+    harness = SchemaHarness("conversation_pin_limit")
+    harness.create_schema()
+    try:
+        session = harness.session_local()
+        try:
+            repository = ConversationWriteRepository(session)
+            owner_conversations = [
+                repository.save_conversation(Conversation(owner_subject="owner-1"))
+                for _ in range(DEFAULT_PINNED_CONVERSATION_LIMIT + 1)
+            ]
+            other_owner = repository.save_conversation(Conversation(owner_subject="owner-2"))
+            original_updated_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+            session.execute(
+                update(ConversationRecord)
+                .where(
+                    ConversationRecord.id.in_(
+                        [conversation.id for conversation in owner_conversations] + [other_owner.id]
+                    )
+                )
+                .values(updated_at=original_updated_at)
+            )
+            session.commit()
+
+            for conversation in owner_conversations[:DEFAULT_PINNED_CONVERSATION_LIMIT]:
+                pinned = repository.update_pinned(
+                    conversation_id=conversation.id,
+                    owner_subject="owner-1",
+                    is_pinned=True,
+                )
+                assert pinned.updated_at == original_updated_at
+
+            repeated = repository.update_pinned(
+                conversation_id=owner_conversations[0].id,
+                owner_subject="owner-1",
+                is_pinned=True,
+            )
+            assert repeated.updated_at == original_updated_at
+
+            with pytest.raises(ConversationPinLimitExceededError, match="最多置顶"):
+                repository.update_pinned(
+                    conversation_id=owner_conversations[-1].id,
+                    owner_subject="owner-1",
+                    is_pinned=True,
+                )
+
+            unpinned = repository.update_pinned(
+                conversation_id=owner_conversations[0].id,
+                owner_subject="owner-1",
+                is_pinned=False,
+            )
+            assert unpinned.updated_at == original_updated_at
+            assert unpinned.is_pinned is False
+
+            replacement = repository.update_pinned(
+                conversation_id=owner_conversations[-1].id,
+                owner_subject="owner-1",
+                is_pinned=True,
+            )
+            assert replacement.updated_at == original_updated_at
+            assert replacement.is_pinned is True
+
+            other_pinned = repository.update_pinned(
+                conversation_id=other_owner.id,
+                owner_subject="owner-2",
+                is_pinned=True,
+            )
+            assert other_pinned.is_pinned is True
+
+            session.expire_all()
+            assert session.scalar(
+                select(func.count(ConversationRecord.id)).where(
+                    ConversationRecord.owner_subject == "owner-1",
+                    ConversationRecord.is_pinned.is_(True),
+                )
+            ) == DEFAULT_PINNED_CONVERSATION_LIMIT
+        finally:
+            session.close()
+    finally:
+        harness.drop_schema()
+
+
+def _pin_for_owner_in_thread(
+    harness: SchemaHarness,
+    conversation_id,
+    barrier: Barrier,
+) -> bool:  # noqa: ANN001
+    session = harness.session_local()
+    try:
+        barrier.wait(timeout=10)
+        ConversationWriteRepository(session).update_pinned(
+            conversation_id=conversation_id,
+            owner_subject="owner-1",
+            is_pinned=True,
+        )
+        return True
+    except ConversationPinLimitExceededError:
+        return False
+    finally:
+        session.close()
+
+
+def test_concurrent_pins_cannot_exceed_the_owner_limit() -> None:
+    harness = SchemaHarness("conversation_pin_concurrent")
+    harness.create_schema()
+    try:
+        session = harness.session_local()
+        try:
+            repository = ConversationWriteRepository(session)
+            conversations = [
+                repository.save_conversation(Conversation(owner_subject="owner-1"))
+                for _ in range(DEFAULT_PINNED_CONVERSATION_LIMIT + 1)
+            ]
+            for conversation in conversations[: DEFAULT_PINNED_CONVERSATION_LIMIT - 1]:
+                repository.update_pinned(
+                    conversation_id=conversation.id,
+                    owner_subject="owner-1",
+                    is_pinned=True,
+                )
+        finally:
+            session.close()
+
+        barrier = Barrier(2)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = list(
+                executor.map(
+                    lambda conversation: _pin_for_owner_in_thread(
+                        harness,
+                        conversation.id,
+                        barrier,
+                    ),
+                    conversations[-2:],
+                )
+            )
+
+        verification_session = harness.session_local()
+        try:
+            pinned_count = verification_session.scalar(
+                select(func.count(ConversationRecord.id)).where(
+                    ConversationRecord.owner_subject == "owner-1",
+                    ConversationRecord.is_pinned.is_(True),
+                )
+            )
+            assert sorted(outcomes) == [False, True]
+            assert pinned_count == DEFAULT_PINNED_CONVERSATION_LIMIT
+        finally:
+            verification_session.close()
     finally:
         harness.drop_schema()
 

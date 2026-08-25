@@ -6,13 +6,14 @@
 
 ### Requirement: Chat 侧栏展示当前主体的会话摘要
 
-Chat 前端 MUST 使用会话摘要 API 展示当前主体可访问的 Conversation，优先展示持久化的 `topic_summary`，缺少话题概括时回退为日期标题。页面 MUST 覆盖加载、空列表、失败与显式重试状态。
+Chat 前端 MUST 使用会话摘要 API 展示当前主体可访问的 Conversation，优先展示持久化的 `topic_summary`，缺少话题概括时回退为日期标题，并显示置顶状态。页面 MUST 覆盖加载、空列表、失败与显式重试状态。
 
 #### Scenario: 加载会话侧栏
 
 - **WHEN** 当前主体拥有 Conversation
 - **THEN** 侧栏展示其摘要而不展示其他主体的会话
 - **AND** 顺序与服务端摘要列表一致
+- **AND** 置顶会话有可识别的置顶状态
 
 #### Scenario: 列表为空
 

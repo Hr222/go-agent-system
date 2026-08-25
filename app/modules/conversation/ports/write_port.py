@@ -5,6 +5,8 @@ from uuid import UUID
 
 from app.modules.conversation.domain import Conversation, Message, MessageRole
 
+DEFAULT_PINNED_CONVERSATION_LIMIT = 10
+
 
 class ConversationWritePort(Protocol):
     """Conversation 写入用例依赖的持久化端口。"""
@@ -29,6 +31,7 @@ class ConversationWritePort(Protocol):
         self,
         *,
         conversation_id: UUID,
+        owner_subject: str,
         is_pinned: bool,
     ) -> Conversation: ...
 

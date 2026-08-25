@@ -5,8 +5,8 @@ from uuid import UUID
 
 from sqlalchemy import (
     BIGINT,
-    Boolean,
     TIMESTAMP,
+    Boolean,
     CheckConstraint,
     ForeignKey,
     Index,
@@ -32,7 +32,11 @@ class ConversationRecord(Base):
             name="chk_conversation_owner_subject_not_blank",
         ),
         CheckConstraint(
-            "topic_summary IS NULL OR (btrim(topic_summary) <> '' AND topic_summary = btrim(topic_summary) AND position(E'\\n' in topic_summary) = 0 AND position(E'\\r' in topic_summary) = 0 AND char_length(topic_summary) <= 80)",
+            "topic_summary IS NULL OR ("
+            "btrim(topic_summary) <> '' AND topic_summary = btrim(topic_summary) "
+            "AND position(E'\\n' in topic_summary) = 0 "
+            "AND position(E'\\r' in topic_summary) = 0 "
+            "AND char_length(topic_summary) <= 80)",
             name="chk_conversation_topic_summary_valid",
         ),
         Index("idx_conversation_owner_subject", "owner_subject"),
@@ -62,7 +66,6 @@ class ConversationRecord(Base):
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
-        onupdate=func.now(),
     )
     messages: Mapped[list["ConversationMessageRecord"]] = relationship(
         back_populates="conversation",

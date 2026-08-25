@@ -17,15 +17,33 @@ from app.infrastructure.persistence.models.conversation import (
     ConversationRecord,
 )
 from app.modules.conversation.domain import Conversation, Message, MessageRole
-from app.modules.conversation.errors import ConversationNotFoundError
-from app.modules.conversation.ports.write_port import ConversationWritePort
+from app.modules.conversation.errors import (
+    ConversationNotFoundError,
+    ConversationPinLimitExceededError,
+)
+from app.modules.conversation.ports.write_port import (
+    DEFAULT_PINNED_CONVERSATION_LIMIT,
+    ConversationWritePort,
+)
 
 
 class ConversationWriteRepository(ConversationWritePort):
     """Conversation 写入 PostgreSQL 适配器。"""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        pinned_conversation_limit: int = DEFAULT_PINNED_CONVERSATION_LIMIT,
+    ) -> None:
+        if (
+            isinstance(pinned_conversation_limit, bool)
+            or not isinstance(pinned_conversation_limit, int)
+            or pinned_conversation_limit < 1
+        ):
+            raise ValueError("置顶会话上限必须是正整数。")
         self.session = session
+        self._pinned_conversation_limit = pinned_conversation_limit
 
     def save_conversation(self, conversation: Conversation) -> Conversation:
         record = conversation_to_record(conversation)
@@ -91,18 +109,46 @@ class ConversationWriteRepository(ConversationWritePort):
         self,
         *,
         conversation_id: UUID,
+        owner_subject: str,
         is_pinned: bool,
     ) -> Conversation:
         try:
+            self.session.execute(
+                select(
+                    func.pg_advisory_xact_lock(
+                        func.hashtextextended(owner_subject, 0)
+                    )
+                )
+            )
             record = self.session.scalar(
                 select(ConversationRecord)
-                .where(ConversationRecord.id == conversation_id)
+                .where(
+                    ConversationRecord.id == conversation_id,
+                    ConversationRecord.owner_subject == owner_subject,
+                )
                 .with_for_update()
             )
             if record is None:
                 raise ConversationNotFoundError(f"会话不存在：{conversation_id}")
+
+            if record.is_pinned == is_pinned:
+                self.session.commit()
+                self.session.refresh(record)
+                return conversation_from_record(record)
+
+            if is_pinned:
+                pinned_count = self.session.scalar(
+                    select(func.count(ConversationRecord.id)).where(
+                        ConversationRecord.owner_subject == owner_subject,
+                        ConversationRecord.is_pinned.is_(True),
+                    )
+                )
+                if int(pinned_count or 0) >= self._pinned_conversation_limit:
+                    raise ConversationPinLimitExceededError(
+                        f"最多置顶 {self._pinned_conversation_limit} 个会话，请先取消一个。"
+                    )
+
             record.is_pinned = is_pinned
-            record.updated_at = datetime.now(timezone.utc)
             self.session.commit()
             self.session.refresh(record)
             return conversation_from_record(record)

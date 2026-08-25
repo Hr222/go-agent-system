@@ -22,32 +22,34 @@ from app.interfaces.http.dependencies import (
 from app.interfaces.http.schemas.conversation import (
     ConversationCreateRequest,
     ConversationMessagePageResponse,
+    ConversationPinRequest,
     ConversationResponse,
     ConversationSummaryPageResponse,
     ConversationSummaryResponse,
     ConversationTopicSummaryUpdateRequest,
-    ConversationPinRequest,
 )
 from app.interfaces.http.security import get_request_principal
 from app.modules.conversation.application import (
     ConversationAccessService,
     ConversationCreateCommand,
+    ConversationDeleteCommand,
     ConversationHistoryReadService,
     ConversationListReadService,
-    ConversationDeleteCommand,
     ConversationManagementService,
     ConversationPinCommand,
+    ConversationResolveQuery,
     ConversationTopicSummaryUpdateCommand,
     ConversationTopicSummaryUpdateService,
-    ConversationResolveQuery,
 )
 from app.modules.conversation.errors import (
     ConversationAccessDeniedError,
     ConversationNotFoundError,
+    ConversationPinLimitExceededError,
 )
 from app.modules.conversation.ports import (
     DEFAULT_CONVERSATION_LIST_PAGE_SIZE,
     DEFAULT_HISTORY_PAGE_SIZE,
+    DEFAULT_PINNED_CONVERSATION_LIMIT,
     MAX_CONVERSATION_LIST_PAGE_SIZE,
     MAX_HISTORY_PAGE_SIZE,
 )
@@ -168,7 +170,10 @@ def update_conversation_topic_summary(
 @router.patch(
     "/{conversation_id}/pin",
     response_model=ConversationSummaryResponse,
-    responses={404: {"description": "会话不可用。"}},
+    responses={
+        404: {"description": "会话不可用。"},
+        409: {"description": "置顶会话数量已达到上限。"},
+    },
 )
 def update_conversation_pin(
     conversation_id: UUID,
@@ -188,6 +193,16 @@ def update_conversation_pin(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "CONVERSATION_UNAVAILABLE", "message": "会话不可用。"},
+        ) from exc
+    except ConversationPinLimitExceededError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "CONVERSATION_PIN_LIMIT_REACHED",
+                "message": (
+                    f"最多置顶 {DEFAULT_PINNED_CONVERSATION_LIMIT} 个会话，请先取消一个。"
+                ),
+            },
         ) from exc
     return ConversationSummaryResponse(
         id=conversation.id,

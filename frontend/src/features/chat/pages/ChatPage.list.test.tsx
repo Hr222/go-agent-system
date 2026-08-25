@@ -297,6 +297,50 @@ describe("ChatPage conversation list", () => {
     expect(screen.getByText("删除失败会话")).toBeTruthy();
   });
 
+  it("keeps the list and shows the controlled message when pinning reaches its limit", async () => {
+    const mutateAsync = vi.fn().mockRejectedValue({
+      message: "最多置顶 10 个会话，请先取消一个。",
+    });
+    mocks.useConversationList.mockReturnValue(listState([
+      summary(FIRST_ID, "2025-01-01T00:00:00Z", "置顶上限测试"),
+    ]));
+    mocks.useUpdateConversationPin.mockReturnValue({ isPending: false, mutateAsync });
+
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "会话操作：置顶上限测试" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "置顶" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      conversationId: FIRST_ID,
+      isPinned: true,
+    }));
+    expect(mocks.messageError).toHaveBeenCalledWith("最多置顶 10 个会话，请先取消一个。");
+    expect(screen.getByText("置顶上限测试")).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("uses the inverse pin state and reports a successful unpin", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({
+      ...summary(FIRST_ID, "2025-01-01T00:00:00Z", "已置顶会话"),
+      isPinned: false,
+    });
+    mocks.useConversationList.mockReturnValue(listState([
+      { ...summary(FIRST_ID, "2025-01-01T00:00:00Z", "已置顶会话"), isPinned: true },
+    ]));
+    mocks.useUpdateConversationPin.mockReturnValue({ isPending: false, mutateAsync });
+
+    renderPage();
+    expect(screen.getByLabelText("已置顶")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "会话操作：已置顶会话" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "取消置顶" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      conversationId: FIRST_ID,
+      isPinned: false,
+    }));
+    expect(screen.getByRole("status").textContent).toContain("已取消置顶");
+  });
+
   it("closes an open conversation menu when clicking outside", () => {
     mocks.useConversationList.mockReturnValue(listState([
       summary(FIRST_ID, "2025-01-01T00:00:00Z", "菜单测试"),

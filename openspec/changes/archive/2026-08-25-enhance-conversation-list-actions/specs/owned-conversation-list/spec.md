@@ -23,6 +23,12 @@
 - **THEN** 列表项返回对应的 `topic_summary` 和 `is_pinned`
 - **AND** 列表不返回消息正文或完整历史
 
+#### Scenario: 置顶整理不改变最近活动时间
+
+- **WHEN** 当前主体置顶或取消置顶一个会话
+- **THEN** 后续摘要返回该会话原有的 `updated_at`
+- **AND** 会话只因 `is_pinned` 分组变化而改变列表位置
+
 ### Requirement: 会话摘要不泄露消息事实
 
 会话列表 MUST NOT 返回消息正文、ConversationEvent、附件、模型用量、权限或其他主体的会话。

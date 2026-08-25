@@ -271,6 +271,7 @@ export function ChatPage() {
   };
 
   const togglePin = async (conversation: ConversationSummary) => {
+    if (updatePinMutation.isPending) return;
     setOpenConversationMenu(null);
     try {
       await updatePinMutation.mutateAsync({
@@ -279,7 +280,7 @@ export function ChatPage() {
       });
       setListActionNotice(conversation.isPinned ? "已取消置顶" : "已置顶会话");
     } catch (error) {
-      setListActionNotice(apiErrorMessage(error, "置顶操作失败，请重试。"));
+      message.error(apiErrorMessage(error, "置顶操作失败，请重试。"));
     }
   };
 
@@ -527,7 +528,7 @@ export function ChatPage() {
                   {openConversationMenu === conversation.id && (
                     <div className={styles.conversationMenu} role="menu">
                       <button type="button" role="menuitem" onClick={() => beginRename(conversation)}><Pencil size={14} /> 重命名</button>
-                      <button type="button" role="menuitem" onClick={() => void togglePin(conversation)}><Pin size={14} /> {conversation.isPinned ? "取消置顶" : "置顶"}</button>
+                      <button type="button" role="menuitem" onClick={() => void togglePin(conversation)} disabled={updatePinMutation.isPending}><Pin size={14} /> {conversation.isPinned ? "取消置顶" : "置顶"}</button>
                       <button type="button" role="menuitem">分享</button>
                       <button className={styles.dangerMenuItem} type="button" role="menuitem" onClick={() => requestDelete(conversation.id)}><Trash2 size={14} /> 删除</button>
                     </div>
