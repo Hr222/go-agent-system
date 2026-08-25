@@ -15,4 +15,4 @@
 - [x] 3.1 运行 Conversation、基础设施和架构测试，以及前端 Chat 测试和生产构建。
 - [x] 3.2 执行专用真实数据库删除验收：创建带消息和事件的测试会话，调用删除用例后查询三张表确认均不存在。
 - [x] 3.3 运行 `openspec validate delete-conversation --strict --no-interactive`、全库严格校验与 `git diff --check`。
-- [ ] 3.4 在本地 Chat 页面人工验收删除确认、取消、成功和失败提示；不删除既有用户会话。
+- [x] 3.4 在本地 Chat 页面人工验收删除确认、取消、成功和失败提示；不删除既有用户会话。

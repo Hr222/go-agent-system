@@ -12,6 +12,13 @@ const mocks = vi.hoisted(() => ({
   useDeleteConversation: vi.fn(),
   useUpdateConversationPin: vi.fn(),
   useUpdateConversationTopicSummary: vi.fn(),
+  messageError: vi.fn(),
+}));
+
+vi.mock("antd", () => ({
+  message: {
+    error: mocks.messageError,
+  },
 }));
 
 vi.mock("../hooks/useConversationHistory", () => ({
@@ -91,6 +98,7 @@ describe("ChatPage conversation list", () => {
     mocks.useDeleteConversation.mockReset();
     mocks.useUpdateConversationPin.mockReset();
     mocks.useUpdateConversationTopicSummary.mockReset();
+    mocks.messageError.mockReset();
     mocks.useConversationHistory.mockReturnValue(emptyHistoryState);
     mocks.useConversationList.mockReturnValue(listState([]));
     mocks.useCreateConversation.mockReturnValue({
@@ -285,7 +293,7 @@ describe("ChatPage conversation list", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 
-    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("删除失败"));
+    await waitFor(() => expect(mocks.messageError).toHaveBeenCalledWith("会话删除失败，请重试。"));
     expect(screen.getByText("删除失败会话")).toBeTruthy();
   });
 

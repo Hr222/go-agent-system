@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { message } from "antd";
 import {
   Archive,
   Bot,
@@ -302,9 +303,9 @@ export function ChatPage() {
       setDeleteConfirmId(null);
       setListActionNotice("会话已删除");
       await conversationList.refetch();
-    } catch (error) {
+    } catch {
       setDeleteConfirmId(null);
-      setListActionNotice(apiErrorMessage(error, "会话删除失败，请重试。"));
+      message.error("会话删除失败，请重试。");
     } finally {
       setDeleteInProgress(false);
     }
