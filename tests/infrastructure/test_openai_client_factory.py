@@ -161,3 +161,21 @@ def test_factory_exposes_selected_glm_runtime_profile(
     assert "runtime_profile=coding_plan" in caplog.text
     assert "test-key" not in caplog.text
     factory.close()
+
+
+def test_factories_share_request_governor_for_the_same_effective_provider_config() -> None:
+    configuration = Settings(
+        _env_file=None,
+        zhipu_api_key="test-key",
+        zhipu_resource_chat_model="glm-test",
+    )
+    first = OpenAICompatibleClientFactory(configuration=configuration)
+    second = OpenAICompatibleClientFactory(configuration=configuration)
+    coding = OpenAICompatibleClientFactory(
+        configuration=configuration.model_copy(
+            update={"glm_runtime_profile": "coding_plan"}
+        )
+    )
+
+    assert first.request_governor is second.request_governor
+    assert first.request_governor is not coding.request_governor

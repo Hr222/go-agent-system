@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import httpx
@@ -8,6 +9,7 @@ from openai import APITimeoutError
 
 from app.infrastructure.llm import llm_client
 from app.infrastructure.llm.llm_client import RagAnswerGenerator
+from app.infrastructure.llm.request_governance import LlmRequestGovernor
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.knowledge.ports.read_port import KnowledgeSearchHit
 from app.shared.config import Settings
@@ -38,6 +40,18 @@ class FlakyCompletions(FakeCompletions):
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="基于证据的回答。"))]
         )
+
+
+class RecordingGovernor(LlmRequestGovernor):
+    def __init__(self, configuration: Settings) -> None:
+        super().__init__(configuration.llm_provider_config())
+        self.attempt_count = 0
+
+    @contextmanager
+    def attempt(self):  # type: ignore[override]
+        self.attempt_count += 1
+        with super().attempt():
+            yield
 
 
 def _hit() -> KnowledgeSearchHit:
@@ -90,6 +104,7 @@ def test_rag_answer_generator_retries_transient_completion_failure(
     monkeypatch.setattr(llm_client, "settings", configuration)
     completions = FlakyCompletions()
     waits: list[float] = []
+    governor = RecordingGovernor(configuration)
     generator = RagAnswerGenerator(
         client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
         retry_policy=LlmTransientRetryPolicy(
@@ -99,10 +114,12 @@ def test_rag_answer_generator_retries_transient_completion_failure(
             random_fn=lambda: 0.0,
             clock=lambda: 1.0,
         ),
+        request_governor=governor,
     )
 
     result = generator.answer(query="测试问题", hits=[_hit()])
 
     assert result.answer == "基于证据的回答。"
     assert completions.attempts == 2
+    assert governor.attempt_count == 2
     assert waits == [0.01]

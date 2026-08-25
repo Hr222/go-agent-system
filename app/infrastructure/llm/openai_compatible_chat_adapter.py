@@ -7,6 +7,10 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
+from app.infrastructure.llm.request_governance import (
+    LlmRequestGovernor,
+    shared_request_governor,
+)
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.llm.contracts import (
     ChatLlmMessage,
@@ -33,6 +37,7 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
         client_factory: OpenAICompatibleClientFactory | None = None,
         chat_model: Any | None = None,
         retry_policy: LlmTransientRetryPolicy | None = None,
+        request_governor: LlmRequestGovernor | None = None,
     ) -> None:
         self.provider = provider
         self.provider_label = provider_label
@@ -45,8 +50,11 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
             provider=provider,
             configuration=configuration,
         )
+        self._request_governor = request_governor
         if chat_model is not None:
             self._chat_model = chat_model
+            if self._request_governor is None:
+                self._request_governor = shared_request_governor(self.provider_config)
             return
 
         if not self.provider_config.model:
@@ -60,12 +68,13 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
         self._chat_model = client_factory.create_chat_model(
             model=self.provider_config.model,
         )
+        self._request_governor = client_factory.request_governor
 
     def invoke(self, request: ChatLlmRequest) -> ChatLlmResult:
         try:
             messages = _request_messages(request)
             response = self._retry_policy.execute(
-                lambda: self._model_for_request().invoke(messages)
+                lambda: self._invoke_with_governance(messages)
             )
         except Exception as exc:
             raise UpstreamServiceError(
@@ -91,22 +100,36 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
             stream: AsyncIterator[Any] | None = None
             try:
                 for attempt in range(1, self._retry_policy.max_attempts + 1):
+                    first_activity_emitted = False
                     try:
-                        stream = self._model_for_request().astream(messages)
-                        first_chunk = await _first_activity_chunk(
-                            stream,
-                            request=request,
-                            timeout_seconds=self._stream_first_activity_timeout_seconds,
-                            model=self.model or "unknown",
-                        )
+                        async with self._request_governor.async_attempt():
+                            stream = self._model_for_request().astream(messages)
+                            first_chunk = await _first_activity_chunk(
+                                stream,
+                                request=request,
+                                timeout_seconds=self._stream_first_activity_timeout_seconds,
+                                model=self.model or "unknown",
+                            )
+                            first_activity_emitted = True
+                            yield first_chunk
+                            async for response in stream:
+                                yield _stream_chunk(
+                                    response,
+                                    model=self.model or "unknown",
+                                    prompt_version=request.prompt_version,
+                                )
+                        stream = None
                     except asyncio.CancelledError:
                         raise
                     except Exception as error:
                         await _close_stream(stream)
                         stream = None
-                        if await retry_session.retry_after_async_failure(
-                            error,
-                            attempt=attempt,
+                        if (
+                            not first_activity_emitted
+                            and await retry_session.retry_after_async_failure(
+                                error,
+                                attempt=attempt,
+                            )
                         ):
                             continue
                         raise
@@ -114,13 +137,6 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
                 else:
                     raise RuntimeError("LLM 流式重试循环在未创建流时结束。")
 
-                yield first_chunk
-                async for response in stream:
-                    yield _stream_chunk(
-                        response,
-                        model=self.model or "unknown",
-                        prompt_version=request.prompt_version,
-                    )
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -132,6 +148,10 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
                 await _close_stream(stream)
 
         return generate()
+
+    def _invoke_with_governance(self, messages: object) -> object:
+        with self._request_governor.attempt():
+            return self._model_for_request().invoke(messages)
 
     def _model_for_request(self) -> Any:
         if self.provider_config.thinking is None:

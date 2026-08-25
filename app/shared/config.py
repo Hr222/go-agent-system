@@ -18,6 +18,32 @@ _GLM_DEFAULT_TEMPERATURE = 0.0
 _GLM_DEFAULT_MAX_TOKENS = 16_384
 _GLM_RESOURCE_DEFAULT_THINKING: GlmThinkingMode = "disabled"
 _GLM_CODING_DEFAULT_THINKING: GlmThinkingMode = "low"
+_GLM_RESOURCE_DEFAULT_REQUESTS_PER_MINUTE = 30.0
+_GLM_RESOURCE_DEFAULT_REQUEST_BURST = 3
+_GLM_RESOURCE_DEFAULT_REQUEST_MAX_CONCURRENCY = 3
+_GLM_CODING_DEFAULT_REQUESTS_PER_MINUTE = 10.0
+_GLM_CODING_DEFAULT_REQUEST_BURST = 1
+_GLM_CODING_DEFAULT_REQUEST_MAX_CONCURRENCY = 1
+
+
+@dataclass(frozen=True, slots=True)
+class LlmRetryConfig:
+    """OpenAI-compatible 调用的应用级瞬态失败重试配置。"""
+
+    max_attempts: int
+    base_backoff_seconds: float
+    max_backoff_seconds: float
+    max_retry_after_seconds: float
+    total_backoff_budget_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class LlmRequestGovernanceConfig:
+    """一个有效 Provider 配置在当前进程内共享的请求额度。"""
+
+    requests_per_minute: float
+    burst: int
+    max_concurrency: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,19 +57,9 @@ class LlmProviderConfig:
     timeout_seconds: float
     temperature: float
     max_tokens: int | None
+    request_governance: LlmRequestGovernanceConfig
     thinking: GlmThinkingMode | None = None
     runtime_profile: GlmRuntimeProfileName | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class LlmRetryConfig:
-    """OpenAI-compatible 调用的应用级瞬态失败重试配置。"""
-
-    max_attempts: int
-    base_backoff_seconds: float
-    max_backoff_seconds: float
-    max_retry_after_seconds: float
-    total_backoff_budget_seconds: float
 
 
 class Settings(BaseSettings):
@@ -166,6 +182,21 @@ class Settings(BaseSettings):
         default=_GLM_RESOURCE_DEFAULT_THINKING,
         alias="ZHIPU_RESOURCE_THINKING",
     )
+    zhipu_resource_requests_per_minute: float = Field(
+        default=_GLM_RESOURCE_DEFAULT_REQUESTS_PER_MINUTE,
+        gt=0,
+        alias="ZHIPU_RESOURCE_REQUESTS_PER_MINUTE",
+    )
+    zhipu_resource_request_burst: int = Field(
+        default=_GLM_RESOURCE_DEFAULT_REQUEST_BURST,
+        gt=0,
+        alias="ZHIPU_RESOURCE_REQUEST_BURST",
+    )
+    zhipu_resource_request_max_concurrency: int = Field(
+        default=_GLM_RESOURCE_DEFAULT_REQUEST_MAX_CONCURRENCY,
+        gt=0,
+        alias="ZHIPU_RESOURCE_REQUEST_MAX_CONCURRENCY",
+    )
     zhipu_coding_base_url: str | None = Field(
         default=None,
         alias="ZHIPU_CODING_BASE_URL",
@@ -193,6 +224,21 @@ class Settings(BaseSettings):
     zhipu_coding_thinking: GlmThinkingMode = Field(
         default=_GLM_CODING_DEFAULT_THINKING,
         alias="ZHIPU_CODING_THINKING",
+    )
+    zhipu_coding_requests_per_minute: float = Field(
+        default=_GLM_CODING_DEFAULT_REQUESTS_PER_MINUTE,
+        gt=0,
+        alias="ZHIPU_CODING_REQUESTS_PER_MINUTE",
+    )
+    zhipu_coding_request_burst: int = Field(
+        default=_GLM_CODING_DEFAULT_REQUEST_BURST,
+        gt=0,
+        alias="ZHIPU_CODING_REQUEST_BURST",
+    )
+    zhipu_coding_request_max_concurrency: int = Field(
+        default=_GLM_CODING_DEFAULT_REQUEST_MAX_CONCURRENCY,
+        gt=0,
+        alias="ZHIPU_CODING_REQUEST_MAX_CONCURRENCY",
     )
     # 旧变量仅作为 resource Profile 的迁移回退，避免已有部署升级后失效。
     zhipu_base_url: str | None = Field(default=None, alias="ZHIPU_BASE_URL")
@@ -232,8 +278,20 @@ class Settings(BaseSettings):
     deepseek_thinking: Literal["enabled", "disabled"] = Field(
         default="disabled", alias="DEEPSEEK_THINKING"
     )
-    llm_stream_max_concurrency: int = Field(
-        default=8, gt=0, alias="LLM_STREAM_MAX_CONCURRENCY"
+    llm_requests_per_minute: float = Field(
+        default=60.0,
+        gt=0,
+        alias="LLM_REQUESTS_PER_MINUTE",
+    )
+    llm_request_burst: int = Field(
+        default=6,
+        gt=0,
+        alias="LLM_REQUEST_BURST",
+    )
+    llm_request_max_concurrency: int = Field(
+        default=4,
+        gt=0,
+        alias="LLM_REQUEST_MAX_CONCURRENCY",
     )
     llm_stream_first_token_timeout_seconds: float = Field(
         default=30.0, gt=0, alias="LLM_STREAM_FIRST_TOKEN_TIMEOUT_SECONDS"
@@ -330,6 +388,21 @@ class Settings(BaseSettings):
                 "LLM_RETRY_BASE_BACKOFF_SECONDS cannot exceed "
                 "LLM_RETRY_MAX_BACKOFF_SECONDS"
             )
+        _validate_request_governance(
+            "ZHIPU_RESOURCE",
+            requests_per_minute=self.zhipu_resource_requests_per_minute,
+            burst=self.zhipu_resource_request_burst,
+        )
+        _validate_request_governance(
+            "ZHIPU_CODING",
+            requests_per_minute=self.zhipu_coding_requests_per_minute,
+            burst=self.zhipu_coding_request_burst,
+        )
+        _validate_request_governance(
+            "LLM",
+            requests_per_minute=self.llm_requests_per_minute,
+            burst=self.llm_request_burst,
+        )
         return self
 
     @property
@@ -417,6 +490,11 @@ class Settings(BaseSettings):
                 timeout_seconds=self.deepseek_timeout_seconds,
                 temperature=self.deepseek_temperature,
                 max_tokens=self.deepseek_max_tokens,
+                request_governance=LlmRequestGovernanceConfig(
+                    requests_per_minute=self.llm_requests_per_minute,
+                    burst=self.llm_request_burst,
+                    max_concurrency=self.llm_request_max_concurrency,
+                ),
                 thinking=self.deepseek_thinking,
             )
         raise ValueError(f"未注册的 LLM Provider：{selected}")
@@ -445,6 +523,11 @@ class Settings(BaseSettings):
                 max_tokens=_configured_or_default(
                     self.zhipu_coding_max_tokens,
                     _GLM_DEFAULT_MAX_TOKENS,
+                ),
+                request_governance=LlmRequestGovernanceConfig(
+                    requests_per_minute=self.zhipu_coding_requests_per_minute,
+                    burst=self.zhipu_coding_request_burst,
+                    max_concurrency=self.zhipu_coding_request_max_concurrency,
                 ),
                 thinking=self.zhipu_coding_thinking,
                 runtime_profile="coding_plan",
@@ -478,6 +561,11 @@ class Settings(BaseSettings):
                 self.zhipu_max_tokens,
                 _GLM_DEFAULT_MAX_TOKENS,
             ),
+            request_governance=LlmRequestGovernanceConfig(
+                requests_per_minute=self.zhipu_resource_requests_per_minute,
+                burst=self.zhipu_resource_request_burst,
+                max_concurrency=self.zhipu_resource_request_max_concurrency,
+            ),
             thinking=self.zhipu_resource_thinking,
             runtime_profile="resource",
         )
@@ -490,6 +578,16 @@ def _configured_or_default(value: object, *fallbacks: object) -> object:
         if candidate is not None:
             return candidate
     raise RuntimeError("缺少 GLM Profile 默认配置。")
+
+
+def _validate_request_governance(
+    name: str,
+    *,
+    requests_per_minute: float,
+    burst: int,
+) -> None:
+    if burst > requests_per_minute:
+        raise ValueError(f"{name}_REQUEST_BURST cannot exceed {name}_REQUESTS_PER_MINUTE")
 
 
 settings = Settings()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import httpx
@@ -20,6 +21,7 @@ from app.infrastructure.llm.langchain_deepseek_chat_adapter import LangChainDeep
 from app.infrastructure.llm.langchain_glm_adapter import LangChainGlmStructuredLlm
 from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLlm
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
+from app.infrastructure.llm.request_governance import LlmRequestGovernor
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.llm.contracts import ChatLlmRequest, StructuredLlmRequest
 from app.shared.config import Settings
@@ -94,6 +96,18 @@ class FakeClientFactory:
     def create_chat_model(self, *, model: str) -> object:
         del model
         return object()
+
+
+class RecordingGovernor(LlmRequestGovernor):
+    def __init__(self, configuration: Settings, *, provider: str) -> None:
+        super().__init__(configuration.llm_provider_config(provider))  # type: ignore[arg-type]
+        self.attempt_count = 0
+
+    @contextmanager
+    def attempt(self):  # type: ignore[override]
+        self.attempt_count += 1
+        with super().attempt():
+            yield
 
 
 def _deepseek_settings() -> Settings:
@@ -361,14 +375,17 @@ def test_structured_adapter_retries_transient_raw_completion_failure() -> None:
         random_fn=lambda: 0.0,
         clock=lambda: 1.0,
     )
+    governor = RecordingGovernor(configuration, provider="deepseek")
     adapter = LangChainDeepSeekStructuredLlm(
         configuration=configuration,
         client_factory=factory,  # type: ignore[arg-type]
         retry_policy=retry_policy,
+        request_governor=governor,
     )
 
     result = adapter.invoke(_structured_request(), ProbeResult)
 
     assert result.value == ProbeResult(status="ok", message="done")
     assert flaky_completions.attempts == 2
+    assert governor.attempt_count == 2
     assert waits == [0.01]

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -57,29 +56,12 @@ async def interaction_chat_stream(
     """Route chat on the server and return only browser-safe interaction events."""
 
     preparation = application.prepare(chat_stream_command(request, principal))
-    stream_slots: asyncio.Semaphore = http_request.app.state.llm_stream_slots
-
-    if preparation.kind == "chat" and stream_slots.locked():
-        raise HTTPException(status_code=429, detail="流式请求达到并发上限。")
-
     async def events() -> AsyncIterator[str]:
-        acquired = False
-        try:
-            if preparation.kind == "chat":
-                await stream_slots.acquire()
-                acquired = True
-                http_request.app.state.llm_active_streams += 1
-            async for event in application.stream(
-                preparation,
-                is_disconnected=http_request.is_disconnected,
-            ):
-                yield serialize_sse_event(event.name, event.data)
-        finally:
-            if acquired:
-                stream_slots.release()
-                http_request.app.state.llm_active_streams = max(
-                    0, http_request.app.state.llm_active_streams - 1
-                )
+        async for event in application.stream(
+            preparation,
+            is_disconnected=http_request.is_disconnected,
+        ):
+            yield serialize_sse_event(event.name, event.data)
 
     return StreamingResponse(
         events(),

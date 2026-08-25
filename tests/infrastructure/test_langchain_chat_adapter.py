@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 
 import httpx
 import pytest
@@ -10,6 +11,7 @@ from app.infrastructure.llm.langchain_deepseek_chat_adapter import (
     LangChainDeepSeekChatLlm,
 )
 from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLlm
+from app.infrastructure.llm.request_governance import LlmRequestGovernor
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.llm.contracts import ChatLlmMessage, ChatLlmMessageRole, ChatLlmRequest
 from app.shared.config import Settings
@@ -462,6 +464,90 @@ def test_openai_compatible_stream_does_not_retry_after_first_activity() -> None:
     assert model.attempts == 1
     assert model.closed_attempts == [1]
     assert waits == []
+
+
+def test_stream_retry_acquires_a_new_governance_attempt_before_first_activity() -> None:
+    configuration = Settings(
+        _env_file=None,
+        zhipu_resource_chat_model="glm-test",
+        llm_retry_base_backoff_seconds=0.01,
+    )
+    waits: list[float] = []
+    attempts = 0
+
+    class RecordingGovernor(LlmRequestGovernor):
+        @asynccontextmanager
+        async def async_attempt(self):  # type: ignore[override]
+            nonlocal attempts
+            attempts += 1
+            async with super().async_attempt():
+                yield
+
+    adapter = LangChainGlmChatLlm(
+        configuration=configuration,
+        chat_model=RetryBeforeActivityChatModel(),
+        retry_policy=_retry_policy(
+            provider="glm",
+            configuration=configuration,
+            waits=waits,
+        ),
+        request_governor=RecordingGovernor(configuration.llm_provider_config()),
+    )
+
+    chunks = asyncio.run(_collect(adapter))
+
+    assert [chunk.content for chunk in chunks] == ["GLM Chat 已连接。"]
+    assert attempts == 2
+
+
+def test_stream_governance_holds_slot_until_the_stream_is_closed() -> None:
+    async def scenario() -> None:
+        configuration = Settings(
+            _env_file=None,
+            zhipu_resource_chat_model="glm-test",
+            zhipu_resource_request_max_concurrency=1,
+        )
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+
+        class BlockingModel(FakeChatModel):
+            def astream(self, messages: object):  # noqa: ANN201
+                del messages
+
+                async def generate():
+                    first_started.set()
+                    yield FakeMessage()
+                    await release_first.wait()
+
+                return generate()
+
+        governor = LlmRequestGovernor(configuration.llm_provider_config())
+        first = LangChainGlmChatLlm(
+            configuration=configuration,
+            chat_model=BlockingModel(FakeMessage()),
+            request_governor=governor,
+        )
+        second = LangChainGlmChatLlm(
+            configuration=configuration,
+            chat_model=FakeStreamingChatModel([FakeMessage()]),
+            request_governor=governor,
+        )
+
+        first_stream = first.stream(_request())
+        first_chunk = await anext(first_stream)
+        assert first_chunk.content == "GLM Chat 已连接。"
+        await first_started.wait()
+
+        second_task = asyncio.create_task(_collect(second))
+        await asyncio.sleep(0.02)
+        assert second_task.done() is False
+
+        release_first.set()
+        await first_stream.aclose()
+        second_chunks = await second_task
+        assert [chunk.content for chunk in second_chunks] == ["GLM Chat 已连接。"]
+
+    asyncio.run(scenario())
 
 
 async def _collect(adapter: LangChainGlmChatLlm) -> list[object]:

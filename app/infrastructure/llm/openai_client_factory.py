@@ -5,6 +5,10 @@ from typing import Any
 from langchain_openai import ChatOpenAI
 from openai import AsyncOpenAI, OpenAI
 
+from app.infrastructure.llm.request_governance import (
+    LlmRequestGovernor,
+    shared_request_governor,
+)
 from app.shared.config import LlmProviderConfig, LlmProviderName, Settings, settings
 from app.shared.exceptions import ServiceNotConfiguredError
 from app.shared.logging import get_logger
@@ -25,6 +29,7 @@ class OpenAICompatibleClientFactory:
         self.provider_config: LlmProviderConfig = configuration.llm_provider_config(provider)
         self._client: OpenAI | None = None
         self._async_client: AsyncOpenAI | None = None
+        self._request_governor = shared_request_governor(self.provider_config)
 
     @property
     def provider(self) -> LlmProviderName:
@@ -33,6 +38,12 @@ class OpenAICompatibleClientFactory:
     @property
     def model(self) -> str | None:
         return self.provider_config.model
+
+    @property
+    def request_governor(self) -> LlmRequestGovernor:
+        """返回当前有效 Provider 配置唯一共享的请求治理器。"""
+
+        return self._request_governor
 
     def create_client(self) -> OpenAI:
         """创建或返回当前 Provider 共享的 OpenAI Client。"""

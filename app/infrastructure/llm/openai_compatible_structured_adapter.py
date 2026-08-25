@@ -7,6 +7,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
+from app.infrastructure.llm.request_governance import (
+    LlmRequestGovernor,
+    shared_request_governor,
+)
 from app.infrastructure.llm.structured_output_normalization import (
     NormalizingStructuredLlm,
     RawStructuredLlmResponse,
@@ -33,6 +37,7 @@ class OpenAICompatibleStructuredLlm(NormalizingStructuredLlm):
         chat_model: Any | None = None,
         normalizer: StructuredOutputNormalizer | None = None,
         retry_policy: LlmTransientRetryPolicy | None = None,
+        request_governor: LlmRequestGovernor | None = None,
     ) -> None:
         raw_llm = OpenAICompatibleRawStructuredLlm(
             provider=provider,
@@ -41,6 +46,7 @@ class OpenAICompatibleStructuredLlm(NormalizingStructuredLlm):
             client_factory=client_factory,
             chat_model=chat_model,
             retry_policy=retry_policy,
+            request_governor=request_governor,
         )
         super().__init__(
             raw_llm=raw_llm,
@@ -66,6 +72,7 @@ class OpenAICompatibleRawStructuredLlm:
         client_factory: OpenAICompatibleClientFactory | None,
         chat_model: Any | None,
         retry_policy: LlmTransientRetryPolicy | None,
+        request_governor: LlmRequestGovernor | None,
     ) -> None:
         self.provider = provider
         self.provider_label = provider_label
@@ -77,8 +84,11 @@ class OpenAICompatibleRawStructuredLlm:
             provider=provider,
             configuration=configuration,
         )
+        self._request_governor = request_governor
 
         if chat_model is not None:
+            if self._request_governor is None:
+                self._request_governor = shared_request_governor(self.provider_config)
             return
         if not self.provider_config.model:
             raise ServiceNotConfiguredError(
@@ -91,6 +101,10 @@ class OpenAICompatibleRawStructuredLlm:
         self._chat_model = client_factory.create_chat_model(
             model=self.provider_config.model
         )
+        if self._request_governor is None:
+            self._request_governor = getattr(client_factory, "request_governor", None)
+        if self._request_governor is None:
+            self._request_governor = shared_request_governor(self.provider_config)
 
     def invoke_raw(
         self,
@@ -102,14 +116,9 @@ class OpenAICompatibleRawStructuredLlm:
             SystemMessage(content=request.system_prompt),
             HumanMessage(content=user_prompt),
         ]
-        if self._client_factory is not None:
-            response = self._retry_policy.execute(
-                lambda: self._invoke_json_object(messages)
-            )
-        else:
-            response = self._retry_policy.execute(
-                lambda: self._chat_model.bind(**self._bind_kwargs()).invoke(messages)
-            )
+        response = self._retry_policy.execute(
+            lambda: self._invoke_with_governance(messages)
+        )
         return raw_response_from_provider_response(
             response,
             provider=self.provider,
@@ -137,6 +146,12 @@ class OpenAICompatibleRawStructuredLlm:
         if self.provider_config.max_tokens is not None:
             payload["max_tokens"] = self.provider_config.max_tokens
         return self._client_factory.create_client().chat.completions.create(**payload)
+
+    def _invoke_with_governance(self, messages: list[object]) -> object:
+        with self._request_governor.attempt():
+            if self._client_factory is not None:
+                return self._invoke_json_object(messages)
+            return self._chat_model.bind(**self._bind_kwargs()).invoke(messages)
 
 
 def _openai_role(message_type: str) -> str:

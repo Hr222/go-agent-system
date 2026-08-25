@@ -4,6 +4,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from app.shared.config import Settings
 
 
@@ -33,6 +36,9 @@ def test_glm_coding_plan_profile_uses_low_thinking_by_default() -> None:
 
     assert profile.runtime_profile == "coding_plan"
     assert profile.thinking == "low"
+    assert profile.request_governance.requests_per_minute == 10.0
+    assert profile.request_governance.burst == 1
+    assert profile.request_governance.max_concurrency == 1
 
 
 def test_coding_plan_profile_uses_only_its_own_configuration() -> None:
@@ -72,6 +78,33 @@ def test_glm_profile_thinking_configuration_is_isolated() -> None:
 
     assert resource.thinking == "max"
     assert coding_plan.thinking == "enabled"
+
+
+def test_glm_profile_request_governance_is_isolated() -> None:
+    configuration = _settings(
+        zhipu_resource_requests_per_minute=36,
+        zhipu_resource_request_burst=3,
+        zhipu_resource_request_max_concurrency=2,
+        zhipu_coding_requests_per_minute=8,
+        zhipu_coding_request_burst=1,
+        zhipu_coding_request_max_concurrency=1,
+    )
+
+    resource = configuration.llm_provider_config()
+    coding_plan = configuration.model_copy(
+        update={"glm_runtime_profile": "coding_plan"}
+    ).llm_provider_config()
+
+    assert (
+        resource.request_governance.requests_per_minute,
+        resource.request_governance.burst,
+        resource.request_governance.max_concurrency,
+    ) == (36.0, 3, 2)
+    assert (
+        coding_plan.request_governance.requests_per_minute,
+        coding_plan.request_governance.burst,
+        coding_plan.request_governance.max_concurrency,
+    ) == (8.0, 1, 1)
 
 
 def test_resource_profile_prefers_new_configuration_and_falls_back_to_legacy() -> None:
@@ -129,6 +162,23 @@ def test_deepseek_ignores_glm_runtime_profile() -> None:
     assert profile.runtime_profile is None
     assert profile.base_url == "https://deepseek.example.com/v1"
     assert profile.model == "deepseek-model"
+    assert profile.request_governance.requests_per_minute == 60.0
+    assert profile.request_governance.burst == 6
+    assert profile.request_governance.max_concurrency == 4
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"zhipu_resource_request_burst": 31},
+        {"zhipu_coding_request_burst": 11},
+        {"llm_request_burst": 61},
+        {"zhipu_resource_request_max_concurrency": 0},
+    ],
+)
+def test_request_governance_rejects_invalid_limits(values: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        _settings(**values)
 
 
 def test_provider_diagnostics_exposes_glm_profile_without_starting_a_request() -> None:

@@ -5,6 +5,10 @@ from collections.abc import Callable
 from openai import OpenAI
 
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
+from app.infrastructure.llm.request_governance import (
+    LlmRequestGovernor,
+    shared_request_governor,
+)
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.knowledge.ports.read_port import KnowledgeSearchHit
 from app.modules.online.contracts import AnswerCitationResult, AnswerResult
@@ -23,6 +27,7 @@ class RagAnswerGenerator:
         *,
         client_factory: OpenAICompatibleClientFactory | None = None,
         retry_policy: LlmTransientRetryPolicy | None = None,
+        request_governor: LlmRequestGovernor | None = None,
     ) -> None:
         if client is not None:
             self.client = client
@@ -31,6 +36,9 @@ class RagAnswerGenerator:
             self._retry_policy = retry_policy or LlmTransientRetryPolicy(
                 provider=self._provider_config.provider,
                 configuration=settings,
+            )
+            self._request_governor = request_governor or shared_request_governor(
+                self._provider_config
             )
             return
 
@@ -48,6 +56,7 @@ class RagAnswerGenerator:
             provider=client_factory.provider,
             configuration=client_factory.configuration,
         )
+        self._request_governor = request_governor or client_factory.request_governor
 
     def answer(self, *, query: str, hits: list[KnowledgeSearchHit]) -> AnswerResult:
         if not hits:
@@ -116,7 +125,7 @@ class RagAnswerGenerator:
                     "thinking": {"type": self._provider_config.thinking}
                 }
             response = self._retry_policy.execute(
-                lambda: self.client.chat.completions.create(**request_kwargs)
+                lambda: self._answer_with_governance(request_kwargs)
             )
         except Exception as exc:
             provider_label = (
@@ -149,6 +158,10 @@ class RagAnswerGenerator:
             hits=tuple(hits),
             knowledge=None,
         )
+
+    def _answer_with_governance(self, request_kwargs: dict[str, object]) -> object:
+        with self._request_governor.attempt():
+            return self.client.chat.completions.create(**request_kwargs)
 
 
 class LazyRagAnswerGenerator:

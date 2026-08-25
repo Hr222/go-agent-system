@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from contextlib import asynccontextmanager
 from time import perf_counter
 
@@ -48,10 +47,6 @@ def create_app() -> FastAPI:
             )
         else:
             logger.info("知识库表结构检查通过。")
-        application.state.llm_stream_slots = asyncio.Semaphore(
-            settings.llm_stream_max_concurrency
-        )
-        application.state.llm_active_streams = 0
         async with tender_mcp_session_manager.run():
             yield
         stateless_container = get_stateless_application_container()
@@ -66,9 +61,6 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
         lifespan=lifespan,
     )
-    application.state.llm_stream_slots = asyncio.Semaphore(settings.llm_stream_max_concurrency)
-    application.state.llm_active_streams = 0
-
     @application.middleware("http")
     async def log_requests(request: Request, call_next):
         # 统一记录请求耗时和状态，便于定位接口层、应用层或基础设施层的失败。
