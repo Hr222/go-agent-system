@@ -14,28 +14,26 @@
 .conversationItems { display: grid; flex: 1; min-height: 0; align-content: start; gap: 4px; overflow-y: auto; }
 .conversationItemRow { position: relative; z-index: 0; display: flex; align-items: stretch; min-width: 0; }
 .conversationItemRow[data-menu-open="true"] { z-index: 10; }
-.topicEditor { display: grid; gap: 8px; margin-top: 18px; padding: 12px 8px 14px; border-top: 1px solid #e9edf3; }
-.topicEditorHeading { display: flex; align-items: center; justify-content: space-between; color: #718096; font-size: 10px; font-weight: 750; }
-.topicEditorHeading small { color: #a0aabb; font-size: 9px; font-weight: 500; }
-.topicEditor input { width: 100%; min-width: 0; padding: 7px 8px; color: #435069; background: #fff; border: 1px solid #dfe6f0; border-radius: 6px; outline: 0; font-size: 10px; }
-.topicEditor input:focus { border-color: #94b0f4; box-shadow: 0 0 0 2px rgba(100, 143, 246, .1); }
-.topicEditorActions { display: flex; justify-content: flex-end; gap: 4px; }
-.topicEditorActions button { display: grid; place-items: center; width: 25px; height: 24px; color: #6f83ae; background: #edf3ff; border: 1px solid #dbe6ff; border-radius: 5px; cursor: pointer; }
-.topicEditorActions button:hover { color: #315dbf; background: #e4edff; }
-.topicEditorActions button:disabled { cursor: not-allowed; opacity: .5; }
-.topicEditorError { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: #a33d3d; font-size: 9px; line-height: 1.4; }
-.topicEditorError button { padding: 0; color: #a33d3d; background: transparent; border: 0; cursor: pointer; font-size: 9px; text-decoration: underline; }
 .conversationListStatus { padding: 10px 8px; color: #9aa6b8; font-size: 10px; line-height: 1.5; }
 .conversationListError { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 8px 0; padding: 7px 8px; color: #a33d3d; background: #fff5f2; border: 1px solid #f1d2cb; border-radius: 6px; font-size: 10px; line-height: 1.4; }
 .conversationItem { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 54px; padding: 10px 34px 10px 9px; color: #8a97aa; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
 .conversationItem:hover { color: #476bc5; background: #f0f4fb; }
+.conversationItemEditing { cursor: default; }
 .conversationItemActive { color: #416fdb; background: #edf3ff; border-color: #e1eaff; }
-.conversationCopy { display: grid; gap: 5px; min-width: 0; }
+.conversationCopy { display: grid; flex: 1; gap: 5px; min-width: 0; }
 .conversationCopy strong { overflow: hidden; color: #435069; font-size: 11px; font-weight: 650; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .conversationItemActive .conversationCopy strong { color: #315dbf; }
 .conversationCopy small { color: #a0aabb; font-size: 9px; }
 .conversationCopy strong { display: flex; align-items: center; gap: 4px; }
 .conversationCopy strong svg { flex: 0 0 auto; color: #7696e7; }
+.conversationRenameControls { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.conversationRenameControls input { width: 100%; min-width: 0; height: 24px; padding: 4px 6px; color: #435069; background: #fff; border: 1px solid #dfe6f0; border-radius: 5px; outline: 0; font-size: 10px; }
+.conversationRenameControls input:focus { border-color: #94b0f4; box-shadow: 0 0 0 2px rgba(100, 143, 246, .1); }
+.conversationRenameControls button { display: grid; place-items: center; flex: 0 0 23px; width: 23px; height: 23px; padding: 0; color: #6f83ae; background: #edf3ff; border: 1px solid #dbe6ff; border-radius: 5px; cursor: pointer; }
+.conversationRenameControls button:hover { color: #315dbf; background: #e4edff; }
+.conversationRenameControls button:disabled, .conversationRenameControls input:disabled { cursor: not-allowed; opacity: .5; }
+.conversationPinnedIcon { flex: 0 0 auto; color: #7696e7; }
+.conversationRenameError { color: #a33d3d; font-size: 9px; line-height: 1.4; }
 .conversationMenuWrap { position: absolute; top: 8px; right: 5px; z-index: 5; }
 .conversationMenuButton { display: grid; place-items: center; width: 25px; height: 25px; padding: 0; color: #9ca8b8; background: transparent; border: 0; border-radius: 5px; cursor: pointer; }
 .conversationMenuButton:hover { color: #466fd6; background: #e4edff; }

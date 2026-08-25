@@ -254,6 +254,13 @@ export function ChatPage() {
     setTopicSummaryError(null);
   };
 
+  const cancelRename = () => {
+    if (updateTopicSummaryMutation.isPending) return;
+    setRenameConversationId(null);
+    setRenameDraft("");
+    setTopicSummaryError(null);
+  };
+
   const saveRename = async () => {
     if (!renameConversationId || updateTopicSummaryMutation.isPending) return;
     setTopicSummaryError(null);
@@ -499,19 +506,66 @@ export function ChatPage() {
             <div
               className={styles.conversationItemRow}
               key={conversation.id}
+              data-conversation-id={conversation.id}
               data-menu-open={openConversationMenu === conversation.id || undefined}
             >
-              <button
-                className={styles.conversationItem + (activeConversation === conversation.id ? " " + styles.conversationItemActive : "")}
-                type="button"
-                onClick={() => handleConversationSelect(conversation.id)}
-              >
-                <MessageSquare size={15} />
-                <span className={styles.conversationCopy}>
-                  <strong>{conversationTitle(conversation)} {conversation.isPinned && <Pin size={11} aria-label="已置顶" />}</strong>
-                  <small>{conversationMeta(conversation)}</small>
-                </span>
-              </button>
+              {renameConversationId === conversation.id ? (
+                <div
+                  className={styles.conversationItem + " " + styles.conversationItemEditing + (activeConversation === conversation.id ? " " + styles.conversationItemActive : "")}
+                >
+                  <MessageSquare size={15} />
+                  <div className={styles.conversationCopy}>
+                    <div className={styles.conversationRenameControls}>
+                      <input
+                        aria-label="会话名称"
+                        autoFocus
+                        maxLength={80}
+                        value={renameDraft}
+                        onChange={(event) => setRenameDraft(event.target.value)}
+                        placeholder="输入会话名称"
+                        disabled={updateTopicSummaryMutation.isPending}
+                      />
+                      {conversation.isPinned && <Pin className={styles.conversationPinnedIcon} size={11} aria-label="已置顶" />}
+                      <button
+                        type="button"
+                        title="保存会话名称"
+                        aria-label="保存会话名称"
+                        onClick={() => void saveRename()}
+                        disabled={updateTopicSummaryMutation.isPending}
+                      >
+                        <Check size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        title="取消重命名"
+                        aria-label="取消重命名"
+                        onClick={cancelRename}
+                        disabled={updateTopicSummaryMutation.isPending}
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                    {topicSummaryError && (
+                      <div className={styles.conversationRenameError} role="alert">
+                        {topicSummaryError}
+                      </div>
+                    )}
+                    <small>{conversationMeta(conversation)}</small>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className={styles.conversationItem + (activeConversation === conversation.id ? " " + styles.conversationItemActive : "")}
+                  type="button"
+                  onClick={() => handleConversationSelect(conversation.id)}
+                >
+                  <MessageSquare size={15} />
+                  <span className={styles.conversationCopy}>
+                    <strong>{conversationTitle(conversation)} {conversation.isPinned && <Pin size={11} aria-label="已置顶" />}</strong>
+                    <small>{conversationMeta(conversation)}</small>
+                  </span>
+                </button>
+              )}
               <div className={styles.conversationMenuWrap} data-conversation-menu>
                   <button
                     className={styles.conversationMenuButton}
@@ -547,47 +601,6 @@ export function ChatPage() {
             </button>
           )}
         </div>
-        {renameConversationId && (
-          <div className={styles.topicEditor}>
-            <div className={styles.topicEditorHeading}>
-              <span>重命名会话</span>
-              <small>{renameDraft.length}/80</small>
-            </div>
-            <input
-              aria-label="会话名称"
-              maxLength={80}
-              value={renameDraft}
-              onChange={(event) => setRenameDraft(event.target.value)}
-              placeholder="输入会话名称"
-              disabled={updateTopicSummaryMutation.isPending}
-            />
-            <div className={styles.topicEditorActions}>
-              <button
-                type="button"
-                title="保存会话名称"
-                aria-label="保存会话名称"
-                onClick={() => void saveRename()}
-                disabled={updateTopicSummaryMutation.isPending}
-              >
-                <Check size={13} />
-              </button>
-              <button
-                type="button"
-                title="取消重命名"
-                aria-label="取消重命名"
-                onClick={() => setRenameConversationId(null)}
-                disabled={updateTopicSummaryMutation.isPending}
-              >
-                <X size={13} />
-              </button>
-            </div>
-            {topicSummaryError && (
-              <div className={styles.topicEditorError} role="alert">
-                <span>{topicSummaryError}</span>
-              </div>
-            )}
-          </div>
-        )}
         {deleteConfirmId && (
           <div className={styles.deleteConfirmBackdrop} role="presentation">
             <div

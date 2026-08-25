@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACTIVE_CONVERSATION_STORAGE_KEY } from "../hooks/useActiveConversation";
@@ -147,6 +147,32 @@ describe("ChatPage conversation list", () => {
       conversationId: FIRST_ID,
       topicSummary: "人工修正主题",
     }));
+  });
+
+  it("edits only the selected conversation item and cancels without a request", () => {
+    const mutateAsync = vi.fn();
+    mocks.useConversationList.mockReturnValue(listState([
+      summary(FIRST_ID, "2025-01-01T00:00:00Z", "第一个会话"),
+      summary(SECOND_ID, "2025-01-02T00:00:00Z", "第二个会话"),
+    ]));
+    mocks.useUpdateConversationTopicSummary.mockReturnValue({ isPending: false, mutateAsync });
+
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "会话操作：第一个会话" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
+
+    const firstRow = document.querySelector(`[data-conversation-id="${FIRST_ID}"]`);
+    const secondRow = document.querySelector(`[data-conversation-id="${SECOND_ID}"]`);
+    expect(firstRow).toBeTruthy();
+    expect(secondRow).toBeTruthy();
+    expect(within(firstRow as HTMLElement).getByRole("textbox", { name: "会话名称" })).toBeTruthy();
+    expect(within(secondRow as HTMLElement).queryByRole("textbox", { name: "会话名称" })).toBeNull();
+    expect(screen.queryByText("重命名会话")).toBeNull();
+
+    fireEvent.click(within(firstRow as HTMLElement).getByRole("button", { name: "取消重命名" }));
+
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(within(firstRow as HTMLElement).getByText("第一个会话")).toBeTruthy();
   });
 
   it("keeps the rename draft when saving fails", async () => {
