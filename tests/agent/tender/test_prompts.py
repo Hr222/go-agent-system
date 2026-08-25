@@ -1,8 +1,8 @@
 from app.modules.agent.tender.application.prompts import (
+    TENDER_BOUNDARY_VERIFY_PROMPT_VERSION,
     TENDER_CHUNK_EXTRACT_PROMPT_VERSION,
     TENDER_MERGE_PROMPT_VERSION,
     TENDER_SKELETON_PROMPT_VERSION,
-    TENDER_BOUNDARY_VERIFY_PROMPT_VERSION,
     build_tender_boundary_verification_request,
     build_tender_chunk_request,
     build_tender_merge_request,

@@ -15,9 +15,15 @@ from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.shared.config import LlmProviderConfig, LlmProviderName, settings
+from app.shared.config import (
+    GlmRuntimeProfileName,
+    LlmProviderConfig,
+    LlmProviderName,
+    settings,
+)
 
 SUPPORTED_PROVIDERS = get_args(LlmProviderName)
+SUPPORTED_GLM_RUNTIME_PROFILES = get_args(GlmRuntimeProfileName)
 
 
 def main() -> int:
@@ -26,20 +32,30 @@ def main() -> int:
     )
     parser.add_argument("--provider", choices=SUPPORTED_PROVIDERS, default=None)
     parser.add_argument(
+        "--glm-profile",
+        choices=SUPPORTED_GLM_RUNTIME_PROFILES,
+        default=None,
+        help="select the GLM runtime profile through configuration only",
+    )
+    parser.add_argument(
         "--chat",
         action="store_true",
         help="send one minimal non-business chat request with SDK retries disabled",
     )
     parser.add_argument("--timeout", type=float, default=None)
     args = parser.parse_args()
-    configuration = settings.model_copy(
-        update={"llm_provider": args.provider} if args.provider else {}
-    )
+    configuration_updates: dict[str, object] = {}
+    if args.provider:
+        configuration_updates["llm_provider"] = args.provider
+    if args.glm_profile:
+        configuration_updates["glm_runtime_profile"] = args.glm_profile
+    configuration = settings.model_copy(update=configuration_updates)
     provider_config = configuration.llm_provider_config()
     timeout = args.timeout or provider_config.timeout_seconds
     result: dict[str, object] = {
         "configuration": {
             "provider": provider_config.provider,
+            "runtime_profile": provider_config.runtime_profile,
             "base_url": _safe_base_url(provider_config.base_url),
             "model": provider_config.model or "",
             "timeout_seconds": timeout,
@@ -95,7 +111,7 @@ def _tcp_check(host: str, port: int, timeout: float) -> dict[str, object]:
             "ok": False,
             "duration_ms": round((perf_counter() - started) * 1000, 2),
             "exception_type": type(exc).__name__,
-            "message": str(exc)[:300],
+            "message": _redact_error_message(str(exc), limit=300),
         }
 
 
@@ -126,7 +142,7 @@ def _http_check(configuration: LlmProviderConfig, timeout: float) -> dict[str, o
             "ok": False,
             "duration_ms": round((perf_counter() - started) * 1000, 2),
             "exception_type": type(exc).__name__,
-            "message": str(exc)[:300],
+            "message": _redact_error_message(str(exc), limit=300),
         }
 
 
@@ -145,7 +161,9 @@ def _chat_check(configuration: LlmProviderConfig, timeout: float) -> dict[str, o
             "model": configuration.model,
             "messages": [{"role": "user", "content": "Reply with exactly OK."}],
             "temperature": 0,
-            "max_tokens": 32,
+            # 推理型模型会先消耗少量 reasoning token；256 仍是低成本连通性探针，
+            # 但足以让正常短答进入正文而不是被 32 token 截断。
+            "max_tokens": 256,
         }
         if configuration.thinking is not None:
             request_kwargs["extra_body"] = {
@@ -167,7 +185,7 @@ def _chat_check(configuration: LlmProviderConfig, timeout: float) -> dict[str, o
             "ok": False,
             "duration_ms": round((perf_counter() - started) * 1000, 2),
             "exception_type": f"{type(exc).__module__}.{type(exc).__name__}",
-            "message": str(exc)[:500],
+            "message": _redact_error_message(str(exc), limit=500),
         }
 
 
@@ -191,6 +209,18 @@ def _safe_base_url(base_url: str) -> str:
         return "<invalid>"
     port = f":{parsed.port}" if parsed.port else ""
     return f"{parsed.scheme}://{parsed.hostname}{port}{parsed.path.rstrip('/')}"
+
+
+def _redact_error_message(message: str, *, limit: int) -> str:
+    """保留故障分类线索，不输出认证头、API Key 或诊断请求正文。"""
+
+    redacted = message.replace("Reply with exactly OK.", "<redacted_prompt>")
+    marker = "Bearer "
+    while marker in redacted:
+        prefix, _, suffix = redacted.partition(marker)
+        _, separator, remaining = suffix.partition(" ")
+        redacted = f"{prefix}{marker}<redacted>{separator}{remaining}"
+    return redacted[:limit]
 
 
 if __name__ == "__main__":

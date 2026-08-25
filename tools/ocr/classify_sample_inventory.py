@@ -262,7 +262,9 @@ def classify_business_value(
         return BusinessValueLabel(
             knowledge_route="review_business",
             rag_suitability="medium",
-            business_reason="技术上可处理，但业务归类不够明确，建议人工判断是进入 RAG 还是结构化流程。",
+            business_reason=(
+                "技术上可处理，但业务归类不够明确，建议人工判断是进入 RAG 还是结构化流程。"
+            ),
         )
 
     return BusinessValueLabel(
@@ -469,8 +471,7 @@ def write_summary(
             "by_knowledge_route": dict(sorted(by_knowledge_route.items())),
             "by_rag_suitability": dict(sorted(by_rag_suitability.items())),
             "by_top_level_group": {
-                key: dict(sorted(value.items()))
-                for key, value in sorted(by_top_level.items())
+                key: dict(sorted(value.items())) for key, value in sorted(by_top_level.items())
             },
         },
         "items": [

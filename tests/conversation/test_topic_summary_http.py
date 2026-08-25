@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -36,7 +36,9 @@ class FakePort:
             sequence=1,
         )
 
-    def update_topic_summary(self, *, conversation_id: UUID, topic_summary: str | None) -> Conversation:
+    def update_topic_summary(
+        self, *, conversation_id: UUID, topic_summary: str | None
+    ) -> Conversation:
         current = self.conversations[conversation_id]
         updated = Conversation(
             id=current.id,
@@ -48,13 +50,19 @@ class FakePort:
         self.conversations[conversation_id] = updated
         return updated
 
-    def update_topic_summary_if_empty(self, *, conversation_id: UUID, topic_summary: str) -> Conversation | None:
+    def update_topic_summary_if_empty(
+        self, *, conversation_id: UUID, topic_summary: str
+    ) -> Conversation | None:
         current = self.conversations[conversation_id]
         if current.topic_summary is not None:
             return None
-        return self.update_topic_summary(conversation_id=conversation_id, topic_summary=topic_summary)
+        return self.update_topic_summary(
+            conversation_id=conversation_id, topic_summary=topic_summary
+        )
 
-    def get_owned_conversation(self, *, conversation_id: UUID, owner_subject: str) -> Conversation | None:
+    def get_owned_conversation(
+        self, *, conversation_id: UUID, owner_subject: str
+    ) -> Conversation | None:
         current = self.conversations.get(conversation_id)
         return current if current is not None and current.owner_subject == owner_subject else None
 

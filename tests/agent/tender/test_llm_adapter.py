@@ -95,7 +95,7 @@ def _request() -> StructuredLlmRequest:
 def test_langchain_glm_adapter_returns_validated_structured_result() -> None:
     fake_model = FakeChatModel(json.dumps({"status": "ok", "message": "GLM adapter ready"}))
     adapter = LangChainGlmStructuredLlm(
-        configuration=Settings(zhipu_chat_model="glm-test"),
+        configuration=Settings(zhipu_resource_chat_model="glm-test"),
         chat_model=fake_model,
     )
 
@@ -113,7 +113,7 @@ def test_langchain_glm_adapter_returns_validated_structured_result() -> None:
 
 def test_langchain_glm_adapter_maps_model_failures() -> None:
     adapter = LangChainGlmStructuredLlm(
-        configuration=Settings(zhipu_chat_model="glm-test"),
+        configuration=Settings(zhipu_resource_chat_model="glm-test"),
         chat_model=FakeChatModel(RuntimeError("provider unavailable")),
     )
 
@@ -124,9 +124,12 @@ def test_langchain_glm_adapter_maps_model_failures() -> None:
 def test_langchain_glm_adapter_rejects_missing_configuration() -> None:
     with pytest.raises(ServiceNotConfiguredError, match="ZHIPU_API_KEY"):
         LangChainGlmStructuredLlm(
-            configuration=Settings(zhipu_api_key=None, zhipu_chat_model="glm-test"),
+            configuration=Settings(zhipu_api_key=None, zhipu_resource_chat_model="glm-test"),
             client_factory=OpenAICompatibleClientFactory(
-                configuration=Settings(zhipu_api_key=None, zhipu_chat_model="glm-test")
+                configuration=Settings(
+                    zhipu_api_key=None,
+                    zhipu_resource_chat_model="glm-test",
+                )
             ),
         )
 
@@ -134,7 +137,7 @@ def test_langchain_glm_adapter_rejects_missing_configuration() -> None:
 def test_langchain_glm_adapter_maps_human_role_for_raw_json_object_call() -> None:
     factory = FakeClientFactory()
     adapter = LangChainGlmStructuredLlm(
-        configuration=Settings(zhipu_chat_model="glm-test"),
+        configuration=Settings(zhipu_resource_chat_model="glm-test"),
         client_factory=factory,
     )
 
@@ -159,7 +162,7 @@ def test_langchain_glm_adapter_parses_openai_chat_completion_shape() -> None:
 
     factory.client.chat.completions.create = create
     adapter = LangChainGlmStructuredLlm(
-        configuration=Settings(zhipu_chat_model="glm-test"),
+        configuration=Settings(zhipu_resource_chat_model="glm-test"),
         client_factory=factory,
     )
 

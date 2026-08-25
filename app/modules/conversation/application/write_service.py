@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from app.modules.conversation.domain import Conversation, Message, MessageRole
 from app.modules.conversation.application.topic_summary import normalize_topic_summary
+from app.modules.conversation.domain import Conversation, Message, MessageRole
 from app.modules.conversation.ports import ConversationTopicSummaryGenerator
 from app.modules.conversation.ports.write_port import ConversationWritePort
 
@@ -89,4 +89,7 @@ class ConversationWriteService:
                 topic_summary=candidate,
             )
         except Exception:
-            logger.exception("会话话题概括生成失败，会话消息已保留。", extra={"conversation_id": str(conversation_id)})
+            logger.exception(
+                "会话话题概括生成失败，会话消息已保留。",
+                extra={"conversation_id": str(conversation_id)},
+            )

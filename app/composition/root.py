@@ -14,9 +14,9 @@ from app.composition.conversation import (
     build_conversation_history_read_service,
     build_conversation_list_read_service,
     build_conversation_management_service,
+    build_conversation_topic_summary_update_service,
     build_conversation_write_repository,
     build_conversation_write_service,
-    build_conversation_topic_summary_update_service,
 )
 from app.composition.dialogue import build_streaming_conversation_runtime
 from app.composition.ingestion import (
@@ -66,9 +66,6 @@ from app.infrastructure.llm.embedding_client import GiteeEmbeddingClient
 from app.infrastructure.llm.llm_client import LazyRagAnswerGenerator, RagAnswerGenerator
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
 from app.infrastructure.ocr.tencent_ocr import PolicyOcrService
-from app.infrastructure.persistence.repositories.conversation_access_repository import (
-    ConversationAccessRepository,
-)
 from app.infrastructure.persistence.repositories.knowledge_read_repository import (
     KnowledgeReadRepository,
 )

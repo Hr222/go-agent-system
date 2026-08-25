@@ -47,8 +47,7 @@ class OcrSliceResult:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "腾讯 OCR MVP 测试脚本。支持 PDF 扫描件按页识别，"
-            "也支持从 DOCX 中提取图片后逐张识别。"
+            "腾讯 OCR MVP 测试脚本。支持 PDF 扫描件按页识别，也支持从 DOCX 中提取图片后逐张识别。"
         )
     )
     parser.add_argument("input_path", help="待识别的 PDF 或 DOCX 文件路径。")
@@ -155,7 +154,9 @@ def extract_detected_lines(response_json: dict[str, Any]) -> list[str]:
     return lines
 
 
-def build_output_dir(input_path: Path, output_dir: str | None, settings: TencentOcrMvpSettings) -> Path:
+def build_output_dir(
+    input_path: Path, output_dir: str | None, settings: TencentOcrMvpSettings
+) -> Path:
     if output_dir:
         target = Path(output_dir)
     else:
@@ -329,7 +330,9 @@ def main() -> None:
         raise ValueError("当前 MVP 脚本仅封装腾讯 OCR 的 GeneralAccurateOCR。")
 
     if suffix == ".pdf":
-        resolved_page_limit = args.page_limit if args.page_limit is not None else settings.pdf_page_limit
+        resolved_page_limit = (
+            args.page_limit if args.page_limit is not None else settings.pdf_page_limit
+        )
         results = run_pdf_mvp(
             input_path=input_path,
             output_dir=output_dir,

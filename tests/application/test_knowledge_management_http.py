@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 from app.interfaces.http.dependencies import get_knowledge_management_service
 from app.main import create_app
 from app.modules.knowledge.application.management_contracts import (
-    KnowledgeManagementDocument,
     KnowledgeManagementDocumentDetail,
     KnowledgeManagementDocumentPage,
     KnowledgeManagementOverviewResult,
@@ -108,7 +107,9 @@ def test_management_document_content_serves_registered_image_inline(tmp_path) ->
     assert response.content == b"image-content"
     assert response.headers["content-type"] == "image/jpeg"
     assert response.headers["content-disposition"].startswith("inline;")
-    assert TestClient(application).head("/api/v1/kb/management/documents/1/content").status_code == 200
+    assert (
+        TestClient(application).head("/api/v1/kb/management/documents/1/content").status_code == 200
+    )
     application.dependency_overrides.clear()
 
 

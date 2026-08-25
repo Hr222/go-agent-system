@@ -46,9 +46,10 @@ class OpenAICompatibleClientFactory:
             )
 
         logger.info(
-            "llm client create provider=%s base_url=%s model=%s timeout_seconds=%s "
-            "api_key_configured=%s",
+            "llm client create provider=%s runtime_profile=%s base_url=%s model=%s "
+            "timeout_seconds=%s api_key_configured=%s",
             self.provider,
+            self.provider_config.runtime_profile or "none",
             _safe_base_url(self.provider_config.base_url),
             self.provider_config.model or "unknown",
             self.provider_config.timeout_seconds,

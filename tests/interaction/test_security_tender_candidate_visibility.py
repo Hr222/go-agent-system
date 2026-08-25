@@ -22,7 +22,6 @@ from app.modules.interaction.application.intent_recognition import (
 from app.modules.interaction.domain.capability import PlatformCapability
 from app.modules.llm.contracts import StructuredLlmResult
 
-
 TENDER_CODE = "tender.generate_bid_skeleton"
 TENDER_DISPATCH_KEY = "agent.tender.generate_bid_skeleton"
 TENDER_PERMISSION = "agent:tender:execute"
@@ -78,8 +77,7 @@ class FakeCatalog:
             (
                 capability
                 for capability in self.capabilities
-                if capability.code == code
-                and set(capability.permission).issubset(normalized)
+                if capability.code == code and set(capability.permission).issubset(normalized)
             ),
             None,
         )
@@ -225,7 +223,9 @@ def test_http_static_principal_enters_tender_candidate_chain(monkeypatch) -> Non
     assert response.json()["status"] == "pending"
     assert response.json()["assessment"]["capability_code"] == TENDER_CODE
     assert catalog.list_calls == [(TENDER_PERMISSION,)]
-    assert all(call_permissions == (TENDER_PERMISSION,) for _, call_permissions in catalog.get_calls)
+    assert all(
+        call_permissions == (TENDER_PERMISSION,) for _, call_permissions in catalog.get_calls
+    )
     assert agent.calls == []
 
 

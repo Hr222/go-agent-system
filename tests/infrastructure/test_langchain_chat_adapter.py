@@ -50,7 +50,7 @@ def _request() -> ChatLlmRequest:
 def test_langchain_chat_adapter_returns_text_and_usage() -> None:
     model = FakeChatModel(FakeMessage())
     adapter = LangChainGlmChatLlm(
-        configuration=Settings(zhipu_chat_model="glm-test"),
+        configuration=Settings(zhipu_resource_chat_model="glm-test"),
         chat_model=model,
     )
 
@@ -69,7 +69,7 @@ def test_langchain_chat_adapter_returns_text_and_usage() -> None:
 def test_langchain_chat_adapter_preserves_history_roles_and_order() -> None:
     model = FakeChatModel(FakeMessage())
     adapter = LangChainGlmChatLlm(
-        configuration=Settings(zhipu_chat_model="glm-test"),
+        configuration=Settings(zhipu_resource_chat_model="glm-test"),
         chat_model=model,
     )
     request = ChatLlmRequest(
@@ -96,7 +96,7 @@ def test_langchain_chat_adapter_preserves_history_roles_and_order() -> None:
 
 def test_langchain_chat_adapter_maps_provider_failure() -> None:
     adapter = LangChainGlmChatLlm(
-        configuration=Settings(zhipu_chat_model="glm-test"),
+        configuration=Settings(zhipu_resource_chat_model="glm-test"),
         chat_model=FakeChatModel(RuntimeError("provider unavailable")),
     )
 
@@ -124,7 +124,7 @@ def test_langchain_chat_adapter_streams_chunks_and_final_usage() -> None:
     chunks[0].content = "第一段"
     model = FakeStreamingChatModel(chunks)
     adapter = LangChainGlmChatLlm(
-        configuration=Settings(zhipu_chat_model="glm-test"),
+        configuration=Settings(zhipu_resource_chat_model="glm-test"),
         chat_model=model,
     )
 
@@ -145,7 +145,7 @@ def test_langchain_chat_adapter_streams_chunks_and_final_usage() -> None:
 def test_langchain_chat_adapter_streams_history_messages_in_order() -> None:
     model = FakeStreamingChatModel([FakeMessage()])
     adapter = LangChainGlmChatLlm(
-        configuration=Settings(zhipu_chat_model="glm-test"),
+        configuration=Settings(zhipu_resource_chat_model="glm-test"),
         chat_model=model,
     )
     request = ChatLlmRequest(
@@ -175,7 +175,7 @@ def test_langchain_chat_adapter_streams_history_messages_in_order() -> None:
 
 def test_langchain_chat_adapter_maps_streaming_provider_failure() -> None:
     adapter = LangChainGlmChatLlm(
-        configuration=Settings(zhipu_chat_model="glm-test"),
+        configuration=Settings(zhipu_resource_chat_model="glm-test"),
         chat_model=FakeStreamingChatModel(
             [FakeMessage()],
             error=RuntimeError("provider unavailable"),

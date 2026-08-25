@@ -5,7 +5,16 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LlmProviderName = Literal["glm", "deepseek"]
+GlmRuntimeProfileName = Literal["resource", "coding_plan"]
 PrincipalMode = Literal["anonymous", "static"]
+
+_GLM_RESOURCE_DEFAULT_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+_GLM_RESOURCE_DEFAULT_MODEL = "glm-4.5-air"
+_GLM_CODING_DEFAULT_BASE_URL = "https://open.bigmodel.cn/api/coding/paas/v4"
+_GLM_CODING_DEFAULT_MODEL = "glm-5.3"
+_GLM_DEFAULT_TIMEOUT_SECONDS = 60.0
+_GLM_DEFAULT_TEMPERATURE = 0.0
+_GLM_DEFAULT_MAX_TOKENS = 16_384
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +29,7 @@ class LlmProviderConfig:
     temperature: float
     max_tokens: int | None
     thinking: Literal["enabled", "disabled"] | None = None
+    runtime_profile: GlmRuntimeProfileName | None = None
 
 
 class Settings(BaseSettings):
@@ -110,12 +120,76 @@ class Settings(BaseSettings):
     embedding_batch_size: int = 16
     llm_provider: LlmProviderName = Field(default="glm", alias="LLM_PROVIDER")
     zhipu_api_key: str | None = Field(default=None, alias="ZHIPU_API_KEY")
-    zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
-    zhipu_chat_model: str | None = "glm-4-flash"
-    zhipu_timeout_seconds: float = Field(default=60.0, gt=0, alias="ZHIPU_TIMEOUT_SECONDS")
-    zhipu_temperature: float = Field(default=0.0, ge=0, le=2, alias="ZHIPU_TEMPERATURE")
+    glm_runtime_profile: GlmRuntimeProfileName = Field(
+        default="resource",
+        alias="GLM_RUNTIME_PROFILE",
+    )
+    zhipu_resource_base_url: str | None = Field(
+        default=None,
+        alias="ZHIPU_RESOURCE_BASE_URL",
+    )
+    zhipu_resource_chat_model: str | None = Field(
+        default=None,
+        alias="ZHIPU_RESOURCE_CHAT_MODEL",
+    )
+    zhipu_resource_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        alias="ZHIPU_RESOURCE_TIMEOUT_SECONDS",
+    )
+    zhipu_resource_temperature: float | None = Field(
+        default=None,
+        ge=0,
+        le=2,
+        alias="ZHIPU_RESOURCE_TEMPERATURE",
+    )
+    zhipu_resource_max_tokens: int | None = Field(
+        default=None,
+        gt=0,
+        alias="ZHIPU_RESOURCE_MAX_TOKENS",
+    )
+    zhipu_coding_base_url: str | None = Field(
+        default=None,
+        alias="ZHIPU_CODING_BASE_URL",
+    )
+    zhipu_coding_chat_model: str | None = Field(
+        default=None,
+        alias="ZHIPU_CODING_CHAT_MODEL",
+    )
+    zhipu_coding_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        alias="ZHIPU_CODING_TIMEOUT_SECONDS",
+    )
+    zhipu_coding_temperature: float | None = Field(
+        default=None,
+        ge=0,
+        le=2,
+        alias="ZHIPU_CODING_TEMPERATURE",
+    )
+    zhipu_coding_max_tokens: int | None = Field(
+        default=None,
+        gt=0,
+        alias="ZHIPU_CODING_MAX_TOKENS",
+    )
+    # 旧变量仅作为 resource Profile 的迁移回退，避免已有部署升级后失效。
+    zhipu_base_url: str | None = Field(default=None, alias="ZHIPU_BASE_URL")
+    zhipu_chat_model: str | None = Field(default=None, alias="ZHIPU_CHAT_MODEL")
+    zhipu_timeout_seconds: float | None = Field(
+        default=_GLM_DEFAULT_TIMEOUT_SECONDS,
+        gt=0,
+        alias="ZHIPU_TIMEOUT_SECONDS",
+    )
+    zhipu_temperature: float | None = Field(
+        default=_GLM_DEFAULT_TEMPERATURE,
+        ge=0,
+        le=2,
+        alias="ZHIPU_TEMPERATURE",
+    )
     zhipu_max_tokens: int | None = Field(
-        default=16_384, gt=0, alias="ZHIPU_MAX_TOKENS"
+        default=_GLM_DEFAULT_MAX_TOKENS,
+        gt=0,
+        alias="ZHIPU_MAX_TOKENS",
     )
     deepseek_api_key: str | None = Field(default=None, alias="DEEPSEEK_API_KEY")
     deepseek_base_url: str = Field(
@@ -184,7 +258,13 @@ class Settings(BaseSettings):
     ocr_enabled: bool = True
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
-    @field_validator("zhipu_max_tokens", "deepseek_max_tokens", mode="before")
+    @field_validator(
+        "zhipu_resource_max_tokens",
+        "zhipu_coding_max_tokens",
+        "zhipu_max_tokens",
+        "deepseek_max_tokens",
+        mode="before",
+    )
     @classmethod
     def _empty_max_tokens_as_none(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
@@ -249,15 +329,7 @@ class Settings(BaseSettings):
     def llm_provider_config(self, provider: LlmProviderName | None = None) -> LlmProviderConfig:
         selected = provider or self.llm_provider
         if selected == "glm":
-            return LlmProviderConfig(
-                provider="glm",
-                api_key=self.zhipu_api_key,
-                base_url=self.zhipu_base_url,
-                model=self.zhipu_chat_model,
-                timeout_seconds=self.zhipu_timeout_seconds,
-                temperature=self.zhipu_temperature,
-                max_tokens=self.zhipu_max_tokens,
-            )
+            return self._glm_provider_config()
         if selected == "deepseek":
             return LlmProviderConfig(
                 provider="deepseek",
@@ -270,6 +342,74 @@ class Settings(BaseSettings):
                 thinking=self.deepseek_thinking,
             )
         raise ValueError(f"未注册的 LLM Provider：{selected}")
+
+    def _glm_provider_config(self) -> LlmProviderConfig:
+        if self.glm_runtime_profile == "coding_plan":
+            return LlmProviderConfig(
+                provider="glm",
+                api_key=self.zhipu_api_key,
+                base_url=_configured_or_default(
+                    self.zhipu_coding_base_url,
+                    _GLM_CODING_DEFAULT_BASE_URL,
+                ),
+                model=_configured_or_default(
+                    self.zhipu_coding_chat_model,
+                    _GLM_CODING_DEFAULT_MODEL,
+                ),
+                timeout_seconds=_configured_or_default(
+                    self.zhipu_coding_timeout_seconds,
+                    _GLM_DEFAULT_TIMEOUT_SECONDS,
+                ),
+                temperature=_configured_or_default(
+                    self.zhipu_coding_temperature,
+                    _GLM_DEFAULT_TEMPERATURE,
+                ),
+                max_tokens=_configured_or_default(
+                    self.zhipu_coding_max_tokens,
+                    _GLM_DEFAULT_MAX_TOKENS,
+                ),
+                runtime_profile="coding_plan",
+            )
+
+        return LlmProviderConfig(
+            provider="glm",
+            api_key=self.zhipu_api_key,
+            base_url=_configured_or_default(
+                self.zhipu_resource_base_url,
+                self.zhipu_base_url,
+                _GLM_RESOURCE_DEFAULT_BASE_URL,
+            ),
+            model=_configured_or_default(
+                self.zhipu_resource_chat_model,
+                self.zhipu_chat_model,
+                _GLM_RESOURCE_DEFAULT_MODEL,
+            ),
+            timeout_seconds=_configured_or_default(
+                self.zhipu_resource_timeout_seconds,
+                self.zhipu_timeout_seconds,
+                _GLM_DEFAULT_TIMEOUT_SECONDS,
+            ),
+            temperature=_configured_or_default(
+                self.zhipu_resource_temperature,
+                self.zhipu_temperature,
+                _GLM_DEFAULT_TEMPERATURE,
+            ),
+            max_tokens=_configured_or_default(
+                self.zhipu_resource_max_tokens,
+                self.zhipu_max_tokens,
+                _GLM_DEFAULT_MAX_TOKENS,
+            ),
+            runtime_profile="resource",
+        )
+
+
+def _configured_or_default(value: object, *fallbacks: object) -> object:
+    """返回首个非空配置值，保留 `0` 等经字段校验后合法的值。"""
+
+    for candidate in (value, *fallbacks):
+        if candidate is not None:
+            return candidate
+    raise RuntimeError("缺少 GLM Profile 默认配置。")
 
 
 settings = Settings()

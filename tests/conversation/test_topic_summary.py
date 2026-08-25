@@ -43,11 +43,15 @@ class FakeWritePort:
         self.messages.append(message)
         return message
 
-    def update_topic_summary(self, *, conversation_id: UUID, topic_summary: str | None) -> Conversation:
+    def update_topic_summary(
+        self, *, conversation_id: UUID, topic_summary: str | None
+    ) -> Conversation:
         self.topic_summary = topic_summary
         return Conversation(id=conversation_id, owner_subject="user-1", topic_summary=topic_summary)
 
-    def update_topic_summary_if_empty(self, *, conversation_id: UUID, topic_summary: str) -> Conversation | None:
+    def update_topic_summary_if_empty(
+        self, *, conversation_id: UUID, topic_summary: str
+    ) -> Conversation | None:
         if self.topic_summary is not None:
             return None
         self.topic_summary = topic_summary

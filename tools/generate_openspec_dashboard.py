@@ -11,7 +11,6 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
-
 TASK_DONE = re.compile(r"^\s*- \[x\]\s+", re.IGNORECASE)
 TASK_OPEN = re.compile(r"^\s*- \[ \]\s+", re.IGNORECASE)
 ARCHIVE_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-(.+)$")
@@ -106,9 +105,7 @@ def artifact_links(change: Change, output_file: Path) -> str:
     ):
         artifact = change.path / filename
         if artifact.is_file():
-            links.append(
-                f'<a href="{relative_link(output_file, artifact)}">{label}</a>'
-            )
+            links.append(f'<a href="{relative_link(output_file, artifact)}">{label}</a>')
     return '<span class="artifact-links">' + "".join(links) + "</span>"
 
 
@@ -148,12 +145,14 @@ def read_changes(changes_dir: Path) -> tuple[list[Change], list[Change]]:
 
 def capability_rows(specs_dir: Path, output_file: Path) -> str:
     rows: list[str] = []
-    for capability in sorted(specs_dir.iterdir(), key=lambda item: item.name) if specs_dir.is_dir() else []:
+    for capability in (
+        sorted(specs_dir.iterdir(), key=lambda item: item.name) if specs_dir.is_dir() else []
+    ):
         spec_file = capability / "spec.md"
         if not capability.is_dir() or not spec_file.is_file():
             continue
         rows.append(
-            "<li class=\"capability-row\">"
+            '<li class="capability-row">'
             "<div>"
             f"<code>{html.escape(capability.name)}</code>"
             f"<p>{html.escape(read_summary(spec_file))}</p>"
@@ -203,19 +202,19 @@ def archive_rows(changes: list[Change], output_file: Path) -> str:
         )
         date_label = change.archived_on or "未知日期"
         rows.append(
-            "<details class=\"archive-item\">"
+            '<details class="archive-item">'
             "<summary>"
-            "<span class=\"archive-date\">"
+            '<span class="archive-date">'
             f"{html.escape(date_label)}"
             "</span>"
-            "<span class=\"archive-name\">"
+            '<span class="archive-name">'
             f"<code>{html.escape(change.name)}</code>"
             "</span>"
-            "<span class=\"archive-tasks\">"
+            '<span class="archive-tasks">'
             f"{task_label}"
             "</span>"
             "</summary>"
-            f"<div class=\"archive-links\">{artifact_links(change, output_file)}</div>"
+            f'<div class="archive-links">{artifact_links(change, output_file)}</div>'
             "</details>"
         )
     return "".join(rows) or '<p class="empty-row">尚无归档 Change。</p>'
@@ -227,9 +226,7 @@ def render_dashboard(root: Path, output_file: Path) -> str:
     completed_tasks = sum(change.done_tasks for change in archived_changes)
     total_archived_tasks = sum(change.total_tasks for change in archived_changes)
     capability_count = sum(
-        1
-        for path in (openspec_dir / "specs").glob("*/spec.md")
-        if path.is_file()
+        1 for path in (openspec_dir / "specs").glob("*/spec.md") if path.is_file()
     )
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -291,7 +288,12 @@ def render_dashboard(root: Path, output_file: Path) -> str:
       overflow-wrap: anywhere;
     }}
     .topbar {{ background: var(--surface); border-bottom: 1px solid var(--line); }}
-    .topbar-inner, main {{ max-width: 1200px; margin: 0 auto; padding-left: 28px; padding-right: 28px; }}
+    .topbar-inner, main {{
+      max-width: 1200px;
+      margin: 0 auto;
+      padding-left: 28px;
+      padding-right: 28px;
+    }}
     .topbar-inner {{
       min-height: 74px;
       display: flex;
@@ -302,37 +304,115 @@ def render_dashboard(root: Path, output_file: Path) -> str:
     .product-name {{ margin: 0; font-size: 20px; font-weight: 500; letter-spacing: 0; }}
     .product-meta {{ color: var(--muted); font-size: 13px; white-space: nowrap; }}
     main {{ padding-top: 30px; padding-bottom: 48px; }}
-    .intro {{ display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }}
+    .intro {{
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+    }}
     h1, h2 {{ margin: 0; font-weight: 500; letter-spacing: 0; }}
     h1 {{ font-size: 28px; }}
     h2 {{ font-size: 18px; }}
     .intro p {{ max-width: 680px; margin: 8px 0 0; color: var(--muted); }}
     .source-note {{ color: var(--muted); font-size: 13px; text-align: right; }}
-    .metrics {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 34px; }}
-    .metric {{ background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; min-height: 108px; }}
+    .metrics {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 34px;
+    }}
+    .metric {{
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 16px;
+      min-height: 108px;
+    }}
     .metric dt {{ color: var(--muted); font-size: 13px; }}
     .metric dd {{ margin: 6px 0 0; font-size: 30px; font-weight: 500; line-height: 1.1; }}
     .metric small {{ display: block; margin-top: 8px; color: var(--muted); }}
     .section {{ margin-top: 34px; }}
-    .section-head {{ display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 14px; }}
+    .section-head {{
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 14px;
+    }}
     .section-head p {{ margin: 0; color: var(--muted); font-size: 13px; }}
-    .flow {{ display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); overflow: hidden; }}
-    .flow-step {{ position: relative; min-height: 116px; padding: 18px 16px 16px; border-right: 1px solid var(--line); }}
+    .flow {{
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      overflow: hidden;
+    }}
+    .flow-step {{
+      position: relative;
+      min-height: 116px;
+      padding: 18px 16px 16px;
+      border-right: 1px solid var(--line);
+    }}
     .flow-step:last-child {{ border-right: 0; }}
-    .flow-index {{ display: block; color: var(--blue); font-family: Consolas, monospace; font-size: 12px; }}
+    .flow-index {{
+      display: block;
+      color: var(--blue);
+      font-family: Consolas, monospace;
+      font-size: 12px;
+    }}
     .flow-step strong {{ display: block; margin-top: 8px; font-weight: 500; }}
-    .flow-step span:last-child {{ display: block; margin-top: 4px; color: var(--muted); font-size: 13px; }}
+    .flow-step span:last-child {{
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }}
     .flow-step.next {{ background: var(--blue-soft); box-shadow: inset 0 3px 0 var(--blue); }}
-    .content-grid {{ display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr); gap: 24px; align-items: start; }}
+    .content-grid {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+      gap: 24px;
+      align-items: start;
+    }}
     .ledger {{ border-top: 2px solid var(--ink); }}
     .capability-list {{ list-style: none; padding: 0; margin: 0; }}
-    .capability-row {{ display: flex; justify-content: space-between; gap: 20px; padding: 16px 0; border-bottom: 1px solid var(--line); }}
+    .capability-row {{
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--line);
+    }}
     .capability-row p {{ margin: 6px 0 0; color: var(--muted); font-size: 13px; }}
-    .capability-row > a {{ flex: 0 0 auto; align-self: start; font-size: 13px; white-space: nowrap; }}
-    .empty-state {{ min-height: 180px; display: grid; place-content: center; gap: 6px; padding: 26px; border-top: 2px solid var(--green); background: var(--green-soft); color: var(--ink); }}
+    .capability-row > a {{
+      flex: 0 0 auto;
+      align-self: start;
+      font-size: 13px;
+      white-space: nowrap;
+    }}
+    .empty-state {{
+      min-height: 180px;
+      display: grid;
+      place-content: center;
+      gap: 6px;
+      padding: 26px;
+      border-top: 2px solid var(--green);
+      background: var(--green-soft);
+      color: var(--ink);
+    }}
     .empty-state strong {{ font-weight: 500; }}
     .empty-state span {{ color: var(--muted); font-size: 13px; }}
-    .change-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }}
+    .change-row {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 14px;
+      align-items: center;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+    }}
     .change-row p {{ margin: 4px 0 0; color: var(--muted); font-size: 13px; }}
     .status {{ padding: 3px 8px; border-radius: 4px; font-size: 12px; white-space: nowrap; }}
     .status.已归档 {{ color: var(--green); background: var(--green-soft); }}
@@ -342,9 +422,24 @@ def render_dashboard(root: Path, output_file: Path) -> str:
     .artifact-links {{ display: inline-flex; flex-wrap: wrap; gap: 10px; font-size: 13px; }}
     .archive-list {{ border-top: 2px solid var(--ink); }}
     .archive-item {{ border-bottom: 1px solid var(--line); }}
-    .archive-item summary {{ display: grid; grid-template-columns: 104px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 15px 4px; cursor: pointer; list-style: none; }}
+    .archive-item summary {{
+      display: grid;
+      grid-template-columns: 104px minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      padding: 15px 4px;
+      cursor: pointer;
+      list-style: none;
+    }}
     .archive-item summary::-webkit-details-marker {{ display: none; }}
-    .archive-item summary::before {{ content: "+"; color: var(--blue); font-family: Consolas, monospace; grid-column: 1; position: absolute; transform: translateX(-20px); }}
+    .archive-item summary::before {{
+      content: "+";
+      color: var(--blue);
+      font-family: Consolas, monospace;
+      grid-column: 1;
+      position: absolute;
+      transform: translateX(-20px);
+    }}
     .archive-item[open] summary::before {{ content: "-"; }}
     .archive-date, .archive-tasks {{ color: var(--muted); font-size: 13px; }}
     .archive-tasks {{ white-space: nowrap; }}
@@ -364,7 +459,11 @@ def render_dashboard(root: Path, output_file: Path) -> str:
       .topbar-inner, main {{ padding-left: 18px; padding-right: 18px; }}
       h1 {{ font-size: 24px; }}
       .flow {{ grid-template-columns: 1fr; }}
-      .flow-step, .flow-step:nth-child(3) {{ border-right: 0; border-bottom: 1px solid var(--line); min-height: auto; }}
+      .flow-step, .flow-step:nth-child(3) {{
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        min-height: auto;
+      }}
       .flow-step:last-child {{ border-bottom: 0; }}
       .capability-row {{ flex-direction: column; gap: 8px; }}
       .archive-item summary {{ grid-template-columns: 1fr; gap: 3px; padding-left: 22px; }}
@@ -390,41 +489,76 @@ def render_dashboard(root: Path, output_file: Path) -> str:
     </section>
 
     <dl class="metrics" aria-label="OpenSpec 状态摘要">
-      <div class="metric"><dt>活动 Change</dt><dd>{len(active_changes)}</dd><small>当前正在规划或实施</small></div>
-      <div class="metric"><dt>正式能力规格</dt><dd>{capability_count}</dd><small>已生效的行为基线</small></div>
-      <div class="metric"><dt>已归档 Change</dt><dd>{len(archived_changes)}</dd><small>包含验收与追溯材料</small></div>
-      <div class="metric"><dt>归档任务</dt><dd>{completed_tasks}/{total_archived_tasks}</dd><small>归档 Change 中已勾选任务</small></div>
+      <div class="metric">
+        <dt>活动 Change</dt><dd>{len(active_changes)}</dd><small>当前正在规划或实施</small>
+      </div>
+      <div class="metric">
+        <dt>正式能力规格</dt><dd>{capability_count}</dd><small>已生效的行为基线</small>
+      </div>
+      <div class="metric">
+        <dt>已归档 Change</dt><dd>{len(archived_changes)}</dd><small>包含验收与追溯材料</small>
+      </div>
+      <div class="metric">
+        <dt>归档任务</dt><dd>{completed_tasks}/{total_archived_tasks}</dd>
+        <small>归档 Change 中已勾选任务</small>
+      </div>
     </dl>
 
     <section class="section" aria-labelledby="flow-title">
-      <div class="section-head"><h2 id="flow-title">标准交付流程</h2><p>当前下一步：探索新的 Phase 4 能力边界</p></div>
+      <div class="section-head">
+        <h2 id="flow-title">标准交付流程</h2><p>当前下一步：探索新的 Phase 4 能力边界</p>
+      </div>
       <div class="flow" aria-label="OpenSpec 交付流程">
-        <div class="flow-step next"><span class="flow-index">01</span><strong>Explore</strong><span>澄清问题与边界</span></div>
-        <div class="flow-step"><span class="flow-index">02</span><strong>Change</strong><span>创建独立变更</span></div>
-        <div class="flow-step"><span class="flow-index">03</span><strong>Artifacts</strong><span>提案、设计、规格、任务</span></div>
-        <div class="flow-step"><span class="flow-index">04</span><strong>Apply</strong><span>实现与验证任务</span></div>
-        <div class="flow-step"><span class="flow-index">05</span><strong>Sync</strong><span>同步正式规格</span></div>
-        <div class="flow-step"><span class="flow-index">06</span><strong>Archive</strong><span>归档交付证据</span></div>
+        <div class="flow-step next">
+          <span class="flow-index">01</span><strong>Explore</strong><span>澄清问题与边界</span>
+        </div>
+        <div class="flow-step">
+          <span class="flow-index">02</span><strong>Change</strong><span>创建独立变更</span>
+        </div>
+        <div class="flow-step">
+          <span class="flow-index">03</span><strong>Artifacts</strong>
+          <span>提案、设计、规格、任务</span>
+        </div>
+        <div class="flow-step">
+          <span class="flow-index">04</span><strong>Apply</strong><span>实现与验证任务</span>
+        </div>
+        <div class="flow-step">
+          <span class="flow-index">05</span><strong>Sync</strong><span>同步正式规格</span>
+        </div>
+        <div class="flow-step">
+          <span class="flow-index">06</span><strong>Archive</strong><span>归档交付证据</span>
+        </div>
       </div>
     </section>
 
     <div class="content-grid">
       <section class="section" aria-labelledby="capabilities-title">
-        <div class="section-head"><h2 id="capabilities-title">当前生效能力</h2><p>来自 <code>openspec/specs/</code></p></div>
-        <div class="ledger"><ul class="capability-list">{capability_rows(openspec_dir / "specs", output_file)}</ul></div>
+        <div class="section-head">
+          <h2 id="capabilities-title">当前生效能力</h2><p>来自 <code>openspec/specs/</code></p>
+        </div>
+        <div class="ledger">
+          <ul class="capability-list">{capability_rows(openspec_dir / "specs", output_file)}</ul>
+        </div>
       </section>
       <section class="section" aria-labelledby="changes-title">
-        <div class="section-head"><h2 id="changes-title">活动 Change</h2><p>来自 <code>openspec/changes/</code></p></div>
+        <div class="section-head">
+          <h2 id="changes-title">活动 Change</h2><p>来自 <code>openspec/changes/</code></p>
+        </div>
         <div class="ledger">{active_change_rows(active_changes, output_file)}</div>
       </section>
     </div>
 
     <section class="section" aria-labelledby="archive-title">
-      <div class="section-head"><h2 id="archive-title">归档历史</h2><p>展开后可查看 Change 工件</p></div>
+      <div class="section-head">
+        <h2 id="archive-title">归档历史</h2><p>展开后可查看 Change 工件</p>
+      </div>
       <div class="archive-list">{archive_rows(archived_changes, output_file)}</div>
     </section>
 
-    <p class="footer-note">本页面为只读派生产物。更新 OpenSpec 后重新执行 <code>python tools/generate_openspec_dashboard.py</code>。</p>
+    <p class="footer-note">
+      本页面为只读派生产物。更新 OpenSpec 后重新执行
+      <code>python tools/generate_openspec_dashboard.py</code>。
+    </p>
   </main>
 </body>
 </html>

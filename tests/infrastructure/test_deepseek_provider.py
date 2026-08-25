@@ -98,7 +98,7 @@ def test_structured_provider_defaults_to_explicit_output_limit() -> None:
     configuration = _deepseek_settings()
 
     assert configuration.deepseek_max_tokens == 16_384
-    assert Settings(zhipu_chat_model="glm-test").zhipu_max_tokens == 16_384
+    assert Settings(zhipu_resource_chat_model="glm-test").zhipu_max_tokens == 16_384
 
 
 def _chat_request() -> ChatLlmRequest:
@@ -255,7 +255,7 @@ def test_composition_selects_both_openai_compatible_providers() -> None:
     glm_factory = OpenAICompatibleClientFactory(
         configuration=Settings(
             zhipu_api_key="glm-key",
-            zhipu_chat_model="glm-test",
+            zhipu_resource_chat_model="glm-test",
         )
     )
     deepseek_factory = OpenAICompatibleClientFactory(
