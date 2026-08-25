@@ -147,6 +147,7 @@ describe("ChatPage conversation list", () => {
       conversationId: FIRST_ID,
       topicSummary: "人工修正主题",
     }));
+    expect(screen.getByRole("button", { name: "会话操作：首轮自动概括" })).toBeTruthy();
   });
 
   it("edits only the selected conversation item and cancels without a request", () => {
@@ -167,12 +168,15 @@ describe("ChatPage conversation list", () => {
     expect(secondRow).toBeTruthy();
     expect(within(firstRow as HTMLElement).getByRole("textbox", { name: "会话名称" })).toBeTruthy();
     expect(within(secondRow as HTMLElement).queryByRole("textbox", { name: "会话名称" })).toBeNull();
+    expect(within(firstRow as HTMLElement).queryByRole("button", { name: "会话操作：第一个会话" })).toBeNull();
+    expect(within(secondRow as HTMLElement).getByRole("button", { name: "会话操作：第二个会话" })).toBeTruthy();
     expect(screen.queryByText("重命名会话")).toBeNull();
 
     fireEvent.click(within(firstRow as HTMLElement).getByRole("button", { name: "取消重命名" }));
 
     expect(mutateAsync).not.toHaveBeenCalled();
     expect(within(firstRow as HTMLElement).getByText("第一个会话")).toBeTruthy();
+    expect(within(firstRow as HTMLElement).getByRole("button", { name: "会话操作：第一个会话" })).toBeTruthy();
   });
 
   it("keeps the rename draft when saving fails", async () => {
@@ -192,6 +196,7 @@ describe("ChatPage conversation list", () => {
     await waitFor(() => expect(
       (screen.getByRole("textbox", { name: "会话名称" }) as HTMLInputElement).value,
     ).toBe("新的会话名称"));
+    expect(screen.queryByRole("button", { name: "会话操作：保留这个草稿" })).toBeNull();
     expect(screen.getByRole("alert").textContent).toContain("保存失败");
   });
 

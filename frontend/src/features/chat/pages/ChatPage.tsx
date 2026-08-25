@@ -566,7 +566,8 @@ export function ChatPage() {
                   </span>
                 </button>
               )}
-              <div className={styles.conversationMenuWrap} data-conversation-menu>
+              {renameConversationId !== conversation.id && (
+                <div className={styles.conversationMenuWrap} data-conversation-menu>
                   <button
                     className={styles.conversationMenuButton}
                     type="button"
@@ -588,6 +589,7 @@ export function ChatPage() {
                     </div>
                   )}
                 </div>
+              )}
             </div>
           ))}
           {conversationList.hasNextPage && (
