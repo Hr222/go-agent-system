@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from functools import lru_cache
 
 from fastapi import Depends
@@ -44,12 +45,16 @@ def get_attachment_storage(
     return container.attachment_storage()
 
 
-def get_application_container(
+async def get_application_container(
     session=Depends(get_db_session),  # noqa: ANN001
     attachment_storage=Depends(get_attachment_storage),  # noqa: ANN001
-) -> ApplicationContainer:
+) -> AsyncIterator[ApplicationContainer]:
     """为需要数据库能力的请求提供统一装配容器。"""
-    return ApplicationContainer(session, attachment_storage=attachment_storage)
+    container = ApplicationContainer(session, attachment_storage=attachment_storage)
+    try:
+        yield container
+    finally:
+        await container.aclose()
 
 
 def get_conversation_access_service(

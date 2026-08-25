@@ -54,7 +54,8 @@ def create_app() -> FastAPI:
         application.state.llm_active_streams = 0
         async with tender_mcp_session_manager.run():
             yield
-        get_stateless_application_container().close()
+        stateless_container = get_stateless_application_container()
+        await stateless_container.aclose()
         get_stateless_application_container.cache_clear()
         logger.info("关闭 FastAPI 应用 name=%s", settings.app_name)
 

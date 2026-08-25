@@ -1,3 +1,6 @@
+import asyncio
+from unittest.mock import AsyncMock
+
 from app.composition import ApplicationContainer
 from app.infrastructure.llm.langchain_glm_adapter import LangChainGlmStructuredLlm
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
@@ -111,3 +114,12 @@ def test_application_container_uses_conversation_port_for_dialogue_agent_invocat
     invocation = container.dialogue_agent_invocation()
 
     assert isinstance(invocation._conversation_write, ConversationWriteRepository)
+
+
+def test_application_container_aclose_releases_openai_client_factory() -> None:
+    factory = AsyncMock()
+    container = ApplicationContainer(openai_client_factory=factory)
+
+    asyncio.run(container.aclose())
+
+    factory.aclose.assert_awaited_once_with()

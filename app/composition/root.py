@@ -454,6 +454,12 @@ class ApplicationContainer:
         if self._openai_client_factory is not None:
             self._openai_client_factory.close()
 
+    async def aclose(self) -> None:
+        """关闭 Container 创建的异步基础设施资源。"""
+
+        if self._openai_client_factory is not None:
+            await self._openai_client_factory.aclose()
+
     def embedding_service(self) -> GiteeEmbeddingClient:
         if self._embedding_service is None:
             self._embedding_service = GiteeEmbeddingClient()
