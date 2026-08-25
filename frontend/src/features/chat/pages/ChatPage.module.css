@@ -12,7 +12,8 @@
 .conversationSearch input::placeholder { color: #a2adbb; }
 .listSectionLabel { margin: 27px 8px 9px; color: #9aa6b8; font-size: 10px; font-weight: 750; }
 .conversationItems { display: grid; flex: 1; min-height: 0; align-content: start; gap: 4px; overflow-y: auto; }
-.conversationItemRow { position: relative; display: flex; align-items: stretch; min-width: 0; }
+.conversationItemRow { position: relative; z-index: 0; display: flex; align-items: stretch; min-width: 0; }
+.conversationItemRow[data-menu-open="true"] { z-index: 10; }
 .topicEditor { display: grid; gap: 8px; margin-top: 18px; padding: 12px 8px 14px; border-top: 1px solid #e9edf3; }
 .topicEditorHeading { display: flex; align-items: center; justify-content: space-between; color: #718096; font-size: 10px; font-weight: 750; }
 .topicEditorHeading small { color: #a0aabb; font-size: 9px; font-weight: 500; }

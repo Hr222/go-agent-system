@@ -305,6 +305,8 @@ describe("ChatPage conversation list", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: "会话操作：菜单测试" }));
     expect(screen.getByRole("menu")).toBeTruthy();
+    expect(screen.getByRole("menu").closest("[data-menu-open]")?.getAttribute("data-menu-open"))
+      .toBe("true");
 
     fireEvent.pointerDown(document.body);
 

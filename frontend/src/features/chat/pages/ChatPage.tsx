@@ -498,6 +498,7 @@ export function ChatPage() {
             <div
               className={styles.conversationItemRow}
               key={conversation.id}
+              data-menu-open={openConversationMenu === conversation.id || undefined}
             >
               <button
                 className={styles.conversationItem + (activeConversation === conversation.id ? " " + styles.conversationItemActive : "")}
