@@ -314,7 +314,8 @@ describe("ChatPage conversation list", () => {
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(FIRST_ID));
     expect(window.localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY)).toBeNull();
     expect(refetch).toHaveBeenCalledOnce();
-    expect(screen.getByRole("status").textContent).toContain("会话已删除");
+    expect(mocks.messageSuccess).toHaveBeenCalledWith("会话已删除");
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("retains the conversation and shows an error when deletion fails", async () => {
@@ -355,6 +356,28 @@ describe("ChatPage conversation list", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
+  it("reports a successful pin through the global message", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({
+      ...summary(FIRST_ID, "2025-01-01T00:00:00Z", "置顶成功会话"),
+      isPinned: true,
+    });
+    mocks.useConversationList.mockReturnValue(listState([
+      summary(FIRST_ID, "2025-01-01T00:00:00Z", "置顶成功会话"),
+    ]));
+    mocks.useUpdateConversationPin.mockReturnValue({ isPending: false, mutateAsync });
+
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "会话操作：置顶成功会话" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "置顶" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      conversationId: FIRST_ID,
+      isPinned: true,
+    }));
+    expect(mocks.messageSuccess).toHaveBeenCalledWith("已置顶会话");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("uses the inverse pin state and reports a successful unpin", async () => {
     const mutateAsync = vi.fn().mockResolvedValue({
       ...summary(FIRST_ID, "2025-01-01T00:00:00Z", "已置顶会话"),
@@ -374,7 +397,8 @@ describe("ChatPage conversation list", () => {
       conversationId: FIRST_ID,
       isPinned: false,
     }));
-    expect(screen.getByRole("status").textContent).toContain("已取消置顶");
+    expect(mocks.messageSuccess).toHaveBeenCalledWith("已取消置顶");
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("closes an open conversation menu when clicking outside", () => {

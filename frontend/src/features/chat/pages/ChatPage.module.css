@@ -47,8 +47,6 @@
 .bulkActionBar button { display: inline-flex; align-items: center; gap: 3px; padding: 4px 5px; color: #5475c3; background: transparent; border: 0; border-radius: 4px; cursor: pointer; font-size: 9px; }
 .bulkActionBar button:hover { background: #dce8ff; }
 .bulkActionBar button:disabled { cursor: not-allowed; opacity: .5; }
-.listActionNotice { display: flex; align-items: center; justify-content: space-between; gap: 5px; margin: 0 0 7px; padding: 6px 7px; color: #55719f; background: #f0f5ff; border: 1px solid #dbe6fb; border-radius: 5px; font-size: 9px; }
-.listActionNotice button { display: grid; place-items: center; padding: 1px; color: inherit; background: transparent; border: 0; cursor: pointer; }
 .deleteConfirmBackdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(34, 44, 63, .28); }
 .deleteConfirmDialog { display: grid; justify-items: center; width: min(340px, 100%); padding: 22px 20px 18px; text-align: center; background: #fff; border: 1px solid #e2e8f1; border-radius: 10px; box-shadow: 0 18px 45px rgba(39, 53, 78, .2); }
 .deleteConfirmIcon { display: grid; place-items: center; width: 34px; height: 34px; color: #b54d4d; background: #fff2ef; border: 1px solid #f1d2cb; border-radius: 9px; }

@@ -111,7 +111,6 @@ export function ChatPage() {
   const [renameDraft, setRenameDraft] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteInProgress, setDeleteInProgress] = useState(false);
-  const [listActionNotice, setListActionNotice] = useState<string | null>(null);
   const respondingProposalIds = useRef(new Set<string>());
   const messageStreamRef = useRef<HTMLDivElement>(null);
   const historyConversationRef = useRef<string | null>(null);
@@ -285,7 +284,7 @@ export function ChatPage() {
         conversationId: conversation.id,
         isPinned: !conversation.isPinned,
       });
-      setListActionNotice(conversation.isPinned ? "已取消置顶" : "已置顶会话");
+      message.success(conversation.isPinned ? "已取消置顶" : "已置顶会话");
     } catch (error) {
       message.error(apiErrorMessage(error, "置顶操作失败，请重试。"));
     }
@@ -309,7 +308,7 @@ export function ChatPage() {
         setRenameDraft("");
       }
       setDeleteConfirmId(null);
-      setListActionNotice("会话已删除");
+      message.success("会话已删除");
       await conversationList.refetch();
     } catch {
       setDeleteConfirmId(null);
@@ -476,12 +475,6 @@ export function ChatPage() {
           <input aria-label="搜索会话" placeholder="搜索会话" />
         </label>
         <div className={styles.listSectionLabel}>最近对话</div>
-        {listActionNotice && (
-          <div className={styles.listActionNotice} role="status">
-            <span>{listActionNotice}</span>
-            <button type="button" aria-label="关闭提示" onClick={() => setListActionNotice(null)}><X size={12} /></button>
-          </div>
-        )}
         <div className={styles.conversationItems}>
           {conversationList.isPending && (
             <div className={styles.conversationListStatus} role="status">正在加载会话</div>
