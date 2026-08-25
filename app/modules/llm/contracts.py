@@ -68,9 +68,10 @@ class ChatLlmPort(Protocol):
 
 @dataclass(slots=True, frozen=True)
 class ChatLlmStreamChunk:
-    """流式文本片段及可选的结束元数据。"""
+    """流式文本片段、上游活动标记及可选的结束元数据。"""
 
     content: str
+    has_upstream_activity: bool = False
     model: str | None = None
     prompt_version: str | None = None
     input_tokens: int | None = None

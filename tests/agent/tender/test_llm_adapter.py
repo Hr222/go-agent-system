@@ -107,6 +107,7 @@ def test_langchain_glm_adapter_returns_validated_structured_result() -> None:
     assert fake_model.bind_kwargs == {
         "response_format": {"type": "json_object"},
         "max_tokens": 16_384,
+        "extra_body": {"thinking": {"type": "disabled"}},
     }
     assert fake_model.structured_model.messages is not None
 

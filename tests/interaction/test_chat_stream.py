@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.interfaces.http.dependencies import (
@@ -16,6 +17,7 @@ from app.modules.dialogue.application import (
     StreamingConversationEvent,
     StreamingConversationResult,
 )
+from app.modules.interaction.application import chat_stream as chat_stream_module
 from app.modules.interaction.application.chat_stream import (
     InteractionChatStreamApplication,
     InteractionChatStreamCommand,
@@ -29,6 +31,7 @@ from app.modules.interaction.application.gateway import (
 from app.modules.interaction.domain.confirmation import ConfirmationProposal
 from app.modules.llm.contracts import ChatLlmStreamChunk
 from app.modules.security.domain.principal import RequestPrincipal
+from app.shared.config import Settings
 
 
 class RecordingGateway:
@@ -158,6 +161,109 @@ def test_chat_stream_emits_ordered_chat_events_after_server_authorization() -> N
     }
     assert chat.commands[0].message == "解释一下向量检索"
     assert chat.commands[0].conversation_id is None
+
+
+def test_chat_stream_treats_reasoning_as_activity_without_emitting_it() -> None:
+    gateway = RecordingGateway(
+        GatewayResult(
+            status="authorized",
+            message="server authorized",
+            direct_execution=DirectCapabilityExecution(
+                capability_code="chat.general",
+                dispatch_key="llm.chat",
+                inputs={"message": "解释一下向量检索"},
+            ),
+        )
+    )
+    chat = FakeStreamingConversation(
+        [
+            ChatLlmStreamChunk(
+                content="",
+                has_upstream_activity=True,
+                model="glm-test",
+            ),
+            ChatLlmStreamChunk(content="可展示的回答。", total_tokens=8),
+        ]
+    )
+    application = InteractionChatStreamApplication(gateway, chat)  # type: ignore[arg-type]
+
+    async def scenario() -> list[object]:
+        preparation = application.prepare(_command())
+        return [
+            event
+            async for event in application.stream(
+                preparation,
+                is_disconnected=_connected,
+            )
+        ]
+
+    events = asyncio.run(scenario())
+
+    assert [event.name for event in events] == ["meta", "delta", "complete"]
+    assert events[1].data["content"] == "可展示的回答。"
+    assert "reasoning" not in str([event.data for event in events])
+
+
+def test_chat_stream_times_out_when_no_upstream_activity_arrives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SilentStreamingConversation(FakeStreamingConversation):
+        closed = False
+
+        async def execute(self, command):  # noqa: ANN001
+            self.commands.append(command)
+            conversation_id = command.conversation_id or UUID(
+                "00000000-0000-0000-0000-000000000099"
+            )
+
+            async def generate() -> AsyncIterator[StreamingConversationEvent]:
+                try:
+                    yield StreamingConversationEvent("started", conversation_id)
+                    await asyncio.sleep(0.03)
+                    yield StreamingConversationEvent(
+                        "delta",
+                        conversation_id,
+                        chunk=ChatLlmStreamChunk(content="太晚的回答。"),
+                    )
+                finally:
+                    self.closed = True
+
+            return generate()
+
+    monkeypatch.setattr(
+        chat_stream_module,
+        "settings",
+        Settings(_env_file=None, llm_stream_first_token_timeout_seconds=0.001),
+    )
+    gateway = RecordingGateway(
+        GatewayResult(
+            status="authorized",
+            message="server authorized",
+            direct_execution=DirectCapabilityExecution(
+                capability_code="chat.general",
+                dispatch_key="llm.chat",
+                inputs={"message": "解释一下向量检索"},
+            ),
+        )
+    )
+    chat = SilentStreamingConversation([])
+    application = InteractionChatStreamApplication(gateway, chat)  # type: ignore[arg-type]
+
+    async def scenario() -> list[object]:
+        preparation = application.prepare(_command())
+        return [
+            event
+            async for event in application.stream(
+                preparation,
+                is_disconnected=_connected,
+            )
+        ]
+
+    events = asyncio.run(scenario())
+
+    assert [event.name for event in events] == ["error"]
+    assert events[0].data["code"] == "UPSTREAM_TIMEOUT"
+    assert chat.closed is True
 
 
 def test_chat_stream_passes_conversation_context_to_gateway() -> None:

@@ -58,6 +58,7 @@ def main() -> int:
             "runtime_profile": provider_config.runtime_profile,
             "base_url": _safe_base_url(provider_config.base_url),
             "model": provider_config.model or "",
+            "thinking": provider_config.thinking,
             "timeout_seconds": timeout,
             "api_key_configured": bool(provider_config.api_key),
         },

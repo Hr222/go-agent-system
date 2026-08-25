@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LlmProviderName = Literal["glm", "deepseek"]
 GlmRuntimeProfileName = Literal["resource", "coding_plan"]
+GlmThinkingMode = Literal["disabled", "enabled", "low", "high", "max"]
 PrincipalMode = Literal["anonymous", "static"]
 
 _GLM_RESOURCE_DEFAULT_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
@@ -15,6 +16,8 @@ _GLM_CODING_DEFAULT_MODEL = "glm-5.3"
 _GLM_DEFAULT_TIMEOUT_SECONDS = 60.0
 _GLM_DEFAULT_TEMPERATURE = 0.0
 _GLM_DEFAULT_MAX_TOKENS = 16_384
+_GLM_RESOURCE_DEFAULT_THINKING: GlmThinkingMode = "disabled"
+_GLM_CODING_DEFAULT_THINKING: GlmThinkingMode = "low"
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +31,7 @@ class LlmProviderConfig:
     timeout_seconds: float
     temperature: float
     max_tokens: int | None
-    thinking: Literal["enabled", "disabled"] | None = None
+    thinking: GlmThinkingMode | None = None
     runtime_profile: GlmRuntimeProfileName | None = None
 
 
@@ -148,6 +151,10 @@ class Settings(BaseSettings):
         gt=0,
         alias="ZHIPU_RESOURCE_MAX_TOKENS",
     )
+    zhipu_resource_thinking: GlmThinkingMode = Field(
+        default=_GLM_RESOURCE_DEFAULT_THINKING,
+        alias="ZHIPU_RESOURCE_THINKING",
+    )
     zhipu_coding_base_url: str | None = Field(
         default=None,
         alias="ZHIPU_CODING_BASE_URL",
@@ -171,6 +178,10 @@ class Settings(BaseSettings):
         default=None,
         gt=0,
         alias="ZHIPU_CODING_MAX_TOKENS",
+    )
+    zhipu_coding_thinking: GlmThinkingMode = Field(
+        default=_GLM_CODING_DEFAULT_THINKING,
+        alias="ZHIPU_CODING_THINKING",
     )
     # 旧变量仅作为 resource Profile 的迁移回退，避免已有部署升级后失效。
     zhipu_base_url: str | None = Field(default=None, alias="ZHIPU_BASE_URL")
@@ -368,6 +379,7 @@ class Settings(BaseSettings):
                     self.zhipu_coding_max_tokens,
                     _GLM_DEFAULT_MAX_TOKENS,
                 ),
+                thinking=self.zhipu_coding_thinking,
                 runtime_profile="coding_plan",
             )
 
@@ -399,6 +411,7 @@ class Settings(BaseSettings):
                 self.zhipu_max_tokens,
                 _GLM_DEFAULT_MAX_TOKENS,
             ),
+            thinking=self.zhipu_resource_thinking,
             runtime_profile="resource",
         )
 

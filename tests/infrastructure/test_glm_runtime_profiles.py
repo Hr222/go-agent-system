@@ -23,6 +23,16 @@ def test_glm_resource_profile_is_the_default() -> None:
     assert profile.timeout_seconds == 60.0
     assert profile.temperature == 0.0
     assert profile.max_tokens == 16_384
+    assert profile.thinking == "disabled"
+
+
+def test_glm_coding_plan_profile_uses_low_thinking_by_default() -> None:
+    configuration = _settings(glm_runtime_profile="coding_plan")
+
+    profile = configuration.llm_provider_config()
+
+    assert profile.runtime_profile == "coding_plan"
+    assert profile.thinking == "low"
 
 
 def test_coding_plan_profile_uses_only_its_own_configuration() -> None:
@@ -35,6 +45,7 @@ def test_coding_plan_profile_uses_only_its_own_configuration() -> None:
         zhipu_coding_timeout_seconds=75,
         zhipu_coding_temperature=0.3,
         zhipu_coding_max_tokens=2048,
+        zhipu_coding_thinking="high",
     )
 
     profile = configuration.llm_provider_config()
@@ -45,6 +56,22 @@ def test_coding_plan_profile_uses_only_its_own_configuration() -> None:
     assert profile.timeout_seconds == 75.0
     assert profile.temperature == 0.3
     assert profile.max_tokens == 2048
+    assert profile.thinking == "high"
+
+
+def test_glm_profile_thinking_configuration_is_isolated() -> None:
+    configuration = _settings(
+        zhipu_resource_thinking="max",
+        zhipu_coding_thinking="enabled",
+    )
+
+    resource = configuration.llm_provider_config()
+    coding_plan = configuration.model_copy(
+        update={"glm_runtime_profile": "coding_plan"}
+    ).llm_provider_config()
+
+    assert resource.thinking == "max"
+    assert coding_plan.thinking == "enabled"
 
 
 def test_resource_profile_prefers_new_configuration_and_falls_back_to_legacy() -> None:

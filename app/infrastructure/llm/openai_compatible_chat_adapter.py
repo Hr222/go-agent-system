@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -77,9 +77,11 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
                 async for response in self._model_for_request().astream(
                     _request_messages(request)
                 ):
+                    content = _message_content(response)
                     usage = _message_usage(response)
                     yield ChatLlmStreamChunk(
-                        content=_message_content(response),
+                        content=content,
+                        has_upstream_activity=_has_upstream_activity(response, content),
                         model=self.model or "unknown",
                         prompt_version=request.prompt_version,
                         input_tokens=usage[0],
@@ -113,6 +115,39 @@ def _message_content(response: Any) -> str:
             if isinstance(part, dict) and part.get("type") == "text"
         ).strip()
     return str(content or "")
+
+
+def _has_upstream_activity(response: Any, content: str) -> bool:
+    """识别 Provider 已返回的正文或内部 reasoning，不暴露 reasoning 本文。"""
+
+    if content.strip():
+        return True
+    response_metadata = getattr(response, "response_metadata", None)
+    additional_kwargs = getattr(response, "additional_kwargs", None)
+    return any(
+        _has_nonempty_reasoning(value)
+        for value in (
+            getattr(response, "reasoning_content", None),
+            _mapping_value(additional_kwargs, "reasoning_content"),
+            _mapping_value(response_metadata, "reasoning_content"),
+        )
+    )
+
+
+def _mapping_value(value: object, key: str) -> object:
+    if isinstance(value, Mapping):
+        return value.get(key)
+    return None
+
+
+def _has_nonempty_reasoning(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, Mapping):
+        return any(_has_nonempty_reasoning(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_has_nonempty_reasoning(item) for item in value)
+    return False
 
 
 def _request_messages(request: ChatLlmRequest) -> list[SystemMessage | HumanMessage | AIMessage]:

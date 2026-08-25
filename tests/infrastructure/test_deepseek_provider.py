@@ -237,6 +237,45 @@ def test_deepseek_raw_request_contains_json_object_and_thinking_payload() -> Non
     }
 
 
+def test_glm_raw_structured_request_uses_coding_profile_thinking() -> None:
+    response = type(
+        "Response",
+        (),
+        {
+            "choices": [
+                type(
+                    "Choice",
+                    (),
+                    {
+                        "message": type(
+                            "Message",
+                            (),
+                            {"content": json.dumps({"status": "ok", "message": "raw"})},
+                        )()
+                    },
+                )()
+            ]
+        },
+    )()
+    factory = FakeClientFactory(response)
+    configuration = Settings(
+        _env_file=None,
+        glm_runtime_profile="coding_plan",
+        zhipu_coding_chat_model="glm-coding-test",
+        zhipu_coding_thinking="low",
+    )
+    adapter = LangChainGlmStructuredLlm(
+        configuration=configuration,
+        client_factory=factory,  # type: ignore[arg-type]
+    )
+
+    result = adapter.invoke(_structured_request(), ProbeResult)
+
+    assert result.value.message == "raw"
+    assert factory.completions.kwargs is not None
+    assert factory.completions.kwargs["extra_body"] == {"thinking": {"type": "low"}}
+
+
 @pytest.mark.parametrize(
     "content",
     ["", "not-json", {"status": "ok", "message": {"wrong": "type"}}],

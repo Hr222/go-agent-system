@@ -523,7 +523,11 @@ async def _prime_stream(
             if event.kind == "started":
                 conversation_id = event.conversation_id
                 continue
-            if event.kind == "delta" and event.chunk is not None and event.chunk.content.strip():
+            if (
+                event.kind == "delta"
+                and event.chunk is not None
+                and (event.chunk.has_upstream_activity or event.chunk.content.strip())
+            ):
                 if conversation_id is None:
                     raise RuntimeError("流式 Conversation 缺少会话标识。")
                 return conversation_id, event

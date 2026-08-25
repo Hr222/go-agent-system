@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLlm
@@ -18,6 +20,11 @@ class FakeChatModel:
     def __init__(self, value: object) -> None:
         self.value = value
         self.messages = None
+        self.bind_kwargs: dict[str, object] | None = None
+
+    def bind(self, **kwargs: object) -> "FakeChatModel":
+        self.bind_kwargs = kwargs
+        return self
 
     def invoke(self, messages: object) -> object:
         self.messages = messages
@@ -64,6 +71,24 @@ def test_langchain_chat_adapter_returns_text_and_usage() -> None:
         ("system", "你是测试助手。"),
         ("human", "回复连接状态。"),
     ]
+    assert model.bind_kwargs == {"extra_body": {"thinking": {"type": "disabled"}}}
+
+
+def test_langchain_glm_chat_adapter_uses_coding_profile_thinking() -> None:
+    model = FakeChatModel(FakeMessage())
+    adapter = LangChainGlmChatLlm(
+        configuration=Settings(
+            _env_file=None,
+            glm_runtime_profile="coding_plan",
+            zhipu_coding_chat_model="glm-coding-test",
+            zhipu_coding_thinking="low",
+        ),
+        chat_model=model,
+    )
+
+    adapter.invoke(_request())
+
+    assert model.bind_kwargs == {"extra_body": {"thinking": {"type": "low"}}}
 
 
 def test_langchain_chat_adapter_preserves_history_roles_and_order() -> None:
@@ -136,10 +161,41 @@ def test_langchain_chat_adapter_streams_chunks_and_final_usage() -> None:
         assert result[-1].prompt_version == "llm-chat-v1"
         assert result[-1].total_tokens == 10
         assert model.messages is not None
+        assert model.bind_kwargs == {
+            "extra_body": {"thinking": {"type": "disabled"}}
+        }
 
     import asyncio
 
     asyncio.run(scenario())
+
+
+def test_langchain_glm_stream_marks_reasoning_as_activity_without_exposing_it() -> None:
+    reasoning_chunk = type(
+        "ReasoningChunk",
+        (),
+        {
+            "content": "",
+            "reasoning_content": "internal reasoning",
+            "usage_metadata": {},
+            "response_metadata": {},
+        },
+    )()
+    model = FakeStreamingChatModel([reasoning_chunk])
+    adapter = LangChainGlmChatLlm(
+        configuration=Settings(_env_file=None, zhipu_resource_chat_model="glm-test"),
+        chat_model=model,
+    )
+
+    async def scenario() -> list[object]:
+        return [chunk async for chunk in adapter.stream(_request())]
+
+    chunks = asyncio.run(scenario())
+
+    assert len(chunks) == 1
+    assert chunks[0].content == ""
+    assert chunks[0].has_upstream_activity is True
+    assert "internal reasoning" not in chunks[0].content
 
 
 def test_langchain_chat_adapter_streams_history_messages_in_order() -> None:
