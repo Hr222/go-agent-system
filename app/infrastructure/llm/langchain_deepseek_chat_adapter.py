@@ -4,6 +4,7 @@ from typing import Any
 
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
 from app.infrastructure.llm.openai_compatible_chat_adapter import OpenAICompatibleChatLlm
+from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.shared.config import Settings, settings
 
 
@@ -16,6 +17,7 @@ class LangChainDeepSeekChatLlm(OpenAICompatibleChatLlm):
         configuration: Settings = settings,
         client_factory: OpenAICompatibleClientFactory | None = None,
         chat_model: Any | None = None,
+        retry_policy: LlmTransientRetryPolicy | None = None,
     ) -> None:
         super().__init__(
             provider="deepseek",
@@ -23,4 +25,5 @@ class LangChainDeepSeekChatLlm(OpenAICompatibleChatLlm):
             configuration=configuration,
             client_factory=client_factory,
             chat_model=chat_model,
+            retry_policy=retry_policy,
         )

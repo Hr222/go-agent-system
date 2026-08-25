@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
+from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.llm.contracts import (
     ChatLlmMessage,
     ChatLlmMessageRole,
@@ -30,11 +32,19 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
         configuration: Settings = settings,
         client_factory: OpenAICompatibleClientFactory | None = None,
         chat_model: Any | None = None,
+        retry_policy: LlmTransientRetryPolicy | None = None,
     ) -> None:
         self.provider = provider
         self.provider_label = provider_label
         self.provider_config = configuration.llm_provider_config(provider)
         self.model = self.provider_config.model
+        self._stream_first_activity_timeout_seconds = (
+            configuration.llm_stream_first_token_timeout_seconds
+        )
+        self._retry_policy = retry_policy or LlmTransientRetryPolicy(
+            provider=provider,
+            configuration=configuration,
+        )
         if chat_model is not None:
             self._chat_model = chat_model
             return
@@ -53,7 +63,10 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
 
     def invoke(self, request: ChatLlmRequest) -> ChatLlmResult:
         try:
-            response = self._model_for_request().invoke(_request_messages(request))
+            messages = _request_messages(request)
+            response = self._retry_policy.execute(
+                lambda: self._model_for_request().invoke(messages)
+            )
         except Exception as exc:
             raise UpstreamServiceError(
                 f"{self.provider_label} Chat 调用失败"
@@ -73,26 +86,50 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
 
     def stream(self, request: ChatLlmRequest) -> AsyncIterator[ChatLlmStreamChunk]:
         async def generate() -> AsyncIterator[ChatLlmStreamChunk]:
+            messages = _request_messages(request)
+            retry_session = self._retry_policy.new_session()
+            stream: AsyncIterator[Any] | None = None
             try:
-                async for response in self._model_for_request().astream(
-                    _request_messages(request)
-                ):
-                    content = _message_content(response)
-                    usage = _message_usage(response)
-                    yield ChatLlmStreamChunk(
-                        content=content,
-                        has_upstream_activity=_has_upstream_activity(response, content),
+                for attempt in range(1, self._retry_policy.max_attempts + 1):
+                    try:
+                        stream = self._model_for_request().astream(messages)
+                        first_chunk = await _first_activity_chunk(
+                            stream,
+                            request=request,
+                            timeout_seconds=self._stream_first_activity_timeout_seconds,
+                            model=self.model or "unknown",
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as error:
+                        await _close_stream(stream)
+                        stream = None
+                        if await retry_session.retry_after_async_failure(
+                            error,
+                            attempt=attempt,
+                        ):
+                            continue
+                        raise
+                    break
+                else:
+                    raise RuntimeError("LLM 流式重试循环在未创建流时结束。")
+
+                yield first_chunk
+                async for response in stream:
+                    yield _stream_chunk(
+                        response,
                         model=self.model or "unknown",
                         prompt_version=request.prompt_version,
-                        input_tokens=usage[0],
-                        output_tokens=usage[1],
-                        total_tokens=usage[2],
                     )
+            except asyncio.CancelledError:
+                raise
             except Exception as exc:
                 raise UpstreamServiceError(
                     f"{self.provider_label} Chat 流式调用失败"
                     f"（Prompt 版本：{request.prompt_version}）：{exc}"
                 ) from exc
+            finally:
+                await _close_stream(stream)
 
         return generate()
 
@@ -102,6 +139,64 @@ class OpenAICompatibleChatLlm(ChatLlmPort, StreamingChatLlmPort):
         return self._chat_model.bind(
             extra_body={"thinking": {"type": self.provider_config.thinking}}
         )
+
+
+async def _first_activity_chunk(
+    stream: AsyncIterator[Any],
+    *,
+    request: ChatLlmRequest,
+    timeout_seconds: float,
+    model: str,
+) -> ChatLlmStreamChunk:
+    """在单次 Provider 尝试内等待正文或 reasoning activity。"""
+
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    while True:
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise asyncio.TimeoutError
+        try:
+            response = await asyncio.wait_for(anext(stream), timeout=remaining)
+        except StopAsyncIteration as error:
+            raise RuntimeError("LLM returned an empty response.") from error
+        chunk = _stream_chunk(
+            response,
+            model=model,
+            prompt_version=request.prompt_version,
+        )
+        if chunk.has_upstream_activity or chunk.content.strip():
+            return chunk
+
+
+def _stream_chunk(
+    response: Any,
+    *,
+    model: str,
+    prompt_version: str,
+) -> ChatLlmStreamChunk:
+    content = _message_content(response)
+    usage = _message_usage(response)
+    return ChatLlmStreamChunk(
+        content=content,
+        has_upstream_activity=_has_upstream_activity(response, content),
+        model=model,
+        prompt_version=prompt_version,
+        input_tokens=usage[0],
+        output_tokens=usage[1],
+        total_tokens=usage[2],
+    )
+
+
+async def _close_stream(stream: AsyncIterator[Any] | None) -> None:
+    if stream is None:
+        return
+    close = getattr(stream, "aclose", None)
+    if close is None:
+        return
+    try:
+        await close()
+    except Exception:  # noqa: BLE001 - close errors must not hide the provider failure
+        return
 
 
 def _message_content(response: Any) -> str:

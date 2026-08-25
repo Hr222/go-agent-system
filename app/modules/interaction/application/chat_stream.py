@@ -343,7 +343,7 @@ class InteractionChatStreamApplication:
             )
             conversation_id, first_event = await asyncio.wait_for(
                 _prime_stream(stream),
-                timeout=settings.llm_stream_first_token_timeout_seconds,
+                timeout=settings.llm_stream_first_activity_timeout_seconds,
             )
             assert first_event.chunk is not None
             first_chunk = first_event.chunk

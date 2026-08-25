@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 
+import httpx
 import pytest
+from openai import APITimeoutError
 from pydantic import BaseModel
 
 from app.composition.llm import (
@@ -17,6 +20,7 @@ from app.infrastructure.llm.langchain_deepseek_chat_adapter import LangChainDeep
 from app.infrastructure.llm.langchain_glm_adapter import LangChainGlmStructuredLlm
 from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLlm
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
+from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.llm.contracts import ChatLlmRequest, StructuredLlmRequest
 from app.shared.config import Settings
 from app.shared.exceptions import UpstreamServiceError
@@ -66,6 +70,20 @@ class FakeRawCompletions:
         return self.response
 
 
+class FlakyRawCompletions(FakeRawCompletions):
+    def __init__(self, response: object, failure: Exception) -> None:
+        super().__init__(response)
+        self.failure = failure
+        self.attempts = 0
+
+    def create(self, **kwargs: object) -> object:
+        self.kwargs = kwargs
+        self.attempts += 1
+        if self.attempts == 1:
+            raise self.failure
+        return self.response
+
+
 class FakeClientFactory:
     def __init__(self, response: object) -> None:
         self.completions = FakeRawCompletions(response)
@@ -107,6 +125,11 @@ def _chat_request() -> ChatLlmRequest:
 
 def _structured_request() -> StructuredLlmRequest:
     return StructuredLlmRequest("system", "return JSON", "deepseek-structured-v1")
+
+
+def _timeout_error() -> APITimeoutError:
+    request = httpx.Request("POST", "https://provider.example.com/v1/chat/completions")
+    return APITimeoutError(request=request)
 
 
 def test_deepseek_chat_and_streaming_keep_existing_result_contract() -> None:
@@ -311,3 +334,41 @@ def test_composition_selects_both_openai_compatible_providers() -> None:
 
     glm_factory.close()
     deepseek_factory.close()
+
+
+def test_structured_adapter_retries_transient_raw_completion_failure() -> None:
+    configuration = Settings(
+        _env_file=None,
+        llm_provider="deepseek",
+        deepseek_chat_model="deepseek-test",
+        llm_retry_base_backoff_seconds=0.01,
+    )
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=json.dumps({"status": "ok", "message": "done"}))
+            )
+        ]
+    )
+    factory = FakeClientFactory(response)
+    flaky_completions = FlakyRawCompletions(response, _timeout_error())
+    factory.completions = flaky_completions
+    waits: list[float] = []
+    retry_policy = LlmTransientRetryPolicy(
+        provider="deepseek",
+        configuration=configuration,
+        sleep_fn=waits.append,
+        random_fn=lambda: 0.0,
+        clock=lambda: 1.0,
+    )
+    adapter = LangChainDeepSeekStructuredLlm(
+        configuration=configuration,
+        client_factory=factory,  # type: ignore[arg-type]
+        retry_policy=retry_policy,
+    )
+
+    result = adapter.invoke(_structured_request(), ProbeResult)
+
+    assert result.value == ProbeResult(status="ok", message="done")
+    assert flaky_completions.attempts == 2
+    assert waits == [0.01]

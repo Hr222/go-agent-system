@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
 import pytest
+from openai import APIStatusError, APITimeoutError
 
+from app.infrastructure.llm.langchain_deepseek_chat_adapter import (
+    LangChainDeepSeekChatLlm,
+)
 from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLlm
+from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.llm.contracts import ChatLlmMessage, ChatLlmMessageRole, ChatLlmRequest
 from app.shared.config import Settings
 from app.shared.exceptions import UpstreamServiceError
@@ -46,12 +52,95 @@ class FakeStreamingChatModel(FakeChatModel):
             raise self.error
 
 
+class FlakyChatModel(FakeChatModel):
+    def __init__(self, response: object, failure: Exception) -> None:
+        super().__init__(response)
+        self.failure = failure
+        self.attempts = 0
+
+    def invoke(self, messages: object) -> object:
+        self.messages = messages
+        self.attempts += 1
+        if self.attempts == 1:
+            raise self.failure
+        return self.value
+
+
+class RetryBeforeActivityChatModel(FakeChatModel):
+    def __init__(self) -> None:
+        super().__init__(FakeMessage())
+        self.attempts = 0
+        self.closed_attempts: list[int] = []
+
+    def astream(self, messages: object):  # noqa: ANN201
+        self.messages = messages
+        self.attempts += 1
+        attempt = self.attempts
+
+        async def generate():
+            try:
+                if attempt == 1:
+                    raise _timeout_error()
+                yield self.value
+            finally:
+                self.closed_attempts.append(attempt)
+
+        return generate()
+
+
+class FailAfterActivityChatModel(RetryBeforeActivityChatModel):
+    def astream(self, messages: object):  # noqa: ANN201
+        self.messages = messages
+        self.attempts += 1
+        attempt = self.attempts
+
+        async def generate():
+            try:
+                yield self.value
+                raise _timeout_error()
+            finally:
+                self.closed_attempts.append(attempt)
+
+        return generate()
+
+
 def _request() -> ChatLlmRequest:
     return ChatLlmRequest(
         system_prompt="你是测试助手。",
         user_prompt="回复连接状态。",
         prompt_version="llm-chat-v1",
     )
+
+
+def _timeout_error() -> APITimeoutError:
+    request = httpx.Request("POST", "https://provider.example.com/v1/chat/completions")
+    return APITimeoutError(request=request)
+
+
+def _status_error(status_code: int) -> APIStatusError:
+    request = httpx.Request("POST", "https://provider.example.com/v1/chat/completions")
+    response = httpx.Response(status_code, request=request)
+    return APIStatusError("provider failure", response=response, body=None)
+
+
+def _retry_policy(
+    *,
+    provider: str,
+    configuration: Settings,
+    waits: list[float],
+) -> LlmTransientRetryPolicy:
+    return LlmTransientRetryPolicy(
+        provider=provider,
+        configuration=configuration,
+        sleep_fn=waits.append,
+        async_sleep_fn=lambda delay: _record_async_wait(waits, delay),
+        random_fn=lambda: 0.0,
+        clock=lambda: 1.0,
+    )
+
+
+async def _record_async_wait(waits: list[float], delay: float) -> None:
+    waits.append(delay)
 
 
 def test_langchain_chat_adapter_returns_text_and_usage() -> None:
@@ -245,3 +334,135 @@ def test_langchain_chat_adapter_maps_streaming_provider_failure() -> None:
     import asyncio
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("adapter_type", "provider", "configuration"),
+    [
+        (
+            LangChainGlmChatLlm,
+            "glm",
+            Settings(
+                _env_file=None,
+                zhipu_resource_chat_model="glm-test",
+                llm_retry_base_backoff_seconds=0.01,
+            ),
+        ),
+        (
+            LangChainDeepSeekChatLlm,
+            "deepseek",
+            Settings(
+                _env_file=None,
+                llm_provider="deepseek",
+                deepseek_chat_model="deepseek-test",
+                llm_retry_base_backoff_seconds=0.01,
+            ),
+        ),
+    ],
+)
+def test_openai_compatible_chat_retries_transient_failure_for_each_provider(
+    adapter_type,
+    provider: str,
+    configuration: Settings,
+) -> None:  # noqa: ANN001
+    waits: list[float] = []
+    model = FlakyChatModel(FakeMessage(), _timeout_error())
+    adapter = adapter_type(
+        configuration=configuration,
+        chat_model=model,
+        retry_policy=_retry_policy(
+            provider=provider,
+            configuration=configuration,
+            waits=waits,
+        ),
+    )
+
+    result = adapter.invoke(_request())
+
+    assert result.content == "GLM Chat 已连接。"
+    assert model.attempts == 2
+    assert waits == [0.01]
+
+
+def test_openai_compatible_chat_does_not_retry_client_error() -> None:
+    configuration = Settings(
+        _env_file=None,
+        zhipu_resource_chat_model="glm-test",
+        llm_retry_base_backoff_seconds=0.01,
+    )
+    waits: list[float] = []
+    model = FlakyChatModel(FakeMessage(), _status_error(401))
+    adapter = LangChainGlmChatLlm(
+        configuration=configuration,
+        chat_model=model,
+        retry_policy=_retry_policy(
+            provider="glm",
+            configuration=configuration,
+            waits=waits,
+        ),
+    )
+
+    with pytest.raises(UpstreamServiceError, match="GLM Chat 调用失败"):
+        adapter.invoke(_request())
+
+    assert model.attempts == 1
+    assert waits == []
+
+
+def test_openai_compatible_stream_retries_only_before_first_activity() -> None:
+    configuration = Settings(
+        _env_file=None,
+        zhipu_resource_chat_model="glm-test",
+        llm_retry_base_backoff_seconds=0.01,
+    )
+    waits: list[float] = []
+    model = RetryBeforeActivityChatModel()
+    adapter = LangChainGlmChatLlm(
+        configuration=configuration,
+        chat_model=model,
+        retry_policy=_retry_policy(
+            provider="glm",
+            configuration=configuration,
+            waits=waits,
+        ),
+    )
+
+    chunks = asyncio.run(_collect(adapter))
+
+    assert [chunk.content for chunk in chunks] == ["GLM Chat 已连接。"]
+    assert model.attempts == 2
+    assert model.closed_attempts == [1, 2]
+    assert waits == [0.01]
+
+
+def test_openai_compatible_stream_does_not_retry_after_first_activity() -> None:
+    configuration = Settings(
+        _env_file=None,
+        zhipu_resource_chat_model="glm-test",
+        llm_retry_base_backoff_seconds=0.01,
+    )
+    waits: list[float] = []
+    model = FailAfterActivityChatModel()
+    adapter = LangChainGlmChatLlm(
+        configuration=configuration,
+        chat_model=model,
+        retry_policy=_retry_policy(
+            provider="glm",
+            configuration=configuration,
+            waits=waits,
+        ),
+    )
+
+    async def scenario() -> None:
+        with pytest.raises(UpstreamServiceError, match="GLM Chat 流式调用失败"):
+            _ = [chunk async for chunk in adapter.stream(_request())]
+
+    asyncio.run(scenario())
+
+    assert model.attempts == 1
+    assert model.closed_attempts == [1]
+    assert waits == []
+
+
+async def _collect(adapter: LangChainGlmChatLlm) -> list[object]:
+    return [chunk async for chunk in adapter.stream(_request())]

@@ -10,6 +10,7 @@ from app.infrastructure.llm.structured_output_normalization import (
     SchemaAwareJsonStructuredOutputNormalizer,
     StructuredOutputNormalizer,
 )
+from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.shared.config import Settings, settings
 
 
@@ -23,6 +24,7 @@ class LangChainDeepSeekStructuredLlm(OpenAICompatibleStructuredLlm):
         client_factory: OpenAICompatibleClientFactory | None = None,
         chat_model: Any | None = None,
         normalizer: StructuredOutputNormalizer | None = None,
+        retry_policy: LlmTransientRetryPolicy | None = None,
     ) -> None:
         super().__init__(
             provider="deepseek",
@@ -31,4 +33,5 @@ class LangChainDeepSeekStructuredLlm(OpenAICompatibleStructuredLlm):
             client_factory=client_factory,
             chat_model=chat_model,
             normalizer=normalizer or SchemaAwareJsonStructuredOutputNormalizer(),
+            retry_policy=retry_policy,
         )

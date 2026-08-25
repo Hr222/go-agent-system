@@ -35,6 +35,17 @@ class LlmProviderConfig:
     runtime_profile: GlmRuntimeProfileName | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class LlmRetryConfig:
+    """OpenAI-compatible 调用的应用级瞬态失败重试配置。"""
+
+    max_attempts: int
+    base_backoff_seconds: float
+    max_backoff_seconds: float
+    max_retry_after_seconds: float
+    total_backoff_budget_seconds: float
+
+
 class Settings(BaseSettings):
     """应用配置：优先从环境变量和 `.env` 中加载。"""
 
@@ -236,6 +247,32 @@ class Settings(BaseSettings):
     llm_stream_heartbeat_seconds: float = Field(
         default=10.0, gt=0, alias="LLM_STREAM_HEARTBEAT_SECONDS"
     )
+    llm_retry_max_attempts: int = Field(
+        default=2,
+        ge=1,
+        le=3,
+        alias="LLM_RETRY_MAX_ATTEMPTS",
+    )
+    llm_retry_base_backoff_seconds: float = Field(
+        default=1.0,
+        gt=0,
+        alias="LLM_RETRY_BASE_BACKOFF_SECONDS",
+    )
+    llm_retry_max_backoff_seconds: float = Field(
+        default=8.0,
+        gt=0,
+        alias="LLM_RETRY_MAX_BACKOFF_SECONDS",
+    )
+    llm_retry_max_retry_after_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        alias="LLM_RETRY_MAX_RETRY_AFTER_SECONDS",
+    )
+    llm_retry_total_backoff_budget_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        alias="LLM_RETRY_TOTAL_BACKOFF_BUDGET_SECONDS",
+    )
     ocr_max_pages_per_batch: int = 4
     ocr_image_max_side: int = 1800
     ocr_request_interval_seconds: float = 10.0
@@ -288,6 +325,11 @@ class Settings(BaseSettings):
             raise ValueError(
                 "STATIC_PRINCIPAL_SUBJECT is required when REQUEST_PRINCIPAL_MODE=static"
             )
+        if self.llm_retry_base_backoff_seconds > self.llm_retry_max_backoff_seconds:
+            raise ValueError(
+                "LLM_RETRY_BASE_BACKOFF_SECONDS cannot exceed "
+                "LLM_RETRY_MAX_BACKOFF_SECONDS"
+            )
         return self
 
     @property
@@ -315,6 +357,31 @@ class Settings(BaseSettings):
                     for media_type in self.attachment_allowed_media_types.split(",")
                     if media_type.strip()
                 }
+            )
+        )
+
+    @property
+    def llm_retry_config(self) -> LlmRetryConfig:
+        """返回当前进程共享的 LLM 应用级重试参数。"""
+
+        return LlmRetryConfig(
+            max_attempts=self.llm_retry_max_attempts,
+            base_backoff_seconds=self.llm_retry_base_backoff_seconds,
+            max_backoff_seconds=self.llm_retry_max_backoff_seconds,
+            max_retry_after_seconds=self.llm_retry_max_retry_after_seconds,
+            total_backoff_budget_seconds=self.llm_retry_total_backoff_budget_seconds,
+        )
+
+    @property
+    def llm_stream_first_activity_timeout_seconds(self) -> float:
+        """为流式首 activity 等待预留受限的内部重试时间。"""
+
+        return (
+            self.llm_stream_first_token_timeout_seconds * self.llm_retry_max_attempts
+            + (
+                self.llm_retry_total_backoff_budget_seconds
+                if self.llm_retry_max_attempts > 1
+                else 0.0
             )
         )
 

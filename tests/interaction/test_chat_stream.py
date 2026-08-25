@@ -233,7 +233,11 @@ def test_chat_stream_times_out_when_no_upstream_activity_arrives(
     monkeypatch.setattr(
         chat_stream_module,
         "settings",
-        Settings(_env_file=None, llm_stream_first_token_timeout_seconds=0.001),
+        Settings(
+            _env_file=None,
+            llm_stream_first_token_timeout_seconds=0.001,
+            llm_retry_max_attempts=1,
+        ),
     )
     gateway = RecordingGateway(
         GatewayResult(

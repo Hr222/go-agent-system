@@ -4,8 +4,12 @@ import asyncio
 from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
+from openai import APITimeoutError
 
+from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLlm
+from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.conversation.domain import Conversation, Message, MessageRole
 from app.modules.dialogue.application import (
     StreamingConversationCommand,
@@ -13,6 +17,7 @@ from app.modules.dialogue.application import (
 )
 from app.modules.llm.contracts import ChatLlmStreamChunk
 from app.modules.security.domain.principal import RequestPrincipal
+from app.shared.config import Settings
 
 
 def _message(
@@ -91,6 +96,39 @@ class FakeStreamingLlm:
     def stream(self, request):  # noqa: ANN001
         self.requests.append(request)
         return self.stream_value
+
+
+class RetryBeforeActivityChatModel:
+    def __init__(self) -> None:
+        self.attempts = 0
+
+    def bind(self, **kwargs: object) -> "RetryBeforeActivityChatModel":
+        del kwargs
+        return self
+
+    def astream(self, messages: object):  # noqa: ANN201
+        del messages
+        self.attempts += 1
+        attempt = self.attempts
+
+        async def generate():
+            if attempt == 1:
+                request = httpx.Request(
+                    "POST",
+                    "https://provider.example.com/v1/chat/completions",
+                )
+                raise APITimeoutError(request=request)
+            yield type(
+                "Message",
+                (),
+                {
+                    "content": "重试后的完整回答",
+                    "usage_metadata": {},
+                    "response_metadata": {},
+                },
+            )()
+
+        return generate()
 
 
 def _runtime(*, chunks, messages=None, error=None, fail_assistant=False):  # noqa: ANN001
@@ -250,3 +288,54 @@ def test_runtime_closes_model_stream_when_consumer_stops_early() -> None:
 
     assert model_stream.closed is True
     assert [message.role for message in writer.messages] == [MessageRole.USER]
+
+
+def test_runtime_persists_one_turn_when_adapter_retries_before_activity() -> None:
+    configuration = Settings(
+        _env_file=None,
+        zhipu_resource_chat_model="glm-test",
+        llm_retry_base_backoff_seconds=0.01,
+    )
+    waits: list[float] = []
+
+    async def record_sleep(delay: float) -> None:
+        waits.append(delay)
+
+    model = RetryBeforeActivityChatModel()
+    llm = LangChainGlmChatLlm(
+        configuration=configuration,
+        chat_model=model,
+        retry_policy=LlmTransientRetryPolicy(
+            provider="glm",
+            configuration=configuration,
+            async_sleep_fn=record_sleep,
+            random_fn=lambda: 0.0,
+            clock=lambda: 1.0,
+        ),
+    )
+    conversation = Conversation(id=uuid4(), owner_subject="user-1")
+    access = FakeConversationAccess(conversation)
+    writer = FakeConversationWriter(conversation)
+    runtime = StreamingConversationRuntime(
+        conversation_access=access,  # type: ignore[arg-type]
+        conversation_writer=writer,  # type: ignore[arg-type]
+        llm=llm,
+    )
+
+    async def scenario() -> list[object]:
+        stream = await runtime.execute(_command())
+        return [event async for event in stream]
+
+    events = asyncio.run(scenario())
+
+    assert [event.kind for event in events] == ["started", "delta", "completed"]
+    assert model.attempts == 2
+    assert waits == [0.01]
+    assert [message.role for message in writer.messages] == [
+        MessageRole.USER,
+        MessageRole.ASSISTANT,
+    ]
+    assert [message.content for message in writer.messages] == [
+        "本轮问题",
+        "重试后的完整回答",
+    ]

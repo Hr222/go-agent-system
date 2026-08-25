@@ -5,6 +5,7 @@ from collections.abc import Callable
 from openai import OpenAI
 
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
+from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.knowledge.ports.read_port import KnowledgeSearchHit
 from app.modules.online.contracts import AnswerCitationResult, AnswerResult
 from app.shared.config import settings
@@ -21,11 +22,16 @@ class RagAnswerGenerator:
         client: OpenAI | None = None,
         *,
         client_factory: OpenAICompatibleClientFactory | None = None,
+        retry_policy: LlmTransientRetryPolicy | None = None,
     ) -> None:
         if client is not None:
             self.client = client
             self._provider_config = settings.llm_provider_config()
             self.model = self._provider_config.model
+            self._retry_policy = retry_policy or LlmTransientRetryPolicy(
+                provider=self._provider_config.provider,
+                configuration=settings,
+            )
             return
 
         if client_factory is None:
@@ -38,6 +44,10 @@ class RagAnswerGenerator:
         self._provider_config = client_factory.provider_config
         self.client = self._client_factory.create_client()
         self.model = client_factory.model
+        self._retry_policy = retry_policy or LlmTransientRetryPolicy(
+            provider=client_factory.provider,
+            configuration=client_factory.configuration,
+        )
 
     def answer(self, *, query: str, hits: list[KnowledgeSearchHit]) -> AnswerResult:
         if not hits:
@@ -105,7 +115,9 @@ class RagAnswerGenerator:
                 request_kwargs["extra_body"] = {
                     "thinking": {"type": self._provider_config.thinking}
                 }
-            response = self.client.chat.completions.create(**request_kwargs)
+            response = self._retry_policy.execute(
+                lambda: self.client.chat.completions.create(**request_kwargs)
+            )
         except Exception as exc:
             provider_label = (
                 self._client_factory.provider.upper()

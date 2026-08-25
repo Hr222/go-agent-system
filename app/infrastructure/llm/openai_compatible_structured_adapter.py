@@ -14,6 +14,7 @@ from app.infrastructure.llm.structured_output_normalization import (
     StructuredOutputNormalizer,
     raw_response_from_provider_response,
 )
+from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.llm.contracts import StructuredLlmRequest
 from app.shared.config import LlmProviderName, Settings, settings
 from app.shared.exceptions import ServiceNotConfiguredError
@@ -31,6 +32,7 @@ class OpenAICompatibleStructuredLlm(NormalizingStructuredLlm):
         client_factory: OpenAICompatibleClientFactory | None = None,
         chat_model: Any | None = None,
         normalizer: StructuredOutputNormalizer | None = None,
+        retry_policy: LlmTransientRetryPolicy | None = None,
     ) -> None:
         raw_llm = OpenAICompatibleRawStructuredLlm(
             provider=provider,
@@ -38,6 +40,7 @@ class OpenAICompatibleStructuredLlm(NormalizingStructuredLlm):
             configuration=configuration,
             client_factory=client_factory,
             chat_model=chat_model,
+            retry_policy=retry_policy,
         )
         super().__init__(
             raw_llm=raw_llm,
@@ -62,6 +65,7 @@ class OpenAICompatibleRawStructuredLlm:
         configuration: Settings,
         client_factory: OpenAICompatibleClientFactory | None,
         chat_model: Any | None,
+        retry_policy: LlmTransientRetryPolicy | None,
     ) -> None:
         self.provider = provider
         self.provider_label = provider_label
@@ -69,6 +73,10 @@ class OpenAICompatibleRawStructuredLlm:
         self.model = self.provider_config.model or "unknown"
         self._chat_model = chat_model
         self._client_factory = client_factory
+        self._retry_policy = retry_policy or LlmTransientRetryPolicy(
+            provider=provider,
+            configuration=configuration,
+        )
 
         if chat_model is not None:
             return
@@ -95,9 +103,13 @@ class OpenAICompatibleRawStructuredLlm:
             HumanMessage(content=user_prompt),
         ]
         if self._client_factory is not None:
-            response = self._invoke_json_object(messages)
+            response = self._retry_policy.execute(
+                lambda: self._invoke_json_object(messages)
+            )
         else:
-            response = self._chat_model.bind(**self._bind_kwargs()).invoke(messages)
+            response = self._retry_policy.execute(
+                lambda: self._chat_model.bind(**self._bind_kwargs()).invoke(messages)
+            )
         return raw_response_from_provider_response(
             response,
             provider=self.provider,

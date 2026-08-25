@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from openai import APITimeoutError
 
 from app.infrastructure.llm import llm_client
 from app.infrastructure.llm.llm_client import RagAnswerGenerator
+from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
 from app.modules.knowledge.ports.read_port import KnowledgeSearchHit
 from app.shared.config import Settings
 
@@ -16,6 +19,22 @@ class FakeCompletions:
 
     def create(self, **kwargs: object) -> object:
         self.kwargs = kwargs
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="基于证据的回答。"))]
+        )
+
+
+class FlakyCompletions(FakeCompletions):
+    def __init__(self) -> None:
+        super().__init__()
+        self.attempts = 0
+
+    def create(self, **kwargs: object) -> object:
+        self.kwargs = kwargs
+        self.attempts += 1
+        if self.attempts == 1:
+            request = httpx.Request("POST", "https://provider.example.com/v1/chat/completions")
+            raise APITimeoutError(request=request)
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="基于证据的回答。"))]
         )
@@ -58,3 +77,32 @@ def test_rag_answer_generator_uses_selected_glm_profile_thinking(
     assert result.answer == "基于证据的回答。"
     assert completions.kwargs is not None
     assert completions.kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_rag_answer_generator_retries_transient_completion_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configuration = Settings(
+        _env_file=None,
+        zhipu_resource_chat_model="glm-resource-test",
+        llm_retry_base_backoff_seconds=0.01,
+    )
+    monkeypatch.setattr(llm_client, "settings", configuration)
+    completions = FlakyCompletions()
+    waits: list[float] = []
+    generator = RagAnswerGenerator(
+        client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+        retry_policy=LlmTransientRetryPolicy(
+            provider="glm",
+            configuration=configuration,
+            sleep_fn=waits.append,
+            random_fn=lambda: 0.0,
+            clock=lambda: 1.0,
+        ),
+    )
+
+    result = generator.answer(query="测试问题", hits=[_hit()])
+
+    assert result.answer == "基于证据的回答。"
+    assert completions.attempts == 2
+    assert waits == [0.01]
