@@ -1,17 +1,17 @@
 import asyncio
 from unittest.mock import AsyncMock
 
+from app.business.agents.tender.application.service import TenderApplication
+from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
+from app.business.online.domain.checklist import COURT_EVALUATION_MATERIALS_SCENARIO
 from app.composition import ApplicationContainer
 from app.infrastructure.llm.langchain_glm_adapter import LangChainGlmStructuredLlm
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
 from app.infrastructure.persistence.repositories.conversation_write_repository import (
     ConversationWriteRepository,
 )
-from app.modules.agent.tender.application.service import TenderApplication
-from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
-from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
-from app.modules.online.application.ask_knowledge import AskKnowledgeUseCase
-from app.modules.online.domain.checklist import COURT_EVALUATION_MATERIALS_SCENARIO
+from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
+from app.platform.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
 from app.shared.config import Settings
 
 

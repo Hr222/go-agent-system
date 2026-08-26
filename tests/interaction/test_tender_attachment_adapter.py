@@ -9,28 +9,28 @@ from uuid import UUID
 import pytest
 from docx import Document
 
+from app.business.agents.tender.contracts import TenderGenerateSkeletonCommand
 from app.composition.interaction import build_agent_runtime
 from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
-from app.modules.agent.tender.contracts import TenderGenerateSkeletonCommand
-from app.modules.attachment import AttachmentAccessContext
-from app.modules.interaction.application.attachment_resolution import (
+from app.platform.attachment import AttachmentAccessContext
+from app.platform.interaction.application.attachment_resolution import (
     CapabilityAttachmentResolver,
 )
-from app.modules.interaction.application.confirmation import ExplicitCapabilityConfirmation
-from app.modules.interaction.application.gateway import (
+from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
+from app.platform.interaction.application.gateway import (
     ControlledDispatcher,
     GatewayConfirmationCommand,
     GatewayRecognitionCommand,
     InMemoryPendingProposalStore,
     IntentInteractionGateway,
 )
-from app.modules.interaction.domain.attachment import (
+from app.platform.interaction.domain.attachment import (
     ResolvedAttachment,
     attachment_field_declarations,
 )
-from app.modules.interaction.domain.capability import PlatformCapability
-from app.modules.interaction.domain.intent import IntentAssessment
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.interaction.domain.capability import PlatformCapability
+from app.platform.interaction.domain.intent import IntentAssessment
+from app.platform.security.domain.principal import RequestPrincipal
 
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 CONVERSATION_A = UUID("00000000-0000-0000-0000-000000000001")

@@ -13,7 +13,7 @@ from app.infrastructure.persistence.models import (
     PolicySection,
     PolicyVersion,
 )
-from app.modules.knowledge.ports.quality_audit import (
+from app.platform.knowledge.ports.quality_audit import (
     KnowledgeAuditIssue,
     KnowledgeQualityAuditPort,
     KnowledgeQualityAuditReport,

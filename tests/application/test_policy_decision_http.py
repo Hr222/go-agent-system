@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.interfaces.http.dependencies import get_policy_decision_application_service
-from app.main import create_app
-from app.modules.online.application.policy_decision import PolicyDecisionApplicationService
-from app.modules.online.domain.citation import AnswerCitationResult
-from app.modules.online.domain.decision_result import (
+from app.business.online.application.policy_decision import PolicyDecisionApplicationService
+from app.business.online.domain.citation import AnswerCitationResult
+from app.business.online.domain.decision_result import (
     DataAcquisitionDebugResult,
     DataFieldTraceResult,
     DecisionDebugResult,
@@ -14,6 +12,8 @@ from app.modules.online.domain.decision_result import (
     DecisionRetrievalTrace,
     RequirementStatusResult,
 )
+from app.interfaces.http.dependencies import get_policy_decision_application_service
+from app.main import create_app
 from app.shared.exceptions import KnowledgeBaseSchemaUnavailableError
 
 

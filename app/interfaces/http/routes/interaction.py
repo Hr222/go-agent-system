@@ -23,9 +23,9 @@ from app.interfaces.http.schemas.interaction import (
 )
 from app.interfaces.http.security import get_request_principal
 from app.interfaces.http.streaming import serialize_sse_event
-from app.modules.interaction.application.chat_stream import InteractionChatStreamApplication
-from app.modules.interaction.application.gateway import IntentInteractionGateway
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.interaction.application.chat_stream import InteractionChatStreamApplication
+from app.platform.interaction.application.gateway import IntentInteractionGateway
+from app.platform.security.domain.principal import RequestPrincipal
 
 router = APIRouter()
 

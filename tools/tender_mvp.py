@@ -14,12 +14,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.composition.llm import build_structured_llm
 from app.infrastructure.documents.tender_docx import TenderDocxReader, TenderDocxSkeletonRenderer
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
-from app.modules.agent.tender.application.chunking import TenderChunkPlanner
-from app.modules.agent.tender.application.prompts import (
+from app.business.agents.tender.application.chunking import TenderChunkPlanner
+from app.business.agents.tender.application.prompts import (
     build_tender_chunk_request,
     build_tender_merge_request,
 )
-from app.modules.agent.tender.contracts import (
+from app.business.agents.tender.contracts import (
     TenderAnalysis,
     TenderAnalysisBudget,
     TenderChunkAnalysis,

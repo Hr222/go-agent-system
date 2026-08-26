@@ -11,16 +11,16 @@ from app.interfaces.http.dependencies import (
 )
 from app.interfaces.http.security import get_request_principal
 from app.main import create_app
-from app.modules.conversation.application import (
+from app.platform.conversation.application import (
     ConversationAccessService,
     ConversationManagementService,
 )
-from app.modules.conversation.domain import Conversation
-from app.modules.conversation.errors import (
+from app.platform.conversation.domain import Conversation
+from app.platform.conversation.errors import (
     ConversationNotFoundError,
     ConversationPinLimitExceededError,
 )
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.security.domain.principal import RequestPrincipal
 
 CONVERSATION_ID = UUID("00000000-0000-4000-8000-000000000301")
 

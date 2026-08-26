@@ -4,12 +4,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.infrastructure.persistence.models.platform_capability import PlatformCapabilityRecord
-from app.modules.interaction.domain.capability import (
+from app.platform.interaction.domain.capability import (
     CapabilityPrincipal,
     CapabilityType,
     PlatformCapability,
 )
-from app.modules.interaction.ports.capability_catalog import CapabilityCatalogRepositoryPort
+from app.platform.interaction.ports.capability_catalog import CapabilityCatalogRepositoryPort
 
 
 class PlatformCapabilityRepository(CapabilityCatalogRepositoryPort):

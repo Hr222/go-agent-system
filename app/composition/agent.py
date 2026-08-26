@@ -1,17 +1,17 @@
 """Agent 应用能力的 Composition Root。"""
 
+from app.business.agents.tender.application.chunking import TenderChunkPlanner
+from app.business.agents.tender.application.service import TenderApplication
+from app.business.agents.tender.contracts import TenderAnalysisBudget
+from app.business.agents.tender.ports.document_port import TenderDocumentReaderPort
+from app.business.agents.tender.ports.renderer_port import TenderSkeletonRendererPort
 from app.composition.llm import build_structured_llm
 from app.infrastructure.documents.tender_docx import (
     TenderDocxReader,
     TenderDocxSkeletonRenderer,
 )
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
-from app.modules.agent.tender.application.chunking import TenderChunkPlanner
-from app.modules.agent.tender.application.service import TenderApplication
-from app.modules.agent.tender.contracts import TenderAnalysisBudget
-from app.modules.agent.tender.ports.document_port import TenderDocumentReaderPort
-from app.modules.agent.tender.ports.renderer_port import TenderSkeletonRendererPort
-from app.modules.llm.contracts import StructuredLlmPort
+from app.platform.llm.contracts import StructuredLlmPort
 from app.shared.config import settings
 
 

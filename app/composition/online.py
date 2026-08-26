@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from app.modules.knowledge.application.query_capability import KnowledgeBaseQueryCapability
-from app.modules.online.application.data_acquisition import PolicyDataAcquisitionService
-from app.modules.online.application.decision import RuleDrivenChecklistDecisionService
-from app.modules.online.application.policy_decision import PolicyDecisionApplicationService
-from app.modules.online.application.rag_facade import RagApplicationFacade
-from app.modules.online.application.rule_retrieval import PolicyRuleRetrievalService
-from app.modules.online.domain.checklist import (
+from app.business.online.application.data_acquisition import PolicyDataAcquisitionService
+from app.business.online.application.decision import RuleDrivenChecklistDecisionService
+from app.business.online.application.policy_decision import PolicyDecisionApplicationService
+from app.business.online.application.rag_facade import RagApplicationFacade
+from app.business.online.application.rule_retrieval import PolicyRuleRetrievalService
+from app.business.online.domain.checklist import (
     ChecklistScenarioRegistry,
     RuleDrivenChecklistPolicy,
 )
-from app.modules.online.ports import AnswerGenerator
+from app.business.online.ports import AnswerGenerator
+from app.platform.knowledge.application.query_capability import KnowledgeBaseQueryCapability
 
 
 def build_rag_facade(

@@ -7,37 +7,37 @@ from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
-from app.infrastructure.persistence.repositories.platform_capability_repository import (
-    PlatformCapabilityRepository,
-)
-from app.modules.agent.runtime import AgentRuntime
-from app.modules.agent.tender.application.service import TenderApplication
-from app.modules.agent.tender.contracts import (
+from app.business.agents.tender.application.service import TenderApplication
+from app.business.agents.tender.contracts import (
     TenderExtractFormatSectionCommand,
     TenderGenerateSkeletonCommand,
     TenderVerifyExtractionBoundaryCommand,
 )
-from app.modules.attachment.ports.storage_port import AttachmentStoragePort
-from app.modules.interaction.application.agent_call_policy import AgentCallPolicyValidator
-from app.modules.interaction.application.agent_dispatch import AgentCallDispatcher
-from app.modules.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
-from app.modules.interaction.application.catalog import PlatformCapabilityCatalog
-from app.modules.interaction.application.dispatch import (
+from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
+from app.business.online.application.policy_decision import PolicyDecisionApplicationService
+from app.business.online.contracts import AskKnowledgeCommand
+from app.business.online.domain.decision_result import DecisionReviewCommand
+from app.infrastructure.persistence.repositories.platform_capability_repository import (
+    PlatformCapabilityRepository,
+)
+from app.platform.agent.runtime import AgentRuntime
+from app.platform.attachment.ports.storage_port import AttachmentStoragePort
+from app.platform.interaction.application.agent_call_policy import AgentCallPolicyValidator
+from app.platform.interaction.application.agent_dispatch import AgentCallDispatcher
+from app.platform.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
+from app.platform.interaction.application.catalog import PlatformCapabilityCatalog
+from app.platform.interaction.application.dispatch import (
     CapabilityDispatchBinding,
     CapabilityDispatchRegistry,
 )
-from app.modules.interaction.application.gateway import (
+from app.platform.interaction.application.gateway import (
     ControlledDispatcher,
     DispatchHandler,
 )
-from app.modules.interaction.domain.attachment import ResolvedAttachment
-from app.modules.interaction.ports.capability_catalog import CapabilityCatalogPort
-from app.modules.llm.application.chat import ChatApplication, ChatCommand
-from app.modules.llm.ports import TextEmbeddingPort
-from app.modules.online.application.ask_knowledge import AskKnowledgeUseCase
-from app.modules.online.application.policy_decision import PolicyDecisionApplicationService
-from app.modules.online.contracts import AskKnowledgeCommand
-from app.modules.online.domain.decision_result import DecisionReviewCommand
+from app.platform.interaction.domain.attachment import ResolvedAttachment
+from app.platform.interaction.ports.capability_catalog import CapabilityCatalogPort
+from app.platform.llm.application.chat import ChatApplication, ChatCommand
+from app.platform.llm.ports import TextEmbeddingPort
 from app.shared.config import settings
 
 

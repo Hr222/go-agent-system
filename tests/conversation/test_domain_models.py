@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.modules.conversation.domain import Conversation, Message, MessageRole
+from app.platform.conversation.domain import Conversation, Message, MessageRole
 
 
 def test_conversation_generates_uuid_and_utc_timestamps() -> None:

@@ -5,7 +5,7 @@ from math import ceil
 
 from openai import OpenAI
 
-from app.modules.llm.ports import TextEmbeddingPort
+from app.platform.llm.ports import TextEmbeddingPort
 from app.shared.config import settings
 from app.shared.exceptions import UpstreamServiceError
 from app.shared.logging import get_logger

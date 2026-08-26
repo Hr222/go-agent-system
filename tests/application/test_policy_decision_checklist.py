@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+from app.business.online.application.decision import RuleDrivenChecklistDecisionService
+from app.business.online.domain.checklist import (
+    COURT_EVALUATION_MATERIALS_SCENARIO,
+    ChecklistRequirementComponent,
+    ChecklistRequirementDefinition,
+    ChecklistScenarioDefinition,
+    ChecklistScenarioRegistry,
+)
+from app.business.online.domain.decision_result import DecisionReviewCommand
 from app.interfaces.http.schemas import (
     RetrievalDebugInfo,
     RetrievalFilters,
@@ -7,15 +16,6 @@ from app.interfaces.http.schemas import (
     RetrievalSearchResponse,
     RetrievalStageDebug,
 )
-from app.modules.online.application.decision import RuleDrivenChecklistDecisionService
-from app.modules.online.domain.checklist import (
-    COURT_EVALUATION_MATERIALS_SCENARIO,
-    ChecklistRequirementComponent,
-    ChecklistRequirementDefinition,
-    ChecklistScenarioDefinition,
-    ChecklistScenarioRegistry,
-)
-from app.modules.online.domain.decision_result import DecisionReviewCommand
 
 RULE_CHUNK_TEXT = (
     "第十条 评估、拍卖机构自愿参与人民法院委托工作的，应在指定时间到人民法院申请登记，"

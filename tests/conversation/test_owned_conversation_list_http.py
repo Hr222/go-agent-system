@@ -14,14 +14,14 @@ from app.interfaces.http.dependencies import (
 )
 from app.interfaces.http.security import get_request_principal
 from app.main import create_app
-from app.modules.conversation.application import ConversationAccessService
-from app.modules.conversation.domain import Conversation
-from app.modules.conversation.ports import (
+from app.platform.conversation.application import ConversationAccessService
+from app.platform.conversation.domain import Conversation
+from app.platform.conversation.ports import (
     ConversationListCursor,
     ConversationSummary,
     ConversationSummaryPage,
 )
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.security.domain.principal import RequestPrincipal
 
 CONVERSATION_ONE = UUID("00000000-0000-0000-0000-000000000221")
 CONVERSATION_TWO = UUID("00000000-0000-0000-0000-000000000222")

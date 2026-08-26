@@ -5,8 +5,8 @@ from sqlalchemy import select
 from app.composition.conversation import build_conversation_write_service
 from app.composition.dialogue import build_basic_dialogue_runtime
 from app.infrastructure.persistence.models.conversation import ConversationMessageRecord
-from app.modules.dialogue.application import DialogueCommand
-from app.modules.llm.contracts import ChatLlmResult
+from app.platform.dialogue.application import DialogueCommand
+from app.platform.llm.contracts import ChatLlmResult
 from tests.support.db_test_utils import SchemaHarness
 
 

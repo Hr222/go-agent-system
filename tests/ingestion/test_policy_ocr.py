@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.infrastructure.ocr.tencent_ocr import PolicyOcrService
-from app.modules.ingestion.contracts import ParsedBlock, ParsedDocumentResult
+from app.platform.ingestion.contracts import ParsedBlock, ParsedDocumentResult
 from app.shared.config import settings
 
 TEST_FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"

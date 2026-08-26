@@ -9,12 +9,12 @@ import pytest
 
 from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
 from app.interfaces.http.assemblers.interaction import gateway_response
-from app.modules.attachment import AttachmentAccessContext
-from app.modules.interaction.application.attachment_resolution import (
+from app.platform.attachment import AttachmentAccessContext
+from app.platform.interaction.application.attachment_resolution import (
     CapabilityAttachmentResolver,
 )
-from app.modules.interaction.application.confirmation import ExplicitCapabilityConfirmation
-from app.modules.interaction.application.gateway import (
+from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
+from app.platform.interaction.application.gateway import (
     ControlledDispatcher,
     GatewayConfirmationCommand,
     GatewayRecognitionCommand,
@@ -22,13 +22,13 @@ from app.modules.interaction.application.gateway import (
     InMemoryPendingProposalStore,
     IntentInteractionGateway,
 )
-from app.modules.interaction.domain.attachment import ResolvedAttachment
-from app.modules.interaction.domain.capability import (
+from app.platform.interaction.domain.attachment import ResolvedAttachment
+from app.platform.interaction.domain.capability import (
     CapabilityValidationError,
     PlatformCapability,
 )
-from app.modules.interaction.domain.intent import IntentAssessment
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.interaction.domain.intent import IntentAssessment
+from app.platform.security.domain.principal import RequestPrincipal
 
 CONVERSATION_A = UUID("00000000-0000-0000-0000-000000000001")
 CONVERSATION_B = UUID("00000000-0000-0000-0000-000000000002")

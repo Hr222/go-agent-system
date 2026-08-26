@@ -11,13 +11,13 @@ from pathlib import Path
 from typing import BinaryIO
 from uuid import uuid4
 
-from app.modules.attachment.contracts import (
+from app.platform.attachment.contracts import (
     AttachmentAccessContext,
     AttachmentReadResult,
     AttachmentRef,
     AttachmentStatus,
 )
-from app.modules.attachment.ports.storage_port import AttachmentStoragePort
+from app.platform.attachment.ports.storage_port import AttachmentStoragePort
 from app.shared.config import settings
 
 _ATTACHMENT_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$", re.IGNORECASE)

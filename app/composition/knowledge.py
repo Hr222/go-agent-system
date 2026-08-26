@@ -21,15 +21,15 @@ from app.infrastructure.persistence.repositories.policy_persistence_gateway impo
     PolicyPersistenceGateway,
 )
 from app.infrastructure.persistence.session import SessionLocal
-from app.modules.knowledge.application.knowledge_base import KnowledgeBaseService
-from app.modules.knowledge.application.management_service import KnowledgeManagementService
-from app.modules.knowledge.application.publication_service import KnowledgePublicationService
-from app.modules.knowledge.application.quality_audit import KnowledgeQualityAuditService
-from app.modules.knowledge.application.query_capability import KnowledgeBaseQueryCapability
-from app.modules.knowledge.application.write_capability import KnowledgeBaseWriteCapability
-from app.modules.knowledge.retrieval import HybridRetrievalPipeline, KnowledgeRetrievalService
-from app.modules.knowledge.retrieval.contracts import QueryEmbeddingService
-from app.modules.knowledge.retrieval.vector_search import (
+from app.platform.knowledge.application.knowledge_base import KnowledgeBaseService
+from app.platform.knowledge.application.management_service import KnowledgeManagementService
+from app.platform.knowledge.application.publication_service import KnowledgePublicationService
+from app.platform.knowledge.application.quality_audit import KnowledgeQualityAuditService
+from app.platform.knowledge.application.query_capability import KnowledgeBaseQueryCapability
+from app.platform.knowledge.application.write_capability import KnowledgeBaseWriteCapability
+from app.platform.knowledge.retrieval import HybridRetrievalPipeline, KnowledgeRetrievalService
+from app.platform.knowledge.retrieval.contracts import QueryEmbeddingService
+from app.platform.knowledge.retrieval.vector_search import (
     VectorSearchStrategyName,
     build_vector_search_strategy,
 )

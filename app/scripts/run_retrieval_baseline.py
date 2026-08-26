@@ -9,9 +9,9 @@ from pathlib import Path
 from time import perf_counter
 
 from app.composition.knowledge import build_benchmark_retrieval_service
-from app.modules.knowledge.ports.read_port import KnowledgeQuery, KnowledgeQueryTrace
-from app.modules.knowledge.retrieval import KnowledgeRetrievalService
-from app.modules.knowledge.retrieval.vector_search import (
+from app.platform.knowledge.ports.read_port import KnowledgeQuery, KnowledgeQueryTrace
+from app.platform.knowledge.retrieval import KnowledgeRetrievalService
+from app.platform.knowledge.retrieval.vector_search import (
     VectorSearchStrategyName,
 )
 

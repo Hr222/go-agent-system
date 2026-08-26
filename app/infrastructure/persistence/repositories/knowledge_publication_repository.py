@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.infrastructure.persistence.models import PolicyDocument, PolicyVersion
 from app.infrastructure.persistence.schema_health import translate_missing_kb_schema_errors
-from app.modules.knowledge.domain import KnowledgePublicationState
-from app.modules.knowledge.ports.publication_port import (
+from app.platform.knowledge.domain import KnowledgePublicationState
+from app.platform.knowledge.ports.publication_port import (
     KnowledgePublicationPort,
     KnowledgePublicationRecord,
 )

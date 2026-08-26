@@ -12,25 +12,25 @@ from app.interfaces.http.dependencies import (
     get_interaction_chat_stream_application,
 )
 from app.main import create_app
-from app.modules.conversation.domain import Message, MessageRole
-from app.modules.dialogue.application import (
+from app.platform.conversation.domain import Message, MessageRole
+from app.platform.dialogue.application import (
     StreamingConversationEvent,
     StreamingConversationResult,
 )
-from app.modules.interaction.application import chat_stream as chat_stream_module
-from app.modules.interaction.application.chat_stream import (
+from app.platform.interaction.application import chat_stream as chat_stream_module
+from app.platform.interaction.application.chat_stream import (
     InteractionChatStreamApplication,
     InteractionChatStreamCommand,
     InteractionStreamEvent,
     InteractionStreamPreparation,
 )
-from app.modules.interaction.application.gateway import (
+from app.platform.interaction.application.gateway import (
     DirectCapabilityExecution,
     GatewayResult,
 )
-from app.modules.interaction.domain.confirmation import ConfirmationProposal
-from app.modules.llm.contracts import ChatLlmStreamChunk
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.interaction.domain.confirmation import ConfirmationProposal
+from app.platform.llm.contracts import ChatLlmStreamChunk
+from app.platform.security.domain.principal import RequestPrincipal
 from app.shared.config import Settings
 
 
@@ -47,7 +47,7 @@ class RecordingGateway:
 class DenyingStreamingConversation:
     async def execute(self, command):  # noqa: ANN001
         del command
-        from app.modules.conversation.errors import ConversationAccessDeniedError
+        from app.platform.conversation.errors import ConversationAccessDeniedError
 
         raise ConversationAccessDeniedError("会话不可用。")
 

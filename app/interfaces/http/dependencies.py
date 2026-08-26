@@ -3,32 +3,32 @@ from functools import lru_cache
 
 from fastapi import Depends
 
+from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
+from app.business.online.application.policy_decision import PolicyDecisionApplicationService
 from app.composition import ApplicationContainer, get_db_session
-from app.modules.conversation.application import (
+from app.platform.conversation.application import (
     ConversationAccessService,
     ConversationHistoryReadService,
     ConversationListReadService,
     ConversationManagementService,
     ConversationTopicSummaryUpdateService,
 )
-from app.modules.dialogue.application import (
+from app.platform.dialogue.application import (
     InMemoryPendingAgentInvocationStore,
 )
-from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
-from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
-from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
-from app.modules.ingestion.ports import UploadStoragePort
-from app.modules.interaction.application.chat_stream import InteractionChatStreamApplication
-from app.modules.interaction.application.gateway import (
+from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
+from app.platform.ingestion.application.retry_ingestion import RetryIngestionUseCase
+from app.platform.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
+from app.platform.ingestion.ports import UploadStoragePort
+from app.platform.interaction.application.chat_stream import InteractionChatStreamApplication
+from app.platform.interaction.application.gateway import (
     InMemoryPendingProposalStore,
     IntentInteractionGateway,
 )
-from app.modules.interaction.ports.proposal_store import PendingProposalStorePort
-from app.modules.knowledge.application.knowledge_base import KnowledgeBaseService
-from app.modules.knowledge.application.management_service import KnowledgeManagementService
-from app.modules.knowledge.application.publication_service import KnowledgePublicationService
-from app.modules.online.application.ask_knowledge import AskKnowledgeUseCase
-from app.modules.online.application.policy_decision import PolicyDecisionApplicationService
+from app.platform.interaction.ports.proposal_store import PendingProposalStorePort
+from app.platform.knowledge.application.knowledge_base import KnowledgeBaseService
+from app.platform.knowledge.application.management_service import KnowledgeManagementService
+from app.platform.knowledge.application.publication_service import KnowledgePublicationService
 from app.shared.config import settings
 
 

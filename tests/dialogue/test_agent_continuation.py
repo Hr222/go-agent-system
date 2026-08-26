@@ -4,14 +4,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from app.modules.conversation.application import (
+from app.platform.conversation.application import (
     CharacterCountContextMessageCostEstimator,
     ConversationAccessService,
     ConversationContextBuilder,
     ConversationHistoryReadService,
     ConversationWriteService,
 )
-from app.modules.conversation.domain import (
+from app.platform.conversation.domain import (
     ContextBudget,
     ContextPolicy,
     Conversation,
@@ -19,13 +19,13 @@ from app.modules.conversation.domain import (
     Message,
     MessageRole,
 )
-from app.modules.conversation.ports import ConversationHistoryPage
-from app.modules.dialogue.application import (
+from app.platform.conversation.ports import ConversationHistoryPage
+from app.platform.dialogue.application import (
     DialogueAgentContinuationCommand,
     DialogueAgentContinuationService,
 )
-from app.modules.llm.contracts import ChatLlmResult
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.llm.contracts import ChatLlmResult
+from app.platform.security.domain.principal import RequestPrincipal
 
 
 def _message(

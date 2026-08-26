@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.interfaces.http.assemblers.policy_ingestion import scan_command, scan_response
 from app.interfaces.http.dependencies import get_policy_candidate_scan_use_case
 from app.interfaces.http.schemas.policy_ingestion import PolicyScanRequest, PolicyScanResponse
-from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
+from app.platform.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
 
 router = APIRouter()
 

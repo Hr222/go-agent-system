@@ -5,7 +5,7 @@ from uuid import uuid4
 from app.infrastructure.persistence.repositories.conversation_access_repository import (
     ConversationAccessRepository,
 )
-from app.modules.conversation.domain import Conversation
+from app.platform.conversation.domain import Conversation
 from tests.support.db_test_utils import SchemaHarness
 
 

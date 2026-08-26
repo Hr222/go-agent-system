@@ -11,7 +11,7 @@ from app.infrastructure.llm import llm_client
 from app.infrastructure.llm.llm_client import RagAnswerGenerator
 from app.infrastructure.llm.request_governance import LlmRequestGovernor
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
-from app.modules.knowledge.ports.read_port import KnowledgeSearchHit
+from app.platform.knowledge.ports.read_port import KnowledgeSearchHit
 from app.shared.config import Settings
 
 

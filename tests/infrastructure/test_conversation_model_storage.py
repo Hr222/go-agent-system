@@ -18,7 +18,7 @@ from app.infrastructure.persistence.models.conversation import (
     ConversationMessageRecord,
     ConversationRecord,
 )
-from app.modules.conversation.domain import Conversation, Message, MessageRole
+from app.platform.conversation.domain import Conversation, Message, MessageRole
 from tests.support.db_test_utils import SchemaHarness
 
 SQL_SCRIPT = (

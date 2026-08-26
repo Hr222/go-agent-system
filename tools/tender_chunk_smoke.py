@@ -12,11 +12,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.composition.llm import build_structured_llm
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
-from app.modules.agent.tender.application.prompts import (
+from app.business.agents.tender.application.prompts import (
     TENDER_CHUNK_EXTRACT_PROMPT_VERSION,
     build_tender_chunk_request,
 )
-from app.modules.agent.tender.contracts import TenderChunk, TenderChunkAnalysis
+from app.business.agents.tender.contracts import TenderChunk, TenderChunkAnalysis
 from app.shared.config import settings
 
 

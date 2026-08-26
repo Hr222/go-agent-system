@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.business.online.application.policy_decision import PolicyDecisionApplicationService
 from app.interfaces.http.assemblers.policy_decision import decision_command, decision_response
 from app.interfaces.http.dependencies import get_policy_decision_application_service
 from app.interfaces.http.schemas.policy_decision import (
     PolicyDecisionRequest,
     PolicyDecisionResponse,
 )
-from app.modules.online.application.policy_decision import PolicyDecisionApplicationService
 from app.shared.exceptions import KnowledgeBaseSchemaUnavailableError, UpstreamServiceError
 
 router = APIRouter()

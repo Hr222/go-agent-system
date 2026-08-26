@@ -13,7 +13,7 @@ from app.infrastructure.llm.langchain_deepseek_chat_adapter import (
 from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLlm
 from app.infrastructure.llm.request_governance import LlmRequestGovernor
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
-from app.modules.llm.contracts import ChatLlmMessage, ChatLlmMessageRole, ChatLlmRequest
+from app.platform.llm.contracts import ChatLlmMessage, ChatLlmMessageRole, ChatLlmRequest
 from app.shared.config import Settings
 from app.shared.exceptions import UpstreamServiceError
 

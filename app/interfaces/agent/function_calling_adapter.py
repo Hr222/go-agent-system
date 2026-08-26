@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
+from app.business.online.contracts import AskKnowledgeCommand
 from app.interfaces.agent.contracts import AskKnowledgeToolArguments, FunctionCallingResult
-from app.modules.online.application.ask_knowledge import AskKnowledgeUseCase
-from app.modules.online.contracts import AskKnowledgeCommand
 
 
 class FunctionCallingAdapter:

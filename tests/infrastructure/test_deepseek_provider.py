@@ -23,7 +23,7 @@ from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLl
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
 from app.infrastructure.llm.request_governance import LlmRequestGovernor
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
-from app.modules.llm.contracts import ChatLlmRequest, StructuredLlmRequest
+from app.platform.llm.contracts import ChatLlmRequest, StructuredLlmRequest
 from app.shared.config import Settings
 from app.shared.exceptions import UpstreamServiceError
 

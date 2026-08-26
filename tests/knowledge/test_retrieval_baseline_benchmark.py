@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.modules.knowledge.retrieval.vector_search import VectorSearchStrategyName
+from app.platform.knowledge.retrieval.vector_search import VectorSearchStrategyName
 from app.scripts.run_retrieval_baseline import (
     BenchmarkCaseResult,
     EvalCaseDefinition,

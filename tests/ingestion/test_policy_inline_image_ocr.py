@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 from app.infrastructure.ocr.tencent_ocr import PolicyOcrService
-from app.modules.ingestion.contracts import ParsedBlock, ParsedDocumentResult
-from app.modules.ingestion.pipeline.steps.policy_parser import PolicyParserService
-from app.modules.ingestion.pipeline.steps.policy_text_assembler import PolicyTextAssemblerService
+from app.platform.ingestion.contracts import ParsedBlock, ParsedDocumentResult
+from app.platform.ingestion.pipeline.steps.policy_parser import PolicyParserService
+from app.platform.ingestion.pipeline.steps.policy_text_assembler import PolicyTextAssemblerService
 
 TEST_FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from app.interfaces.http.schemas import RetrievalSearchRequest
-from app.modules.knowledge.retrieval import (
+from app.platform.knowledge.retrieval import (
     ExactVectorSearchStrategy,
     HnswVectorSearchStrategy,
     HybridRetrievalPipeline,
     build_vector_search_strategy,
 )
-from app.modules.knowledge.retrieval.contracts import RetrievedPolicyChunk
+from app.platform.knowledge.retrieval.contracts import RetrievedPolicyChunk
 from app.shared.config import settings
 
 

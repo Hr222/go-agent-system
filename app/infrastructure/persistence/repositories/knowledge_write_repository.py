@@ -4,7 +4,7 @@ from app.infrastructure.persistence.repositories.policy_persistence_gateway impo
     PolicyPersistenceGateway,
 )
 from app.infrastructure.persistence.schema_health import translate_missing_kb_schema_errors
-from app.modules.knowledge.ports.write_port import KnowledgeWritePort, KnowledgeWriteResult
+from app.platform.knowledge.ports.write_port import KnowledgeWritePort, KnowledgeWriteResult
 
 
 class KnowledgeWriteRepository(KnowledgeWritePort):

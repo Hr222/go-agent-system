@@ -4,11 +4,11 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.modules.conversation.application import (
+from app.platform.conversation.application import (
     ConversationWriteService,
     RuleBasedConversationTopicSummaryGenerator,
 )
-from app.modules.conversation.domain import Conversation, Message, MessageRole
+from app.platform.conversation.domain import Conversation, Message, MessageRole
 
 
 class FakeTopicGenerator:

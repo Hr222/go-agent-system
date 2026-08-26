@@ -4,8 +4,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.modules.conversation.application import ConversationWriteService
-from app.modules.conversation.domain import Conversation, Message, MessageRole
+from app.platform.conversation.application import ConversationWriteService
+from app.platform.conversation.domain import Conversation, Message, MessageRole
 
 
 class FakeConversationWritePort:

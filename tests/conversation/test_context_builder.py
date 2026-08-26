@@ -6,14 +6,14 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.composition.conversation import build_conversation_context_builder
-from app.modules.conversation.application import ConversationContextBuilder
-from app.modules.conversation.domain import (
+from app.platform.conversation.application import ConversationContextBuilder
+from app.platform.conversation.domain import (
     ContextBudget,
     ContextPolicy,
     Message,
     MessageRole,
 )
-from app.modules.conversation.errors import ContextBudgetExceededError
+from app.platform.conversation.errors import ContextBudgetExceededError
 
 
 def _message(

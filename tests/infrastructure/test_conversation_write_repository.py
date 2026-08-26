@@ -21,12 +21,12 @@ from app.infrastructure.persistence.repositories.conversation_event_repository i
 from app.infrastructure.persistence.repositories.conversation_write_repository import (
     ConversationWriteRepository,
 )
-from app.modules.conversation.domain import Conversation, ConversationEvent, MessageRole
-from app.modules.conversation.errors import (
+from app.platform.conversation.domain import Conversation, ConversationEvent, MessageRole
+from app.platform.conversation.errors import (
     ConversationNotFoundError,
     ConversationPinLimitExceededError,
 )
-from app.modules.conversation.ports import DEFAULT_PINNED_CONVERSATION_LIMIT
+from app.platform.conversation.ports import DEFAULT_PINNED_CONVERSATION_LIMIT
 from tests.support.db_test_utils import SchemaHarness
 
 

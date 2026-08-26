@@ -10,13 +10,13 @@ from openai import APITimeoutError
 
 from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLlm
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
-from app.modules.conversation.domain import Conversation, Message, MessageRole
-from app.modules.dialogue.application import (
+from app.platform.conversation.domain import Conversation, Message, MessageRole
+from app.platform.dialogue.application import (
     StreamingConversationCommand,
     StreamingConversationRuntime,
 )
-from app.modules.llm.contracts import ChatLlmStreamChunk
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.llm.contracts import ChatLlmStreamChunk
+from app.platform.security.domain.principal import RequestPrincipal
 from app.shared.config import Settings
 
 

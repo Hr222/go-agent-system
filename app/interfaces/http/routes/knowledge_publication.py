@@ -9,7 +9,7 @@ from app.interfaces.http.schemas.publication import (
     KnowledgePublicationRequest,
     KnowledgePublicationResponse,
 )
-from app.modules.knowledge.application.publication_service import KnowledgePublicationService
+from app.platform.knowledge.application.publication_service import KnowledgePublicationService
 
 router = APIRouter()
 

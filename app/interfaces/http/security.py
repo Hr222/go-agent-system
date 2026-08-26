@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import Depends, Request
 
-from app.modules.security import (
+from app.platform.security import (
     AnonymousPrincipalResolver,
     PrincipalResolutionContext,
     PrincipalResolverPort,

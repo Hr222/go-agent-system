@@ -9,9 +9,9 @@ from fastapi.testclient import TestClient
 from app.interfaces.http.dependencies import get_conversation_access_service
 from app.interfaces.http.security import get_request_principal
 from app.main import create_app
-from app.modules.conversation.application import ConversationAccessService
-from app.modules.conversation.domain import Conversation
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.conversation.application import ConversationAccessService
+from app.platform.conversation.domain import Conversation
+from app.platform.security.domain.principal import RequestPrincipal
 
 
 @dataclass

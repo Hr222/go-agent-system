@@ -6,7 +6,7 @@ from pathlib import Path
 
 import fitz
 
-from app.modules.ingestion.pipeline.scan_service import PolicyIngestionService
+from app.platform.ingestion.pipeline.scan_service import PolicyIngestionService
 
 MODULE_PATH = (
     Path(__file__).resolve().parents[2]

@@ -7,21 +7,21 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.composition.dialogue import build_basic_dialogue_runtime
-from app.modules.conversation.application import (
+from app.platform.conversation.application import (
     CharacterCountContextMessageCostEstimator,
     ConversationContextBuilder,
 )
-from app.modules.conversation.domain import (
+from app.platform.conversation.domain import (
     ContextBudget,
     ContextPolicy,
     Conversation,
     Message,
     MessageRole,
 )
-from app.modules.conversation.errors import ContextBudgetExceededError
-from app.modules.conversation.ports import ConversationHistoryPage
-from app.modules.dialogue.application import BasicDialogueRuntime, DialogueCommand
-from app.modules.llm.contracts import ChatLlmResult
+from app.platform.conversation.errors import ContextBudgetExceededError
+from app.platform.conversation.ports import ConversationHistoryPage
+from app.platform.dialogue.application import BasicDialogueRuntime, DialogueCommand
+from app.platform.llm.contracts import ChatLlmResult
 
 
 def _message(

@@ -3,10 +3,10 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from app.modules.interaction.application.candidate_retrieval import (
+from app.platform.interaction.application.candidate_retrieval import (
     CapabilityCandidateRetrieval,
 )
-from app.modules.interaction.domain.capability import PlatformCapability
+from app.platform.interaction.domain.capability import PlatformCapability
 
 
 def _capability(
@@ -255,7 +255,7 @@ def test_failed_refresh_preserves_only_its_permission_scope_index() -> None:
 
 def test_candidate_retrieval_does_not_import_policy_retrieval_components() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    source_root = project_root / "app" / "modules" / "interaction"
+    source_root = project_root / "app" / "platform" / "interaction"
     imported_modules: set[str] = set()
     for source_path in source_root.rglob("*.py"):
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -265,7 +265,7 @@ def test_candidate_retrieval_does_not_import_policy_retrieval_components() -> No
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported_modules.add(node.module)
 
-    forbidden = ("app.modules.knowledge", "app.infrastructure.persistence")
+    forbidden = ("app.platform.knowledge", "app.infrastructure.persistence")
     assert not any(module.startswith(prefix) for module in imported_modules for prefix in forbidden)
     assert "kb_policy_chunk" not in "".join(
         path.read_text(encoding="utf-8") for path in source_root.rglob("*.py")

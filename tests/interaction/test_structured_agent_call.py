@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.modules.interaction import AgentCallError, AgentCallResult, StructuredAgentCall
+from app.platform.interaction import AgentCallError, AgentCallResult, StructuredAgentCall
 
 
 def test_structured_agent_call_keeps_correlation_ids_and_is_serializable() -> None:

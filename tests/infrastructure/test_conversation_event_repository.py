@@ -9,7 +9,7 @@ from app.infrastructure.persistence.models.conversation import (
 from app.infrastructure.persistence.repositories.conversation_event_repository import (
     ConversationEventRepository,
 )
-from app.modules.conversation.domain import Conversation, ConversationEvent
+from app.platform.conversation.domain import Conversation, ConversationEvent
 from tests.support.db_test_utils import SchemaHarness
 
 

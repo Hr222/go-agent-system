@@ -1,4 +1,4 @@
-from app.modules.agent.tender.application.prompts import (
+from app.business.agents.tender.application.prompts import (
     TENDER_BOUNDARY_VERIFY_PROMPT_VERSION,
     TENDER_CHUNK_EXTRACT_PROMPT_VERSION,
     TENDER_MERGE_PROMPT_VERSION,
@@ -8,7 +8,7 @@ from app.modules.agent.tender.application.prompts import (
     build_tender_merge_request,
     build_tender_skeleton_request,
 )
-from app.modules.agent.tender.contracts import TenderAnalysis, TenderChunk, TenderChunkAnalysis
+from app.business.agents.tender.contracts import TenderAnalysis, TenderChunk, TenderChunkAnalysis
 
 
 def test_skeleton_prompt_requires_body_format_and_explicit_volume_boundaries() -> None:

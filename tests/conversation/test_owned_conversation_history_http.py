@@ -12,11 +12,11 @@ from app.interfaces.http.dependencies import (
 )
 from app.interfaces.http.security import get_request_principal
 from app.main import create_app
-from app.modules.conversation.application import ConversationAccessService
-from app.modules.conversation.domain import Conversation, Message, MessageRole
-from app.modules.conversation.errors import ConversationNotFoundError
-from app.modules.conversation.ports import ConversationHistoryPage
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.conversation.application import ConversationAccessService
+from app.platform.conversation.domain import Conversation, Message, MessageRole
+from app.platform.conversation.errors import ConversationNotFoundError
+from app.platform.conversation.ports import ConversationHistoryPage
+from app.platform.security.domain.principal import RequestPrincipal
 
 CONVERSATION_ID = UUID("00000000-0000-0000-0000-000000000101")
 

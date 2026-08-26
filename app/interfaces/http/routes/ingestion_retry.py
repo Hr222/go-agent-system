@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.interfaces.http.assemblers.policy_pipeline import pipeline_response
 from app.interfaces.http.dependencies import get_retry_ingestion_use_case
 from app.interfaces.http.schemas import PolicyPipelineResponse
-from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
+from app.platform.ingestion.application.retry_ingestion import RetryIngestionUseCase
 from app.shared.exceptions import KnowledgeBaseSchemaUnavailableError
 
 router = APIRouter()

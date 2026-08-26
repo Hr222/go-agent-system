@@ -9,8 +9,8 @@ from fastapi.responses import Response
 from app.interfaces.http.dependencies import get_attachment_storage
 from app.interfaces.http.schemas.attachment import AttachmentUploadResponse
 from app.interfaces.http.security import get_request_principal
-from app.modules.attachment import AttachmentAccessContext, AttachmentStoragePort
-from app.modules.security import RequestPrincipal
+from app.platform.attachment import AttachmentAccessContext, AttachmentStoragePort
+from app.platform.security import RequestPrincipal
 
 router = APIRouter()
 

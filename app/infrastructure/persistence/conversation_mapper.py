@@ -5,7 +5,7 @@ from app.infrastructure.persistence.models.conversation import (
     ConversationMessageRecord,
     ConversationRecord,
 )
-from app.modules.conversation.domain import Conversation, ConversationEvent, Message, MessageRole
+from app.platform.conversation.domain import Conversation, ConversationEvent, Message, MessageRole
 
 
 def conversation_to_record(conversation: Conversation) -> ConversationRecord:

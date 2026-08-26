@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.modules.knowledge.retrieval import HybridHitFusionService, HybridRetrievalPipeline
-from app.modules.knowledge.retrieval.contracts import RetrievedPolicyChunk
+from app.platform.knowledge.retrieval import HybridHitFusionService, HybridRetrievalPipeline
+from app.platform.knowledge.retrieval.contracts import RetrievedPolicyChunk
 
 
 def _hit(

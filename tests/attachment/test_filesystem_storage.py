@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
-from app.modules.attachment import AttachmentAccessContext, AttachmentReadResult, AttachmentRef
+from app.platform.attachment import AttachmentAccessContext, AttachmentReadResult, AttachmentRef
 
 OWNER = AttachmentAccessContext(subject="owner", conversation_id="conversation-1")
 OTHER_SUBJECT = AttachmentAccessContext(subject="other", conversation_id="conversation-1")

@@ -13,16 +13,16 @@ from app.interfaces.http.schemas.interaction import (
     InteractionIntentRequest,
     InteractionProposalResponse,
 )
-from app.modules.interaction.application.chat_stream import InteractionChatStreamCommand
-from app.modules.interaction.application.gateway import (
+from app.platform.interaction.application.chat_stream import InteractionChatStreamCommand
+from app.platform.interaction.application.gateway import (
     GatewayConfirmationCommand,
     GatewayRecognitionCommand,
     GatewayResult,
 )
-from app.modules.interaction.domain.attachment import ResolvedAttachment
-from app.modules.interaction.domain.confirmation import ConfirmationProposal
-from app.modules.interaction.domain.intent import IntentAssessment
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.interaction.domain.attachment import ResolvedAttachment
+from app.platform.interaction.domain.confirmation import ConfirmationProposal
+from app.platform.interaction.domain.intent import IntentAssessment
+from app.platform.security.domain.principal import RequestPrincipal
 
 
 def recognition_command(

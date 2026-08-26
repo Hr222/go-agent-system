@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 from app.interfaces.http.schemas import RetrievalSearchRequest
-from app.modules.knowledge.retrieval import HybridRetrievalPipeline
-from app.modules.knowledge.retrieval.contracts import RetrievedPolicyChunk
+from app.platform.knowledge.retrieval import HybridRetrievalPipeline
+from app.platform.knowledge.retrieval.contracts import RetrievedPolicyChunk
 
 
 class StubEmbeddingService:

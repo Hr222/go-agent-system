@@ -5,9 +5,9 @@ import json
 import pytest
 from pydantic import BaseModel
 
+from app.business.agents.tender.ports.llm_port import StructuredLlmRequest
 from app.infrastructure.llm.langchain_glm_adapter import LangChainGlmStructuredLlm
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
-from app.modules.agent.tender.ports.llm_port import StructuredLlmRequest
 from app.shared.config import Settings
 from app.shared.exceptions import ServiceNotConfiguredError, UpstreamServiceError
 

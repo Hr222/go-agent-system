@@ -6,8 +6,8 @@ from app.interfaces.http.schemas.conversation import (
     ConversationSummaryPageResponse,
     ConversationSummaryResponse,
 )
-from app.modules.conversation.domain import Conversation, Message
-from app.modules.conversation.ports import (
+from app.platform.conversation.domain import Conversation, Message
+from app.platform.conversation.ports import (
     ConversationHistoryPage,
     ConversationSummary,
     ConversationSummaryPage,

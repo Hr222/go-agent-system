@@ -11,8 +11,8 @@ from app.interfaces.http.schemas.policy_upload import (
     PolicyUploadIngestRequest,
     PolicyUploadPreviewResponse,
 )
-from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
-from app.modules.ingestion.ports import UploadStoragePort
+from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
+from app.platform.ingestion.ports import UploadStoragePort
 from app.shared.exceptions import KnowledgeBaseSchemaUnavailableError
 from app.shared.logging import get_logger
 

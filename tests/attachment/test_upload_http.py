@@ -10,8 +10,8 @@ from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmen
 from app.interfaces.http.dependencies import get_attachment_storage
 from app.interfaces.http.security import get_request_principal
 from app.main import create_app
-from app.modules.attachment import AttachmentAccessContext
-from app.modules.security import RequestPrincipal
+from app.platform.attachment import AttachmentAccessContext
+from app.platform.security import RequestPrincipal
 
 
 class _FailingStorage:

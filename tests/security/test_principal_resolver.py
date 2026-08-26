@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from app.interfaces.http.security import get_principal_resolver, get_request_principal
-from app.modules.security import (
+from app.platform.security import (
     AnonymousPrincipalResolver,
     PrincipalResolutionContext,
     RequestPrincipal,

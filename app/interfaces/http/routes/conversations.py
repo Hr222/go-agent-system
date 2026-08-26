@@ -29,7 +29,7 @@ from app.interfaces.http.schemas.conversation import (
     ConversationTopicSummaryUpdateRequest,
 )
 from app.interfaces.http.security import get_request_principal
-from app.modules.conversation.application import (
+from app.platform.conversation.application import (
     ConversationAccessService,
     ConversationCreateCommand,
     ConversationDeleteCommand,
@@ -41,19 +41,19 @@ from app.modules.conversation.application import (
     ConversationTopicSummaryUpdateCommand,
     ConversationTopicSummaryUpdateService,
 )
-from app.modules.conversation.errors import (
+from app.platform.conversation.errors import (
     ConversationAccessDeniedError,
     ConversationNotFoundError,
     ConversationPinLimitExceededError,
 )
-from app.modules.conversation.ports import (
+from app.platform.conversation.ports import (
     DEFAULT_CONVERSATION_LIST_PAGE_SIZE,
     DEFAULT_HISTORY_PAGE_SIZE,
     DEFAULT_PINNED_CONVERSATION_LIMIT,
     MAX_CONVERSATION_LIST_PAGE_SIZE,
     MAX_HISTORY_PAGE_SIZE,
 )
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.security.domain.principal import RequestPrincipal
 
 router = APIRouter()
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.modules.knowledge.retrieval.policies import PolicyRetrievalQueryPolicy
+from app.platform.knowledge.retrieval.policies import PolicyRetrievalQueryPolicy
 
 
 def test_build_keyword_plan_keeps_year_and_document_type_as_priority_keywords() -> None:

@@ -24,7 +24,7 @@ from app.interfaces.http.schemas.knowledge_management import (
     KnowledgeManagementOverviewResponse,
     KnowledgeManagementRecentDocumentQuery,
 )
-from app.modules.knowledge.application.management_service import KnowledgeManagementService
+from app.platform.knowledge.application.management_service import KnowledgeManagementService
 
 router = APIRouter()
 

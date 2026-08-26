@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.modules.ingestion.pipeline.scan_service import PolicyIngestionService
+from app.platform.ingestion.pipeline.scan_service import PolicyIngestionService
 
 
 @dataclass(slots=True)

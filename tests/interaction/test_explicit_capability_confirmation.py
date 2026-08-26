@@ -3,11 +3,11 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from app.modules.interaction.application.confirmation import ExplicitCapabilityConfirmation
-from app.modules.interaction.application.gateway import InMemoryPendingProposalStore
-from app.modules.interaction.domain.capability import PlatformCapability
-from app.modules.interaction.domain.confirmation import ConfirmationProposal
-from app.modules.interaction.domain.intent import IntentAssessment
+from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
+from app.platform.interaction.application.gateway import InMemoryPendingProposalStore
+from app.platform.interaction.domain.capability import PlatformCapability
+from app.platform.interaction.domain.confirmation import ConfirmationProposal
+from app.platform.interaction.domain.intent import IntentAssessment
 
 
 def _capability(*, confirmation_policy: str = "always") -> PlatformCapability:
@@ -181,7 +181,7 @@ def test_pending_proposal_store_snapshots_saved_proposals_on_subject_mismatch() 
 def test_confirmation_services_do_not_depend_on_execution_or_lifecycle_layers() -> None:
     project_root = Path(__file__).resolve().parents[2]
     source_paths = (
-        project_root / "app" / "modules" / "interaction" / "application" / "confirmation.py",
+        project_root / "app" / "platform" / "interaction" / "application" / "confirmation.py",
         project_root / "app" / "composition" / "intent.py",
     )
     imported_modules: set[str] = set()
@@ -196,8 +196,8 @@ def test_confirmation_services_do_not_depend_on_execution_or_lifecycle_layers() 
                 imported_modules.add(node.module)
 
     forbidden_imports = (
-        "app.modules.agent",
-        "app.modules.online",
+        "app.platform.agent",
+        "app.business.online",
         "app.infrastructure.persistence",
     )
     assert not any(

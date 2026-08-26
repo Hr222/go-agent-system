@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.business.online.domain.decision_result import DecisionResult, DecisionReviewCommand
 from app.interfaces.http.schemas.policy_decision import (
     PolicyDecisionDataAcquisitionDebug,
     PolicyDecisionDataFieldTrace,
@@ -13,7 +14,6 @@ from app.interfaces.http.schemas.retrieval import (
     RetrievalDebugInfo,
     RetrievalStageDebug,
 )
-from app.modules.online.domain.decision_result import DecisionResult, DecisionReviewCommand
 
 
 def decision_command(

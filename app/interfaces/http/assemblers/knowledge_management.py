@@ -9,7 +9,7 @@ from app.interfaces.http.schemas.knowledge_management import (
     KnowledgeManagementOverviewResponse,
     KnowledgeManagementRecentDocumentQuery,
 )
-from app.modules.knowledge.application.management_contracts import (
+from app.platform.knowledge.application.management_contracts import (
     KnowledgeManagementDocument,
     KnowledgeManagementDocumentDetail,
     KnowledgeManagementDocumentPage,

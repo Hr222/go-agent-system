@@ -6,6 +6,12 @@ from typing import Any
 
 import pytest
 
+from app.business.online.application.decision import RuleDrivenChecklistDecisionService
+from app.business.online.domain.checklist import (
+    COURT_EVALUATION_MATERIALS_SCENARIO,
+    ChecklistScenarioRegistry,
+)
+from app.business.online.domain.decision_result import DecisionReviewCommand
 from app.interfaces.http.schemas import (
     RetrievalDebugInfo,
     RetrievalFilters,
@@ -13,12 +19,6 @@ from app.interfaces.http.schemas import (
     RetrievalSearchResponse,
     RetrievalStageDebug,
 )
-from app.modules.online.application.decision import RuleDrivenChecklistDecisionService
-from app.modules.online.domain.checklist import (
-    COURT_EVALUATION_MATERIALS_SCENARIO,
-    ChecklistScenarioRegistry,
-)
-from app.modules.online.domain.decision_result import DecisionReviewCommand
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_PATH = (

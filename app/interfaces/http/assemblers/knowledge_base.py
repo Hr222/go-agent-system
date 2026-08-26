@@ -4,11 +4,11 @@ from app.interfaces.http.schemas.knowledge_base import (
     PolicyDocumentOptionList,
     RagMvpStatus,
 )
-from app.modules.knowledge.application.contracts import (
+from app.platform.knowledge.application.contracts import (
     KnowledgeBaseOverviewResult,
     RagMvpStatusResult,
 )
-from app.modules.knowledge.ports.read_port import KnowledgeDocument
+from app.platform.knowledge.ports.read_port import KnowledgeDocument
 
 
 def overview_response(result: KnowledgeBaseOverviewResult) -> KnowledgeBaseOverview:

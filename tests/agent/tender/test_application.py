@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from app.modules.agent.tender.application.service import TenderApplication
-from app.modules.agent.tender.contracts import (
+from app.business.agents.tender.application.service import TenderApplication
+from app.business.agents.tender.contracts import (
     GeneratedTenderArtifact,
     TenderAnalysis,
     TenderDocument,
@@ -14,8 +14,8 @@ from app.modules.agent.tender.contracts import (
     TenderOutputPlan,
     TenderSourceEvidence,
 )
-from app.modules.agent.tender.errors import TenderAnalysisError, TenderRenderError
-from app.modules.llm.contracts import StructuredLlmRequest, StructuredLlmResult
+from app.business.agents.tender.errors import TenderAnalysisError, TenderRenderError
+from app.platform.llm.contracts import StructuredLlmRequest, StructuredLlmResult
 from app.shared.exceptions import UpstreamServiceError
 
 

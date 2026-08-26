@@ -17,7 +17,7 @@ from app.infrastructure.persistence.repositories.conversation_list_read_reposito
 from app.infrastructure.persistence.repositories.conversation_write_repository import (
     ConversationWriteRepository,
 )
-from app.modules.conversation.application import (
+from app.platform.conversation.application import (
     CharacterCountContextMessageCostEstimator,
     ConversationAccessService,
     ConversationContextBuilder,

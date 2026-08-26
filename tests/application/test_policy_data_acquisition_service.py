@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from app.interfaces.http.schemas.policy_decision import PolicyDecisionChecklistRequest
-from app.modules.online.application.data_acquisition import (
+from app.business.online.application.data_acquisition import (
     ChecklistDataAcquisitionRequest,
     ChecklistDataProviderRegistry,
     InlineChecklistDataProvider,
     PolicyDataAcquisitionService,
 )
-from app.modules.online.domain.checklist import (
+from app.business.online.domain.checklist import (
     COURT_EVALUATION_MATERIALS_SCENARIO,
     ChecklistScenarioRegistry,
 )
+from app.interfaces.http.schemas.policy_decision import PolicyDecisionChecklistRequest
 
 
 def _scenario_registry() -> ChecklistScenarioRegistry:

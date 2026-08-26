@@ -7,13 +7,13 @@ from pathlib import Path
 from app.infrastructure.filesystem.policy_file_service import PolicyFileService
 from app.infrastructure.filesystem.upload_service import PolicyUploadService
 from app.infrastructure.ocr.tencent_ocr import PolicyOcrService
-from app.modules.ingestion import PolicyIngestionService, PolicyPipelineService
-from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
-from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
-from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
-from app.modules.ingestion.ports import IngestionRetrySourcePort
-from app.modules.knowledge.application.write_capability import KnowledgeBaseWriteCapability
-from app.modules.llm.ports import TextEmbeddingPort
+from app.platform.ingestion import PolicyIngestionService, PolicyPipelineService
+from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
+from app.platform.ingestion.application.retry_ingestion import RetryIngestionUseCase
+from app.platform.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
+from app.platform.ingestion.ports import IngestionRetrySourcePort
+from app.platform.knowledge.application.write_capability import KnowledgeBaseWriteCapability
+from app.platform.llm.ports import TextEmbeddingPort
 
 
 def build_pipeline(

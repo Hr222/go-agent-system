@@ -1,16 +1,16 @@
-from app.composition import ApplicationContainer
-from app.infrastructure.filesystem.upload_service import PolicyUploadService
-from app.infrastructure.llm.llm_client import RagAnswerGenerator
-from app.modules.ingestion.pipeline import (
-    PolicyIngestionService,
-    PolicyPipelineService,
-)
-from app.modules.knowledge.retrieval import KnowledgeRetrievalService
-from app.modules.online.application.data_acquisition import (
+from app.business.online.application.data_acquisition import (
     ChecklistDataProviderRegistry,
     PolicyDataAcquisitionService,
 )
-from app.modules.online.application.rule_retrieval import PolicyRuleRetrievalService
+from app.business.online.application.rule_retrieval import PolicyRuleRetrievalService
+from app.composition import ApplicationContainer
+from app.infrastructure.filesystem.upload_service import PolicyUploadService
+from app.infrastructure.llm.llm_client import RagAnswerGenerator
+from app.platform.ingestion.pipeline import (
+    PolicyIngestionService,
+    PolicyPipelineService,
+)
+from app.platform.knowledge.retrieval import KnowledgeRetrievalService
 
 
 def test_ingestion_services_are_exported_from_new_package() -> None:

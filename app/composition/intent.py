@@ -3,30 +3,30 @@
 from collections.abc import AsyncIterator
 from typing import Protocol
 
-from app.modules.attachment.ports.read_port import AttachmentReadPort
-from app.modules.dialogue.application import (
+from app.platform.attachment.ports.read_port import AttachmentReadPort
+from app.platform.dialogue.application import (
     DialogueAgentContinuationService,
     DialogueAgentInvocationService,
     InMemoryPendingAgentInvocationStore,
 )
-from app.modules.interaction.application.attachment_resolution import (
+from app.platform.interaction.application.attachment_resolution import (
     CapabilityAttachmentResolver,
 )
-from app.modules.interaction.application.candidate_retrieval import (
+from app.platform.interaction.application.candidate_retrieval import (
     CapabilityCandidateRetrieval,
 )
-from app.modules.interaction.application.chat_stream import (
+from app.platform.interaction.application.chat_stream import (
     InteractionChatStreamApplication,
 )
-from app.modules.interaction.application.confirmation import ExplicitCapabilityConfirmation
-from app.modules.interaction.application.gateway import (
+from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
+from app.platform.interaction.application.gateway import (
     ControlledDispatcher,
     IntentInteractionGateway,
 )
-from app.modules.interaction.application.intent_recognition import StructuredIntentRecognition
-from app.modules.interaction.ports.capability_catalog import CapabilityCatalogPort
-from app.modules.interaction.ports.proposal_store import PendingProposalStorePort
-from app.modules.llm.contracts import StructuredLlmPort
+from app.platform.interaction.application.intent_recognition import StructuredIntentRecognition
+from app.platform.interaction.ports.capability_catalog import CapabilityCatalogPort
+from app.platform.interaction.ports.proposal_store import PendingProposalStorePort
+from app.platform.llm.contracts import StructuredLlmPort
 
 
 class StreamingRuntime(Protocol):

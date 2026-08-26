@@ -6,24 +6,24 @@ from pathlib import Path
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app.business.online.application.policy_decision import PolicyDecisionApplicationService
 from app.composition.interaction import build_capability_dispatch_registry
 from app.composition.root import ApplicationContainer
 from app.infrastructure.persistence.models.platform_capability import PlatformCapabilityRecord
 from app.infrastructure.persistence.repositories.platform_capability_repository import (
     PlatformCapabilityRepository,
 )
-from app.modules.agent.runtime import AgentRuntime
-from app.modules.interaction.application.catalog import PlatformCapabilityCatalog
-from app.modules.interaction.application.dispatch import (
+from app.platform.agent.runtime import AgentRuntime
+from app.platform.interaction.application.catalog import PlatformCapabilityCatalog
+from app.platform.interaction.application.dispatch import (
     CapabilityDispatchBinding,
     CapabilityDispatchConfigurationError,
     CapabilityDispatchRegistry,
 )
-from app.modules.interaction.domain.capability import (
+from app.platform.interaction.domain.capability import (
     CapabilityPrincipal,
     PlatformCapability,
 )
-from app.modules.online.application.policy_decision import PolicyDecisionApplicationService
 from tests.support.db_test_utils import SchemaHarness
 
 

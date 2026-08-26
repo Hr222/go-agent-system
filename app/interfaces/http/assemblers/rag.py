@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.business.online.contracts import AnswerResult, AskKnowledgeCommand
 from app.interfaces.http.schemas import (
     AnswerCitation,
     RagAskRequest,
@@ -11,8 +12,7 @@ from app.interfaces.http.schemas import (
     RetrievalSearchResponse,
     RetrievalStageDebug,
 )
-from app.modules.knowledge.ports.read_port import KnowledgeQueryResult
-from app.modules.online.contracts import AnswerResult, AskKnowledgeCommand
+from app.platform.knowledge.ports.read_port import KnowledgeQueryResult
 
 
 def search_command(request: RetrievalSearchRequest) -> AskKnowledgeCommand:

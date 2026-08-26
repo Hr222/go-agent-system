@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import BinaryIO
 
-from app.modules.ingestion.ports.upload_port import StagedUpload, UploadStoragePort
+from app.platform.ingestion.ports.upload_port import StagedUpload, UploadStoragePort
 from app.shared.config import settings
 
 SUPPORTED_UPLOAD_EXTENSIONS = {

@@ -5,6 +5,7 @@ import json
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from app.business.agents.tender.contracts import TenderAnalysis, TenderChunkAnalysis
 from app.infrastructure.llm.structured_output_normalization import (
     NormalizingStructuredLlm,
     RawStructuredLlmResponse,
@@ -13,8 +14,7 @@ from app.infrastructure.llm.structured_output_normalization import (
     build_default_normalizer_registry,
     raw_response_from_provider_response,
 )
-from app.modules.agent.tender.contracts import TenderAnalysis, TenderChunkAnalysis
-from app.modules.llm.contracts import StructuredLlmRequest
+from app.platform.llm.contracts import StructuredLlmRequest
 from app.shared.exceptions import UpstreamServiceError
 
 

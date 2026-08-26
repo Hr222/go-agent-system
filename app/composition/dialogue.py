@@ -7,14 +7,14 @@ from app.composition.conversation import (
     build_conversation_history_read_service,
     build_conversation_write_service,
 )
-from app.modules.conversation.application import ConversationAccessService
-from app.modules.dialogue.application import (
+from app.platform.conversation.application import ConversationAccessService
+from app.platform.dialogue.application import (
     DEFAULT_DIALOGUE_CONTEXT_BUDGET,
     DEFAULT_DIALOGUE_CONTEXT_POLICY,
     BasicDialogueRuntime,
     StreamingConversationRuntime,
 )
-from app.modules.llm.contracts import ChatLlmPort, StreamingChatLlmPort
+from app.platform.llm.contracts import ChatLlmPort, StreamingChatLlmPort
 
 
 def build_basic_dialogue_runtime(

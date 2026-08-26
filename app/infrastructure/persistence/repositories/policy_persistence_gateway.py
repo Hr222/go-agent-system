@@ -12,22 +12,22 @@ from app.infrastructure.persistence.models import (
     PolicySection,
     PolicyVersion,
 )
-from app.modules.ingestion.contracts import (
+from app.platform.ingestion.contracts import (
     ChunkItem,
     CleanedTextResult,
     ParsedBlock,
     RegisteredFileInfo,
     SectionSplitItem,
 )
-from app.modules.ingestion.ports.retry_port import IngestionRetrySource
-from app.modules.knowledge.application.management_contracts import (
+from app.platform.ingestion.ports.retry_port import IngestionRetrySource
+from app.platform.knowledge.application.management_contracts import (
     KnowledgeManagementDocument,
     KnowledgeManagementDocumentDetail,
     KnowledgeManagementDocumentPage,
     KnowledgeManagementOverviewResult,
     ListKnowledgeManagementDocumentsQuery,
 )
-from app.modules.knowledge.retrieval.contracts import RetrievedPolicyChunk
+from app.platform.knowledge.retrieval.contracts import RetrievedPolicyChunk
 from app.shared.config import settings
 
 

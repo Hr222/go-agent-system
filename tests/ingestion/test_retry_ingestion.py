@@ -1,7 +1,7 @@
-from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
-from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
-from app.modules.ingestion.contracts import PolicyPipelineResponse
-from app.modules.ingestion.ports.retry_port import IngestionRetrySource
+from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
+from app.platform.ingestion.application.retry_ingestion import RetryIngestionUseCase
+from app.platform.ingestion.contracts import PolicyPipelineResponse
+from app.platform.ingestion.ports.retry_port import IngestionRetrySource
 
 
 class FakeIngestionUseCase(IngestionUseCase):

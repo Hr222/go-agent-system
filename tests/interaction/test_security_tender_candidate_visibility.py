@@ -6,21 +6,21 @@ from fastapi.testclient import TestClient
 
 from app.interfaces.http.dependencies import get_intent_interaction_gateway
 from app.main import create_app
-from app.modules.interaction.application.candidate_retrieval import (
+from app.platform.interaction.application.candidate_retrieval import (
     CapabilityCandidateRetrieval,
 )
-from app.modules.interaction.application.confirmation import ExplicitCapabilityConfirmation
-from app.modules.interaction.application.gateway import (
+from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
+from app.platform.interaction.application.gateway import (
     ControlledDispatcher,
     InMemoryPendingProposalStore,
     IntentInteractionGateway,
 )
-from app.modules.interaction.application.intent_recognition import (
+from app.platform.interaction.application.intent_recognition import (
     IntentRecognitionCommand,
     StructuredIntentRecognition,
 )
-from app.modules.interaction.domain.capability import PlatformCapability
-from app.modules.llm.contracts import StructuredLlmResult
+from app.platform.interaction.domain.capability import PlatformCapability
+from app.platform.llm.contracts import StructuredLlmResult
 
 TENDER_CODE = "tender.generate_bid_skeleton"
 TENDER_DISPATCH_KEY = "agent.tender.generate_bid_skeleton"

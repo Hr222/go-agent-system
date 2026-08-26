@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.modules.ingestion.pipeline.steps.policy_parser import PolicyParserService
+from app.platform.ingestion.pipeline.steps.policy_parser import PolicyParserService
 
 
 class TencentOcrMvpSettings(BaseSettings):

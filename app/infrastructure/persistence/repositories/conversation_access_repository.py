@@ -10,8 +10,8 @@ from app.infrastructure.persistence.conversation_mapper import (
     conversation_to_record,
 )
 from app.infrastructure.persistence.models.conversation import ConversationRecord
-from app.modules.conversation.domain import Conversation
-from app.modules.conversation.ports.access_port import ConversationAccessPort
+from app.platform.conversation.domain import Conversation
+from app.platform.conversation.ports.access_port import ConversationAccessPort
 
 
 class ConversationAccessRepository(ConversationAccessPort):

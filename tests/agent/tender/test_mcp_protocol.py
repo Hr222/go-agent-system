@@ -8,14 +8,14 @@ import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
-from app.interfaces.agent.tender_mcp import (
-    TENDER_MCP_TOOL_NAME,
-    create_tender_mcp_server,
-)
-from app.modules.agent.tender.contracts import (
+from app.business.agents.tender.contracts import (
     GeneratedTenderArtifact,
     TenderAnalysis,
     TenderGenerateSkeletonResult,
+)
+from app.interfaces.agent.tender_mcp import (
+    TENDER_MCP_TOOL_NAME,
+    create_tender_mcp_server,
 )
 
 

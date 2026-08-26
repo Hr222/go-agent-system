@@ -13,8 +13,8 @@ from app.infrastructure.persistence.models.conversation import (
     ConversationMessageRecord,
     ConversationRecord,
 )
-from app.modules.conversation.errors import ConversationNotFoundError
-from app.modules.conversation.ports.read_port import (
+from app.platform.conversation.errors import ConversationNotFoundError
+from app.platform.conversation.ports.read_port import (
     ConversationHistoryPage,
     ConversationReadPort,
 )

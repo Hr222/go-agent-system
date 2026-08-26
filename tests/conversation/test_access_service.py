@@ -5,14 +5,14 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.modules.conversation.application import (
+from app.platform.conversation.application import (
     ConversationAccessService,
     ConversationCreateCommand,
     ConversationResolveQuery,
 )
-from app.modules.conversation.domain import Conversation
-from app.modules.conversation.errors import ConversationAccessDeniedError
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.conversation.domain import Conversation
+from app.platform.conversation.errors import ConversationAccessDeniedError
+from app.platform.security.domain.principal import RequestPrincipal
 
 
 @dataclass

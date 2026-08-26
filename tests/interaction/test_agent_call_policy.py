@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from app.modules.interaction.application.agent_call_policy import (
+from app.platform.interaction.application.agent_call_policy import (
     AgentCallPolicyCommand,
     AgentCallPolicyValidator,
 )
-from app.modules.interaction.domain.agent_call import StructuredAgentCall
-from app.modules.interaction.domain.capability import PlatformCapability
-from app.modules.interaction.domain.confirmation import ApprovedCapabilityDispatch
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.interaction.domain.agent_call import StructuredAgentCall
+from app.platform.interaction.domain.capability import PlatformCapability
+from app.platform.interaction.domain.confirmation import ApprovedCapabilityDispatch
+from app.platform.security.domain.principal import RequestPrincipal
 
 
 def _capability(
@@ -234,10 +234,10 @@ def test_policy_returns_a_deep_copied_call_and_does_not_import_execution_layers(
     assert result.status == "confirmation_required"
 
     source_path = (
-        Path(__file__).resolve().parents[2]
-        / "app"
-        / "modules"
-        / "interaction"
+            Path(__file__).resolve().parents[2]
+            / "app"
+            / "platform"
+            / "interaction"
         / "application"
         / "agent_call_policy.py"
     )
@@ -251,8 +251,8 @@ def test_policy_returns_a_deep_copied_call_and_does_not_import_execution_layers(
         module.startswith(prefix)
         for module in imported_modules
         for prefix in (
-            "app.modules.agent",
-            "app.modules.online",
+            "app.platform.agent",
+            "app.business.online",
             "app.infrastructure",
             "app.interfaces",
         )

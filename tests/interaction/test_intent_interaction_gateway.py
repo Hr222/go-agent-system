@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 from app.composition.interaction import build_controlled_dispatcher
 from app.interfaces.http.dependencies import get_intent_interaction_gateway
 from app.main import create_app
-from app.modules.agent.runtime import AgentRuntime
-from app.modules.interaction.application.confirmation import ExplicitCapabilityConfirmation
-from app.modules.interaction.application.gateway import (
+from app.platform.agent.runtime import AgentRuntime
+from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
+from app.platform.interaction.application.gateway import (
     ControlledDispatcher,
     GatewayConfirmationCommand,
     GatewayRecognitionCommand,
@@ -17,10 +17,10 @@ from app.modules.interaction.application.gateway import (
     InMemoryPendingProposalStore,
     IntentInteractionGateway,
 )
-from app.modules.interaction.domain.capability import PlatformCapability
-from app.modules.interaction.domain.confirmation import ConfirmationProposal
-from app.modules.interaction.domain.intent import IntentAssessment
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.interaction.domain.capability import PlatformCapability
+from app.platform.interaction.domain.confirmation import ConfirmationProposal
+from app.platform.interaction.domain.intent import IntentAssessment
+from app.platform.security.domain.principal import RequestPrincipal
 
 
 def _capability(

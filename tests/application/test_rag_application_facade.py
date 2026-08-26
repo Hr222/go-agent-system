@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from app.interfaces.http.assemblers.rag import search_response
-from app.modules.knowledge.application.query_capability import KnowledgeBaseQueryCapability
-from app.modules.knowledge.ports.read_port import (
-    KnowledgeQueryResult,
-    KnowledgeSearchHit,
-)
-from app.modules.online.application.rag_facade import (
+from app.business.online.application.rag_facade import (
     INSUFFICIENT_EVIDENCE_ANSWER,
     RagApplicationFacade,
 )
-from app.modules.online.contracts import AnswerResult, AskKnowledgeCommand
+from app.business.online.contracts import AnswerResult, AskKnowledgeCommand
+from app.interfaces.http.assemblers.rag import search_response
+from app.platform.knowledge.application.query_capability import KnowledgeBaseQueryCapability
+from app.platform.knowledge.ports.read_port import (
+    KnowledgeQueryResult,
+    KnowledgeSearchHit,
+)
 
 
 def _make_hit() -> KnowledgeSearchHit:

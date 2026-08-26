@@ -4,14 +4,14 @@ from collections.abc import Callable
 
 from openai import OpenAI
 
+from app.business.online.contracts import AnswerCitationResult, AnswerResult
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
 from app.infrastructure.llm.request_governance import (
     LlmRequestGovernor,
     shared_request_governor,
 )
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
-from app.modules.knowledge.ports.read_port import KnowledgeSearchHit
-from app.modules.online.contracts import AnswerCitationResult, AnswerResult
+from app.platform.knowledge.ports.read_port import KnowledgeSearchHit
 from app.shared.config import settings
 from app.shared.exceptions import ServiceNotConfiguredError, UpstreamServiceError
 

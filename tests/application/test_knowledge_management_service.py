@@ -2,13 +2,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.modules.knowledge.application.management_contracts import (
+from app.platform.knowledge.application.management_contracts import (
     KnowledgeManagementDocument,
     KnowledgeManagementDocumentPage,
     KnowledgeManagementOverviewResult,
     ListKnowledgeManagementDocumentsQuery,
 )
-from app.modules.knowledge.application.management_service import KnowledgeManagementService
+from app.platform.knowledge.application.management_service import KnowledgeManagementService
 
 
 class FakeManagementReadPort:

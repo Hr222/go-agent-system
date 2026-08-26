@@ -9,7 +9,7 @@ from app.infrastructure.llm.structured_output_normalization import (
     StructuredOutputNormalizer,
     build_default_normalizer_registry,
 )
-from app.modules.llm.contracts import ChatLlmPort, StreamingChatLlmPort, StructuredLlmPort
+from app.platform.llm.contracts import ChatLlmPort, StreamingChatLlmPort, StructuredLlmPort
 
 
 def build_chat_llm(client_factory: OpenAICompatibleClientFactory) -> ChatLlmPort:

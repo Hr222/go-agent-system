@@ -11,7 +11,7 @@ from typing import Any
 
 from PIL import Image, UnidentifiedImageError
 
-from app.modules.ingestion.contracts import OcrProcessResult, ParsedBlock, ParsedDocumentResult
+from app.platform.ingestion.contracts import OcrProcessResult, ParsedBlock, ParsedDocumentResult
 from app.shared.config import settings
 from app.shared.logging import get_logger
 

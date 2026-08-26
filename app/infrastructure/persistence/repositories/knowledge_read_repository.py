@@ -4,21 +4,21 @@ from app.infrastructure.persistence.repositories.policy_persistence_gateway impo
     PolicyPersistenceGateway,
 )
 from app.infrastructure.persistence.schema_health import translate_missing_kb_schema_errors
-from app.modules.knowledge.application.management_contracts import (
+from app.platform.knowledge.application.management_contracts import (
     KnowledgeManagementDocumentDetail,
     KnowledgeManagementDocumentPage,
     KnowledgeManagementOverviewResult,
     ListKnowledgeManagementDocumentsQuery,
 )
-from app.modules.knowledge.ports.management_read_port import KnowledgeManagementReadPort
-from app.modules.knowledge.ports.read_port import (
+from app.platform.knowledge.ports.management_read_port import KnowledgeManagementReadPort
+from app.platform.knowledge.ports.read_port import (
     KnowledgeDocument,
     KnowledgeQuery,
     KnowledgeQueryResult,
     KnowledgeReadPort,
 )
-from app.modules.knowledge.retrieval import KnowledgeRetrievalService
-from app.modules.knowledge.retrieval.contracts import QueryEmbeddingService
+from app.platform.knowledge.retrieval import KnowledgeRetrievalService
+from app.platform.knowledge.retrieval.contracts import QueryEmbeddingService
 
 
 class KnowledgeReadRepository(KnowledgeReadPort, KnowledgeManagementReadPort):

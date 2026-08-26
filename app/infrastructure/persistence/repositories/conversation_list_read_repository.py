@@ -4,7 +4,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.infrastructure.persistence.models.conversation import ConversationRecord
-from app.modules.conversation.ports.read_port import (
+from app.platform.conversation.ports.read_port import (
     ConversationListCursor,
     ConversationListReadPort,
     ConversationSummary,

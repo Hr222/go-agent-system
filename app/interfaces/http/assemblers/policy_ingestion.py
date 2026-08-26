@@ -4,10 +4,10 @@ from app.interfaces.http.schemas.policy_ingestion import (
     PolicyScanRequest,
     PolicyScanResponse,
 )
-from app.modules.ingestion.contracts import (
+from app.platform.ingestion.contracts import (
     PolicyScanRequest as IngestionScanRequest,
 )
-from app.modules.ingestion.contracts import (
+from app.platform.ingestion.contracts import (
     PolicyScanResponse as IngestionScanResponse,
 )
 

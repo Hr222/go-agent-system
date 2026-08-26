@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 
-from app.modules.ingestion.contracts import IntakeValidationResult, RegisteredFileInfo
-from app.modules.ingestion.domain import PolicyIntakePolicy
+from app.platform.ingestion.contracts import IntakeValidationResult, RegisteredFileInfo
+from app.platform.ingestion.domain import PolicyIntakePolicy
 
 
 class PolicyFileService:

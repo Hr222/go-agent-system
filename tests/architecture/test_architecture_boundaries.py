@@ -65,22 +65,22 @@ def _literal_route_paths(path: Path) -> set[str]:
 
 def test_ingestion_and_knowledge_do_not_depend_on_online_module() -> None:
     assert not any(
-        module.startswith("app.modules.online")
-        for module in _imported_modules(APP_ROOT / "modules" / "ingestion")
+        module.startswith("app.business.online")
+        for module in _imported_modules(APP_ROOT / "platform" / "ingestion")
     )
     assert not any(
-        module.startswith("app.modules.online")
-        for module in _imported_modules(APP_ROOT / "modules" / "knowledge")
+        module.startswith("app.business.online")
+        for module in _imported_modules(APP_ROOT / "platform" / "knowledge")
     )
 
 
 def test_online_domain_does_not_depend_on_external_adapters() -> None:
-    imported = _imported_modules(APP_ROOT / "modules" / "online" / "domain")
+    imported = _imported_modules(APP_ROOT / "business" / "online" / "domain")
     forbidden_prefixes = (
         "app.infrastructure",
         "app.interfaces",
-        "app.modules.knowledge",
-        "app.modules.online.contracts",
+        "app.platform.knowledge",
+        "app.business.online.contracts",
         "langchain",
         "langgraph",
     )
@@ -95,7 +95,7 @@ def test_http_schemas_do_not_reuse_ingestion_contracts() -> None:
     imported = _imported_modules(APP_ROOT / "interfaces" / "http" / "schemas")
 
     assert not any(
-        module.startswith("app.modules.ingestion.contracts")
+        module.startswith("app.platform.ingestion.contracts")
         for module in imported
     )
 
@@ -154,11 +154,11 @@ def test_all_domain_modules_do_not_depend_on_external_adapters() -> None:
         "langgraph",
     )
     domain_roots = (
-        APP_ROOT / "modules" / "online" / "domain",
-        APP_ROOT / "modules" / "knowledge" / "domain",
-        APP_ROOT / "modules" / "ingestion" / "domain",
-        APP_ROOT / "modules" / "agent" / "tender" / "domain",
-        APP_ROOT / "modules" / "conversation" / "domain",
+        APP_ROOT / "business" / "online" / "domain",
+        APP_ROOT / "platform" / "knowledge" / "domain",
+        APP_ROOT / "platform" / "ingestion" / "domain",
+        APP_ROOT / "business" / "agents" / "tender" / "domain",
+        APP_ROOT / "platform" / "conversation" / "domain",
     )
 
     for domain_root in domain_roots:
@@ -171,13 +171,13 @@ def test_all_domain_modules_do_not_depend_on_external_adapters() -> None:
 
 
 def test_conversation_domain_does_not_depend_on_llm_or_agent() -> None:
-    imported = _imported_modules(APP_ROOT / "modules" / "conversation" / "domain")
+    imported = _imported_modules(APP_ROOT / "platform" / "conversation" / "domain")
 
     forbidden_prefixes = (
         "app.infrastructure",
         "app.interfaces",
-        "app.modules.llm",
-        "app.modules.agent",
+        "app.platform.llm",
+        "app.platform.agent",
         "fastapi",
         "sqlalchemy",
         "langchain",
@@ -191,14 +191,14 @@ def test_conversation_domain_does_not_depend_on_llm_or_agent() -> None:
 
 
 def test_conversation_application_and_ports_do_not_depend_on_adapters() -> None:
-    imported = _imported_modules(APP_ROOT / "modules" / "conversation" / "application")
-    imported.update(_imported_modules(APP_ROOT / "modules" / "conversation" / "ports"))
+    imported = _imported_modules(APP_ROOT / "platform" / "conversation" / "application")
+    imported.update(_imported_modules(APP_ROOT / "platform" / "conversation" / "ports"))
 
     forbidden_prefixes = (
         "app.infrastructure",
         "app.interfaces",
-        "app.modules.llm",
-        "app.modules.agent",
+        "app.platform.llm",
+        "app.platform.agent",
         "fastapi",
         "sqlalchemy",
         "langchain",
@@ -213,24 +213,24 @@ def test_conversation_application_and_ports_do_not_depend_on_adapters() -> None:
 
 def test_conversation_context_builder_is_independent_from_llm_and_persistence() -> None:
     imported = _imported_modules(
-        APP_ROOT / "modules" / "conversation" / "domain" / "model_context.py"
+        APP_ROOT / "platform" / "conversation" / "domain" / "model_context.py"
     )
     imported.update(
         _imported_modules(
-            APP_ROOT / "modules" / "conversation" / "application" / "context_builder.py"
+            APP_ROOT / "platform" / "conversation" / "application" / "context_builder.py"
         )
     )
     imported.update(
         _imported_modules(
-            APP_ROOT / "modules" / "conversation" / "ports" / "context_cost_port.py"
+            APP_ROOT / "platform" / "conversation" / "ports" / "context_cost_port.py"
         )
     )
 
     forbidden_prefixes = (
         "app.infrastructure",
         "app.interfaces",
-        "app.modules.llm",
-        "app.modules.agent",
+        "app.platform.llm",
+        "app.platform.agent",
         "fastapi",
         "sqlalchemy",
         "langchain",
@@ -244,14 +244,14 @@ def test_conversation_context_builder_is_independent_from_llm_and_persistence() 
 
 
 def test_dialogue_runtime_depends_only_on_controlled_interaction_contracts() -> None:
-    imported = _imported_modules(APP_ROOT / "modules" / "dialogue")
+    imported = _imported_modules(APP_ROOT / "platform" / "dialogue")
 
     forbidden_prefixes = (
         "app.infrastructure",
         "app.interfaces",
-        "app.modules.agent",
-        "app.modules.interaction.ports.agent_runtime",
-        "app.modules.task",
+        "app.platform.agent",
+        "app.platform.interaction.ports.agent_runtime",
+        "app.platform.task",
         "fastapi",
         "sqlalchemy",
         "langchain",
@@ -266,17 +266,17 @@ def test_dialogue_runtime_depends_only_on_controlled_interaction_contracts() -> 
 
 def test_platform_capability_catalog_is_independent_of_dialogue_and_agent_runtime() -> None:
     catalog_roots = (
-        APP_ROOT / "modules" / "interaction" / "domain" / "capability.py",
-        APP_ROOT / "modules" / "interaction" / "ports" / "capability_catalog.py",
-        APP_ROOT / "modules" / "interaction" / "application" / "catalog.py",
+        APP_ROOT / "platform" / "interaction" / "domain" / "capability.py",
+        APP_ROOT / "platform" / "interaction" / "ports" / "capability_catalog.py",
+        APP_ROOT / "platform" / "interaction" / "application" / "catalog.py",
     )
     imported: set[str] = set()
     for catalog_root in catalog_roots:
         imported.update(_imported_modules(catalog_root))
 
     forbidden_prefixes = (
-        "app.modules.dialogue",
-        "app.modules.agent.runtime",
+        "app.platform.dialogue",
+        "app.platform.agent.runtime",
     )
     assert not any(
         module.startswith(forbidden)
@@ -318,7 +318,8 @@ def test_conversation_history_repository_is_read_only() -> None:
 
 
 def test_application_modules_do_not_depend_on_infrastructure() -> None:
-    imported = _imported_modules(APP_ROOT / "modules")
+    imported = _imported_modules(APP_ROOT / "platform")
+    imported.update(_imported_modules(APP_ROOT / "business"))
 
     assert not any(module.startswith("app.infrastructure") for module in imported)
 
@@ -326,10 +327,10 @@ def test_application_modules_do_not_depend_on_infrastructure() -> None:
 def test_module_ports_do_not_depend_on_infrastructure() -> None:
     imported: set[str] = set()
     for ports_root in (
-        APP_ROOT / "modules" / "online" / "ports.py",
-        APP_ROOT / "modules" / "ingestion" / "ports",
-        APP_ROOT / "modules" / "knowledge" / "ports",
-        APP_ROOT / "modules" / "agent" / "tender" / "ports",
+        APP_ROOT / "business" / "online" / "ports.py",
+        APP_ROOT / "platform" / "ingestion" / "ports",
+        APP_ROOT / "platform" / "knowledge" / "ports",
+        APP_ROOT / "business" / "agents" / "tender" / "ports",
     ):
         if ports_root.is_dir():
             imported.update(_imported_modules(ports_root))
@@ -350,18 +351,18 @@ def test_module_ports_do_not_depend_on_infrastructure() -> None:
 def test_http_ingestion_routes_use_application_use_cases() -> None:
     route_imports = _imported_modules(APP_ROOT / "interfaces" / "http" / "routes")
 
-    assert "app.modules.ingestion.application.ingestion_use_case" in route_imports
+    assert "app.platform.ingestion.application.ingestion_use_case" in route_imports
     assert "app.interfaces.http.assemblers.policy_pipeline" in route_imports
     assert "app.interfaces.http.assemblers.policy_ingestion" in route_imports
     assert "app.interfaces.http.assemblers.publication" in route_imports
     assert not any(
-        module.startswith("app.modules.ingestion.pipeline")
+        module.startswith("app.platform.ingestion.pipeline")
         for module in route_imports
     )
 
 
 def test_tender_application_and_ports_do_not_depend_on_protocol_or_adapters() -> None:
-    tender_root = APP_ROOT / "modules" / "agent" / "tender"
+    tender_root = APP_ROOT / "business" / "agents" / "tender"
     imported = _imported_modules(tender_root)
     forbidden_prefixes = (
         "fastapi",
@@ -382,18 +383,20 @@ def test_tender_mcp_adapter_only_bridges_to_tender_application() -> None:
     adapter_imports = _imported_modules(APP_ROOT / "interfaces" / "agent" / "tender_mcp.py")
 
     assert "mcp.server.fastmcp" in adapter_imports
-    assert "app.modules.agent.tender.application.service" in adapter_imports
+    assert "app.business.agents.tender.application.service" in adapter_imports
     assert not any(module.startswith("app.infrastructure") for module in adapter_imports)
-    assert not any(module.startswith("app.modules.knowledge") for module in adapter_imports)
+    assert not any(module.startswith("app.platform.knowledge") for module in adapter_imports)
 
 
 def test_targeted_architecture_packages_exist_and_old_packages_are_gone() -> None:
     expected_paths = (
-        APP_ROOT / "modules" / "ingestion" / "domain",
-        APP_ROOT / "modules" / "ingestion" / "ports",
-        APP_ROOT / "modules" / "knowledge" / "domain",
-        APP_ROOT / "modules" / "knowledge" / "ports",
-        APP_ROOT / "modules" / "online" / "domain" / "checklist",
+        APP_ROOT / "platform" / "ingestion" / "domain",
+        APP_ROOT / "platform" / "ingestion" / "ports",
+        APP_ROOT / "platform" / "knowledge" / "domain",
+        APP_ROOT / "platform" / "knowledge" / "ports",
+        APP_ROOT / "business" / "online" / "domain" / "checklist",
+        APP_ROOT / "business" / "agents" / "tender" / "application",
+        APP_ROOT / "platform" / "agent" / "runtime",
         APP_ROOT / "interfaces" / "agent" / "contracts.py",
         APP_ROOT / "infrastructure" / "filesystem",
         APP_ROOT / "infrastructure" / "ocr",
@@ -404,6 +407,9 @@ def test_targeted_architecture_packages_exist_and_old_packages_are_gone() -> Non
         APP_ROOT / "composition" / "runtime.py",
     )
     assert all(path.exists() for path in expected_paths)
+
+    legacy_modules_root = APP_ROOT / "modules"
+    assert not legacy_modules_root.exists() or not any(legacy_modules_root.rglob("*.py"))
 
     old_paths = (
         APP_ROOT / "api",

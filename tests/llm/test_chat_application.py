@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from app.modules.llm.application.chat import ChatApplication, ChatCommand
-from app.modules.llm.application.streaming_chat import StreamingChatApplication
-from app.modules.llm.contracts import ChatLlmResult, ChatLlmStreamChunk
+from app.platform.llm.application.chat import ChatApplication, ChatCommand
+from app.platform.llm.application.streaming_chat import StreamingChatApplication
+from app.platform.llm.contracts import ChatLlmResult, ChatLlmStreamChunk
 
 
 class FakeChatLlm:

@@ -2,13 +2,13 @@ from fastapi.testclient import TestClient
 
 from app.interfaces.http.dependencies import get_knowledge_management_service
 from app.main import create_app
-from app.modules.knowledge.application.management_contracts import (
+from app.platform.knowledge.application.management_contracts import (
     KnowledgeManagementDocumentDetail,
     KnowledgeManagementDocumentPage,
     KnowledgeManagementOverviewResult,
     ListKnowledgeManagementDocumentsQuery,
 )
-from app.modules.knowledge.application.management_service import KnowledgeManagementService
+from app.platform.knowledge.application.management_service import KnowledgeManagementService
 
 
 class FakeManagementReadPort:

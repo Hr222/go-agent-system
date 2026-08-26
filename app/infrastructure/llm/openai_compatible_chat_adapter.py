@@ -12,7 +12,7 @@ from app.infrastructure.llm.request_governance import (
     shared_request_governor,
 )
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
-from app.modules.llm.contracts import (
+from app.platform.llm.contracts import (
     ChatLlmMessage,
     ChatLlmMessageRole,
     ChatLlmPort,

@@ -4,7 +4,7 @@ from app.interfaces.http.schemas.publication import (
     KnowledgePublicationRequest,
     KnowledgePublicationResponse,
 )
-from app.modules.knowledge.application.publication_service import KnowledgePublicationResult
+from app.platform.knowledge.application.publication_service import KnowledgePublicationResult
 
 
 def publication_arguments(request: KnowledgePublicationRequest) -> tuple[int, int]:

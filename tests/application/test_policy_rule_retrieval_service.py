@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+from app.business.online.application.rule_retrieval import (
+    PolicyRuleRetrievalService,
+    RuleRetrievalRequest,
+)
+from app.business.online.domain.checklist import (
+    COURT_EVALUATION_MATERIALS_SCENARIO,
+    ChecklistScenarioRegistry,
+)
 from app.interfaces.http.schemas import (
     RetrievalDebugInfo,
     RetrievalFilters,
     RetrievalHit,
     RetrievalSearchResponse,
     RetrievalStageDebug,
-)
-from app.modules.online.application.rule_retrieval import (
-    PolicyRuleRetrievalService,
-    RuleRetrievalRequest,
-)
-from app.modules.online.domain.checklist import (
-    COURT_EVALUATION_MATERIALS_SCENARIO,
-    ChecklistScenarioRegistry,
 )
 
 RULE_CHUNK_TEXT = (

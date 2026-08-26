@@ -6,15 +6,15 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import pytest
 from docx import Document
 
+from app.business.agents.tender.contracts import (
+    TenderAnalysis,
+    TenderOutputPlan,
+)
+from app.business.agents.tender.errors import TenderDocumentParseError, TenderInputError
 from app.infrastructure.documents.tender_docx import (
     TenderDocxReader,
     TenderDocxSkeletonRenderer,
 )
-from app.modules.agent.tender.contracts import (
-    TenderAnalysis,
-    TenderOutputPlan,
-)
-from app.modules.agent.tender.errors import TenderDocumentParseError, TenderInputError
 
 
 def _source_docx() -> bytes:

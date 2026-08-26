@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.interfaces.http.assemblers.rag import (
     ask_command,
     ask_response,
@@ -13,7 +14,6 @@ from app.interfaces.http.schemas import (
     RetrievalSearchRequest,
     RetrievalSearchResponse,
 )
-from app.modules.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.shared.exceptions import (
     KnowledgeBaseSchemaUnavailableError,
     ServiceNotConfiguredError,

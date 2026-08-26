@@ -11,13 +11,13 @@ from app.interfaces.http.dependencies import (
 )
 from app.interfaces.http.security import get_request_principal
 from app.main import create_app
-from app.modules.conversation.application import (
+from app.platform.conversation.application import (
     ConversationAccessService,
     ConversationTopicSummaryUpdateService,
     ConversationWriteService,
 )
-from app.modules.conversation.domain import Conversation, Message, MessageRole
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.conversation.domain import Conversation, Message, MessageRole
+from app.platform.security.domain.principal import RequestPrincipal
 
 
 @dataclass

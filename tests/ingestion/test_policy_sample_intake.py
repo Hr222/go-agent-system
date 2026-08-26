@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.modules.ingestion.contracts import PolicyScanRequest
-from app.modules.ingestion.domain import PolicyIntakePolicy
-from app.modules.ingestion.pipeline.scan_service import PolicyIngestionService
-from app.modules.ingestion.pipeline.steps.policy_parser import PolicyParserService
+from app.platform.ingestion.contracts import PolicyScanRequest
+from app.platform.ingestion.domain import PolicyIntakePolicy
+from app.platform.ingestion.pipeline.scan_service import PolicyIngestionService
+from app.platform.ingestion.pipeline.steps.policy_parser import PolicyParserService
 
 
 def test_policy_intake_policy_allows_doc_and_image_inputs() -> None:

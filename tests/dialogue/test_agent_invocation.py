@@ -3,21 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from uuid import uuid4
 
-from app.modules.conversation.application import ConversationAccessService
-from app.modules.conversation.domain import Conversation, ConversationEvent
-from app.modules.conversation.errors import ConversationAccessDeniedError
-from app.modules.dialogue.application import (
+from app.platform.conversation.application import ConversationAccessService
+from app.platform.conversation.domain import Conversation, ConversationEvent
+from app.platform.conversation.errors import ConversationAccessDeniedError
+from app.platform.dialogue.application import (
     AgentResultProjector,
     DialogueAgentInvocationCommand,
     DialogueAgentInvocationService,
 )
-from app.modules.interaction.application.agent_dispatch import (
+from app.platform.interaction.application.agent_dispatch import (
     AgentCallDispatchCommand,
     AgentCallDispatchResult,
 )
-from app.modules.interaction.domain.agent_call import AgentCallResult, StructuredAgentCall
-from app.modules.interaction.domain.confirmation import ApprovedCapabilityDispatch
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.interaction.domain.agent_call import AgentCallResult, StructuredAgentCall
+from app.platform.interaction.domain.confirmation import ApprovedCapabilityDispatch
+from app.platform.security.domain.principal import RequestPrincipal
 
 
 @dataclass

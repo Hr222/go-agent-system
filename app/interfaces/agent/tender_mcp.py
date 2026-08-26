@@ -15,13 +15,13 @@ from mcp.types import (
     TextContent,
 )
 
-from app.modules.agent.tender.application.service import TenderApplication
-from app.modules.agent.tender.contracts import (
+from app.business.agents.tender.application.service import TenderApplication
+from app.business.agents.tender.contracts import (
     TenderExtractFormatSectionCommand,
     TenderGenerateSkeletonCommand,
     TenderVerifyExtractionBoundaryCommand,
 )
-from app.modules.agent.tender.errors import (
+from app.business.agents.tender.errors import (
     TenderAnalysisError,
     TenderDocumentParseError,
     TenderInputError,

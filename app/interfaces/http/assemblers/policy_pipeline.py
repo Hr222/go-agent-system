@@ -2,10 +2,10 @@
 
 from app.interfaces.http.schemas.policy_pipeline_document import PolicyPipelineRequest
 from app.interfaces.http.schemas.policy_pipeline_response import PolicyPipelineResponse
-from app.modules.ingestion.contracts import (
+from app.platform.ingestion.contracts import (
     PolicyPipelineRequest as IngestionPipelineRequest,
 )
-from app.modules.ingestion.contracts import (
+from app.platform.ingestion.contracts import (
     PolicyPipelineResponse as IngestionPipelineResponse,
 )
 

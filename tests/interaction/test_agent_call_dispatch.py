@@ -8,16 +8,16 @@ from pydantic import BaseModel
 
 from app.composition.interaction import build_agent_call_dispatcher
 from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
-from app.modules.attachment import AttachmentAccessContext, AttachmentStoragePort
-from app.modules.interaction.application.agent_call_policy import AgentCallPolicyValidator
-from app.modules.interaction.application.agent_dispatch import (
+from app.platform.attachment import AttachmentAccessContext, AttachmentStoragePort
+from app.platform.interaction.application.agent_call_policy import AgentCallPolicyValidator
+from app.platform.interaction.application.agent_dispatch import (
     AgentCallDispatchCommand,
     AgentCallDispatcher,
 )
-from app.modules.interaction.domain.agent_call import StructuredAgentCall
-from app.modules.interaction.domain.capability import PlatformCapability
-from app.modules.interaction.domain.confirmation import ApprovedCapabilityDispatch
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.interaction.domain.agent_call import StructuredAgentCall
+from app.platform.interaction.domain.capability import PlatformCapability
+from app.platform.interaction.domain.confirmation import ApprovedCapabilityDispatch
+from app.platform.security.domain.principal import RequestPrincipal
 
 
 def _capability(

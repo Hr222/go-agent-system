@@ -18,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from docx import Document
 
 from app.infrastructure.documents.tender_docx import TenderDocxReader, TenderDocxSkeletonRenderer
-from app.modules.agent.tender.application.service import TenderApplication
-from app.modules.agent.tender.contracts import (
+from app.business.agents.tender.application.service import TenderApplication
+from app.business.agents.tender.contracts import (
     TenderAnalysis,
     TenderAnalysisBudget,
     TenderChunkAnalysis,
@@ -28,7 +28,7 @@ from app.modules.agent.tender.contracts import (
     TenderOutputPlan,
     TenderSourceEvidence,
 )
-from app.modules.llm.contracts import StructuredLlmResult
+from app.platform.llm.contracts import StructuredLlmResult
 
 
 def main() -> None:

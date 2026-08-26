@@ -5,6 +5,24 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.business.agents.tender.application.service import TenderApplication
+from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
+from app.business.online.application.data_acquisition import (
+    ChecklistDataProviderRegistry,
+    InlineChecklistDataProvider,
+    PolicyDataAcquisitionService,
+)
+from app.business.online.application.decision import (
+    RuleDrivenChecklistDecisionService,
+)
+from app.business.online.application.policy_decision import PolicyDecisionApplicationService
+from app.business.online.application.rag_facade import RagApplicationFacade
+from app.business.online.application.rule_retrieval import PolicyRuleRetrievalService
+from app.business.online.domain.checklist import (
+    COURT_EVALUATION_MATERIALS_SCENARIO,
+    ChecklistScenarioRegistry,
+    RuleDrivenChecklistPolicy,
+)
 from app.composition.agent import build_tender_application, build_tender_structured_llm
 from app.composition.attachment import build_attachment_storage
 from app.composition.conversation import (
@@ -77,58 +95,40 @@ from app.infrastructure.persistence.repositories.policy_persistence_gateway impo
 )
 from app.infrastructure.persistence.session import SessionLocal
 from app.interfaces.agent import FunctionCallingAdapter
-from app.modules.agent.runtime import AgentRuntime
-from app.modules.agent.tender.application.service import TenderApplication
-from app.modules.conversation.application import (
+from app.platform.agent.runtime import AgentRuntime
+from app.platform.conversation.application import (
     ConversationAccessService,
     ConversationHistoryReadService,
     ConversationListReadService,
     ConversationManagementService,
     ConversationTopicSummaryUpdateService,
 )
-from app.modules.dialogue.application import (
+from app.platform.dialogue.application import (
     AgentResultProjector,
     DialogueAgentContinuationService,
     DialogueAgentInvocationService,
     StreamingConversationRuntime,
 )
-from app.modules.ingestion.application.ingestion_use_case import IngestionUseCase
-from app.modules.ingestion.application.retry_ingestion import RetryIngestionUseCase
-from app.modules.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
-from app.modules.ingestion.pipeline import PolicyIngestionService
-from app.modules.interaction.application.agent_dispatch import AgentCallDispatcher
-from app.modules.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
-from app.modules.interaction.application.catalog import PlatformCapabilityCatalog
-from app.modules.interaction.application.chat_stream import InteractionChatStreamApplication
-from app.modules.interaction.application.confirmation import ExplicitCapabilityConfirmation
-from app.modules.interaction.application.gateway import IntentInteractionGateway
-from app.modules.interaction.application.intent_recognition import StructuredIntentRecognition
-from app.modules.interaction.ports.capability_catalog import CapabilityCatalogPort
-from app.modules.interaction.ports.proposal_store import PendingProposalStorePort
-from app.modules.knowledge import KnowledgeBaseQueryCapability, KnowledgePublicationService
-from app.modules.knowledge.application.knowledge_base import KnowledgeBaseService
-from app.modules.knowledge.application.management_service import KnowledgeManagementService
-from app.modules.knowledge.application.write_capability import KnowledgeBaseWriteCapability
-from app.modules.llm.application.chat import ChatApplication
-from app.modules.llm.application.streaming_chat import StreamingChatApplication
-from app.modules.llm.contracts import ChatLlmPort, StreamingChatLlmPort, StructuredLlmPort
-from app.modules.online.application.ask_knowledge import AskKnowledgeUseCase
-from app.modules.online.application.data_acquisition import (
-    ChecklistDataProviderRegistry,
-    InlineChecklistDataProvider,
-    PolicyDataAcquisitionService,
-)
-from app.modules.online.application.decision import (
-    RuleDrivenChecklistDecisionService,
-)
-from app.modules.online.application.policy_decision import PolicyDecisionApplicationService
-from app.modules.online.application.rag_facade import RagApplicationFacade
-from app.modules.online.application.rule_retrieval import PolicyRuleRetrievalService
-from app.modules.online.domain.checklist import (
-    COURT_EVALUATION_MATERIALS_SCENARIO,
-    ChecklistScenarioRegistry,
-    RuleDrivenChecklistPolicy,
-)
+from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
+from app.platform.ingestion.application.retry_ingestion import RetryIngestionUseCase
+from app.platform.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
+from app.platform.ingestion.pipeline import PolicyIngestionService
+from app.platform.interaction.application.agent_dispatch import AgentCallDispatcher
+from app.platform.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
+from app.platform.interaction.application.catalog import PlatformCapabilityCatalog
+from app.platform.interaction.application.chat_stream import InteractionChatStreamApplication
+from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
+from app.platform.interaction.application.gateway import IntentInteractionGateway
+from app.platform.interaction.application.intent_recognition import StructuredIntentRecognition
+from app.platform.interaction.ports.capability_catalog import CapabilityCatalogPort
+from app.platform.interaction.ports.proposal_store import PendingProposalStorePort
+from app.platform.knowledge import KnowledgeBaseQueryCapability, KnowledgePublicationService
+from app.platform.knowledge.application.knowledge_base import KnowledgeBaseService
+from app.platform.knowledge.application.management_service import KnowledgeManagementService
+from app.platform.knowledge.application.write_capability import KnowledgeBaseWriteCapability
+from app.platform.llm.application.chat import ChatApplication
+from app.platform.llm.application.streaming_chat import StreamingChatApplication
+from app.platform.llm.contracts import ChatLlmPort, StreamingChatLlmPort, StructuredLlmPort
 from app.shared.config import settings
 
 

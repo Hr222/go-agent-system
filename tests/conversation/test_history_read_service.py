@@ -4,9 +4,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.modules.conversation.application import ConversationHistoryReadService
-from app.modules.conversation.domain import Conversation, Message, MessageRole
-from app.modules.conversation.ports import (
+from app.platform.conversation.application import ConversationHistoryReadService
+from app.platform.conversation.domain import Conversation, Message, MessageRole
+from app.platform.conversation.ports import (
     DEFAULT_HISTORY_PAGE_SIZE,
     ConversationHistoryPage,
 )

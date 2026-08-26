@@ -14,7 +14,7 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 from lxml import etree
 
-from app.modules.agent.tender.contracts import (
+from app.business.agents.tender.contracts import (
     GeneratedTenderArtifact,
     TenderAnalysis,
     TenderDocument,
@@ -22,7 +22,7 @@ from app.modules.agent.tender.contracts import (
     TenderDocumentResourceStats,
     TenderOutputPlan,
 )
-from app.modules.agent.tender.errors import (
+from app.business.agents.tender.errors import (
     TenderDocumentParseError,
     TenderInputError,
     TenderRenderError,

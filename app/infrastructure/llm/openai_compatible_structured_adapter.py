@@ -19,7 +19,7 @@ from app.infrastructure.llm.structured_output_normalization import (
     raw_response_from_provider_response,
 )
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
-from app.modules.llm.contracts import StructuredLlmRequest
+from app.platform.llm.contracts import StructuredLlmRequest
 from app.shared.config import LlmProviderName, Settings, settings
 from app.shared.exceptions import ServiceNotConfiguredError
 

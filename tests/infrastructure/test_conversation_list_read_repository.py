@@ -10,7 +10,7 @@ from app.composition.conversation import (
     build_conversation_write_service,
 )
 from app.infrastructure.persistence.models.conversation import ConversationRecord
-from app.modules.conversation.domain import Conversation, MessageRole
+from app.platform.conversation.domain import Conversation, MessageRole
 from tests.support.db_test_utils import SchemaHarness
 
 CONVERSATION_ONE = UUID("00000000-0000-0000-0000-000000000211")

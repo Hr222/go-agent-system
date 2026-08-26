@@ -2,26 +2,26 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from app.modules.dialogue.application import (
+from app.platform.dialogue.application import (
     DialogueAgentContinuationResult,
     DialogueAgentInvocationResult,
     InMemoryPendingAgentInvocationStore,
 )
-from app.modules.interaction.application.chat_stream import (
+from app.platform.interaction.application.chat_stream import (
     InteractionChatStreamApplication,
     InteractionChatStreamCommand,
 )
-from app.modules.interaction.application.gateway import (
+from app.platform.interaction.application.gateway import (
     DialogueAgentConfirmationResult,
     GatewayConfirmationCommand,
     GatewayResult,
 )
-from app.modules.interaction.domain.agent_call import StructuredAgentCall
-from app.modules.interaction.domain.confirmation import (
+from app.platform.interaction.domain.agent_call import StructuredAgentCall
+from app.platform.interaction.domain.confirmation import (
     ApprovedCapabilityDispatch,
     ConfirmationProposal,
 )
-from app.modules.security.domain.principal import RequestPrincipal
+from app.platform.security.domain.principal import RequestPrincipal
 
 
 class PendingAgentGateway:

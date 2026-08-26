@@ -7,7 +7,7 @@ from typing import Mapping, Protocol
 
 from pydantic import BaseModel
 
-from app.modules.llm.contracts import (
+from app.platform.llm.contracts import (
     StructuredLlmPort,
     StructuredLlmRequest,
     StructuredLlmResult,

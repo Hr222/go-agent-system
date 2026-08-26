@@ -10,9 +10,9 @@ from app.infrastructure.persistence.models.conversation import (
     ConversationEventRecord,
     ConversationRecord,
 )
-from app.modules.conversation.domain import ConversationEvent
-from app.modules.conversation.errors import ConversationNotFoundError
-from app.modules.conversation.ports.event_port import (
+from app.platform.conversation.domain import ConversationEvent
+from app.platform.conversation.errors import ConversationNotFoundError
+from app.platform.conversation.ports.event_port import (
     ConversationEventReadPort,
     ConversationEventWritePort,
 )

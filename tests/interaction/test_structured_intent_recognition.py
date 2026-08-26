@@ -7,16 +7,16 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from app.composition.root import ApplicationContainer
-from app.modules.interaction.application.intent_recognition import (
+from app.platform.interaction.application.intent_recognition import (
     IntentRecognitionCommand,
     StructuredIntentRecognition,
 )
-from app.modules.interaction.domain.candidate import (
+from app.platform.interaction.domain.candidate import (
     CapabilityCandidate,
     CapabilityCandidateRetrievalResult,
 )
-from app.modules.interaction.domain.capability import PlatformCapability
-from app.modules.llm.contracts import StructuredLlmResult
+from app.platform.interaction.domain.capability import PlatformCapability
+from app.platform.llm.contracts import StructuredLlmResult
 
 
 def _capability(
@@ -323,7 +323,7 @@ def test_container_accepts_explicit_intent_dependencies() -> None:
 def test_intent_recognition_does_not_import_execution_or_persistence_layers() -> None:
     project_root = Path(__file__).resolve().parents[2]
     source_path = (
-        project_root / "app" / "modules" / "interaction" / "application" / "intent_recognition.py"
+        project_root / "app" / "platform" / "interaction" / "application" / "intent_recognition.py"
     )
     imported_modules: set[str] = set()
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -334,8 +334,8 @@ def test_intent_recognition_does_not_import_execution_or_persistence_layers() ->
             imported_modules.add(node.module)
 
     forbidden = (
-        "app.modules.agent",
-        "app.modules.online",
+        "app.platform.agent",
+        "app.business.online",
         "app.infrastructure.persistence",
     )
     assert not any(module.startswith(prefix) for module in imported_modules for prefix in forbidden)

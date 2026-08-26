@@ -16,12 +16,12 @@ from app.infrastructure.persistence.models.conversation import (
     ConversationMessageRecord,
     ConversationRecord,
 )
-from app.modules.conversation.domain import Conversation, Message, MessageRole
-from app.modules.conversation.errors import (
+from app.platform.conversation.domain import Conversation, Message, MessageRole
+from app.platform.conversation.errors import (
     ConversationNotFoundError,
     ConversationPinLimitExceededError,
 )
-from app.modules.conversation.ports.write_port import (
+from app.platform.conversation.ports.write_port import (
     DEFAULT_PINNED_CONVERSATION_LIMIT,
     ConversationWritePort,
 )

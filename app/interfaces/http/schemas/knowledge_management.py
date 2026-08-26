@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.modules.knowledge.application.management_contracts import (
+from app.platform.knowledge.application.management_contracts import (
     KnowledgeManagementStatus,
 )
 

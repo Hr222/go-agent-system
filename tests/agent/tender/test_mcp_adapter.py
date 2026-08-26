@@ -8,6 +8,17 @@ from io import BytesIO
 from docx import Document
 from mcp.types import CallToolResult, EmbeddedResource
 
+from app.business.agents.tender.application.service import TenderApplication
+from app.business.agents.tender.contracts import (
+    GeneratedTenderArtifact,
+    TenderAnalysis,
+    TenderBoundaryContextBlock,
+    TenderExtractFormatSectionResult,
+    TenderGenerateSkeletonResult,
+    TenderOutputPlan,
+    TenderSourceEvidence,
+    TenderVerifyExtractionBoundaryResult,
+)
 from app.infrastructure.documents.tender_docx import (
     TenderDocxReader,
     TenderDocxSkeletonRenderer,
@@ -18,18 +29,7 @@ from app.interfaces.agent.tender_mcp import (
     TENDER_MCP_VERIFY_TOOL_NAME,
     create_tender_mcp_server,
 )
-from app.modules.agent.tender.application.service import TenderApplication
-from app.modules.agent.tender.contracts import (
-    GeneratedTenderArtifact,
-    TenderAnalysis,
-    TenderBoundaryContextBlock,
-    TenderExtractFormatSectionResult,
-    TenderGenerateSkeletonResult,
-    TenderOutputPlan,
-    TenderSourceEvidence,
-    TenderVerifyExtractionBoundaryResult,
-)
-from app.modules.llm.contracts import StructuredLlmResult
+from app.platform.llm.contracts import StructuredLlmResult
 
 
 @dataclass

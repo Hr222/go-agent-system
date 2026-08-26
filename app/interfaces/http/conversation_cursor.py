@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from uuid import UUID
 
-from app.modules.conversation.ports import ConversationListCursor
+from app.platform.conversation.ports import ConversationListCursor
 
 
 class InvalidConversationCursor(ValueError):

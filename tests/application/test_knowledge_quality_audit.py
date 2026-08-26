@@ -1,5 +1,5 @@
-from app.modules.knowledge.application.quality_audit import KnowledgeQualityAuditService
-from app.modules.knowledge.ports.quality_audit import (
+from app.platform.knowledge.application.quality_audit import KnowledgeQualityAuditService
+from app.platform.knowledge.ports.quality_audit import (
     KnowledgeAuditIssue,
     KnowledgeQualityAuditReport,
 )

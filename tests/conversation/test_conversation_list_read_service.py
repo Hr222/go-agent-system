@@ -5,8 +5,8 @@ from uuid import UUID
 
 import pytest
 
-from app.modules.conversation.application import ConversationListReadService
-from app.modules.conversation.ports import (
+from app.platform.conversation.application import ConversationListReadService
+from app.platform.conversation.ports import (
     ConversationListCursor,
     ConversationSummary,
     ConversationSummaryPage,

@@ -3,12 +3,12 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.modules.agent.tender.application.capabilities import (
+from app.business.agents.tender.application.capabilities import (
     V1_GENERATE_SKELETON_CAPABILITY,
     V2_FILL_CONTENT_CAPABILITY_NAME,
     TenderCapabilityRegistry,
 )
-from app.modules.agent.tender.contracts import (
+from app.business.agents.tender.contracts import (
     TenderAnalysis,
     TenderOutputPlan,
     TenderRequirement,

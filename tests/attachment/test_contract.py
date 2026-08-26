@@ -8,13 +8,13 @@ import pytest
 from fastapi import UploadFile
 
 from app.infrastructure.filesystem.upload_service import PolicyUploadService
-from app.modules.attachment import (
+from app.platform.attachment import (
     AttachmentAccessContext,
     AttachmentReadPort,
     AttachmentReadResult,
     AttachmentRef,
 )
-from app.modules.ingestion.ports import StagedUpload, UploadStoragePort
+from app.platform.ingestion.ports import StagedUpload, UploadStoragePort
 
 _SHA256 = "a" * 64
 
