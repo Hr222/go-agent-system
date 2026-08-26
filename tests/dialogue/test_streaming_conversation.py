@@ -10,7 +10,22 @@ from openai import APITimeoutError
 
 from app.infrastructure.llm.langchain_glm_chat_adapter import LangChainGlmChatLlm
 from app.infrastructure.llm.transient_retry import LlmTransientRetryPolicy
-from app.platform.conversation.domain import Conversation, Message, MessageRole
+from app.platform.conversation.application import (
+    CharacterCountContextMessageCostEstimator,
+    ConversationContextBuilder,
+)
+from app.platform.conversation.domain import (
+    ContextBudget,
+    ContextPolicy,
+    Conversation,
+    Message,
+    MessageRole,
+)
+from app.platform.conversation.errors import (
+    ContextBudgetExceededError,
+    ConversationAccessDeniedError,
+)
+from app.platform.conversation.ports import ConversationHistoryPage
 from app.platform.dialogue.application import (
     StreamingConversationCommand,
     StreamingConversationRuntime,
@@ -35,8 +50,14 @@ def _message(
 
 
 class FakeConversationAccess:
-    def __init__(self, conversation: Conversation) -> None:
+    def __init__(
+        self,
+        conversation: Conversation,
+        *,
+        resolve_error: BaseException | None = None,
+    ) -> None:
         self.conversation = conversation
+        self.resolve_error = resolve_error
         self.created = []
         self.resolved = []
 
@@ -46,6 +67,8 @@ class FakeConversationAccess:
 
     def resolve(self, query):  # noqa: ANN001
         self.resolved.append(query)
+        if self.resolve_error is not None:
+            raise self.resolve_error
         return self.conversation
 
 
@@ -67,6 +90,45 @@ class FakeConversationWriter:
         )
         self.messages.append(message)
         return message
+
+
+class FakeConversationReader:
+    def __init__(
+        self,
+        writer: FakeConversationWriter,
+        *,
+        error: BaseException | None = None,
+    ) -> None:
+        self.writer = writer
+        self.error = error
+        self.calls: list[tuple[int, int | None]] = []
+
+    def read_history(
+        self,
+        *,
+        conversation_id: UUID,
+        limit: int,
+        after_sequence: int | None,
+    ) -> ConversationHistoryPage:
+        self.calls.append((limit, after_sequence))
+        if self.error is not None:
+            raise self.error
+        if conversation_id != self.writer.conversation.id:
+            raise RuntimeError("会话不存在")
+
+        records = [
+            message
+            for message in self.writer.messages
+            if after_sequence is None or message.sequence > after_sequence
+        ]
+        page_messages = tuple(records[:limit])
+        has_more = len(records) > limit
+        return ConversationHistoryPage(
+            conversation=self.writer.conversation,
+            messages=page_messages,
+            has_more=has_more,
+            next_after_sequence=page_messages[-1].sequence if has_more else None,
+        )
 
 
 class FakeStream:
@@ -131,23 +193,40 @@ class RetryBeforeActivityChatModel:
         return generate()
 
 
-def _runtime(*, chunks, messages=None, error=None, fail_assistant=False):  # noqa: ANN001
+def _runtime(
+    *,
+    chunks,
+    messages=None,
+    error=None,
+    fail_assistant=False,
+    reader_error=None,
+    resolve_error=None,
+    context_policy=ContextPolicy(max_messages=20),
+    context_budget=ContextBudget(max_cost=12_000),
+):  # noqa: ANN001
     conversation_id = messages[0].conversation_id if messages else uuid4()
     conversation = Conversation(id=conversation_id, owner_subject="user-1")
-    access = FakeConversationAccess(conversation)
+    access = FakeConversationAccess(conversation, resolve_error=resolve_error)
     writer = FakeConversationWriter(
         conversation,
         messages,
         fail_assistant=fail_assistant,
     )
+    reader = FakeConversationReader(writer, error=reader_error)
     model_stream = FakeStream(chunks, error=error)
     llm = FakeStreamingLlm(model_stream)
     runtime = StreamingConversationRuntime(
         conversation_access=access,  # type: ignore[arg-type]
         conversation_writer=writer,  # type: ignore[arg-type]
+        conversation_reader=reader,  # type: ignore[arg-type]
+        context_builder=ConversationContextBuilder(
+            CharacterCountContextMessageCostEstimator()
+        ),
         llm=llm,  # type: ignore[arg-type]
+        context_policy=context_policy,
+        context_budget=context_budget,
     )
-    return runtime, access, writer, llm, model_stream
+    return runtime, access, writer, reader, llm, model_stream
 
 
 def _command(conversation_id: UUID | None = None) -> StreamingConversationCommand:
@@ -159,7 +238,7 @@ def _command(conversation_id: UUID | None = None) -> StreamingConversationComman
 
 
 def test_runtime_creates_conversation_and_persists_complete_messages() -> None:
-    runtime, access, writer, llm, _ = _runtime(
+    runtime, access, writer, reader, llm, _ = _runtime(
         chunks=[
             ChatLlmStreamChunk(content="本轮"),
             ChatLlmStreamChunk(
@@ -190,6 +269,7 @@ def test_runtime_creates_conversation_and_persists_complete_messages() -> None:
     ]
     assert [message.content for message in writer.messages] == ["本轮问题", "本轮回答"]
     assert access.created[0].principal.subject == "user-1"
+    assert reader.calls == [(200, None)]
     assert llm.requests[0].user_prompt == "本轮问题"
     assert llm.requests[0].history_messages == ()
     assert events[-1].result is not None
@@ -202,7 +282,7 @@ def test_runtime_resolves_existing_conversation_and_appends_in_sequence() -> Non
         _message(conversation_id, 1, MessageRole.USER, "旧问题"),
         _message(conversation_id, 2, MessageRole.ASSISTANT, "旧回答"),
     ]
-    runtime, access, writer, _, _ = _runtime(
+    runtime, access, writer, _, llm, _ = _runtime(
         chunks=[ChatLlmStreamChunk(content="新回答")],
         messages=history,
     )
@@ -220,6 +300,46 @@ def test_runtime_resolves_existing_conversation_and_appends_in_sequence() -> Non
         MessageRole.USER,
         MessageRole.ASSISTANT,
     ]
+    assert [
+        (message.role.value, message.content)
+        for message in llm.requests[0].history_messages
+    ] == [
+        ("user", "旧问题"),
+        ("assistant", "旧回答"),
+    ]
+    assert llm.requests[0].user_prompt == "本轮问题"
+
+
+def test_runtime_reads_history_across_pages_and_keeps_latest_context_window() -> None:
+    conversation_id = uuid4()
+    history = [
+        _message(
+            conversation_id,
+            sequence,
+            MessageRole.USER if sequence % 2 else MessageRole.ASSISTANT,
+            f"消息 {sequence}",
+        )
+        for sequence in range(1, 206)
+    ]
+    runtime, _, _, reader, llm, _ = _runtime(
+        chunks=[ChatLlmStreamChunk(content="回答")],
+        messages=history,
+        context_policy=ContextPolicy(max_messages=3),
+        context_budget=ContextBudget(max_cost=100),
+    )
+
+    async def scenario() -> None:
+        stream = await runtime.execute(_command(conversation_id))
+        [event async for event in stream]
+
+    asyncio.run(scenario())
+
+    assert reader.calls == [(200, None), (200, 200)]
+    assert [message.content for message in llm.requests[0].history_messages] == [
+        "消息 204",
+        "消息 205",
+    ]
+    assert llm.requests[0].user_prompt == "本轮问题"
 
 
 @pytest.mark.parametrize(
@@ -227,7 +347,7 @@ def test_runtime_resolves_existing_conversation_and_appends_in_sequence() -> Non
     [RuntimeError("上游失败"), asyncio.CancelledError()],
 )
 def test_runtime_keeps_user_when_stream_does_not_complete(error: BaseException) -> None:
-    runtime, _, writer, _, _ = _runtime(
+    runtime, _, writer, _, _, _ = _runtime(
         chunks=[ChatLlmStreamChunk(content="部分回答")],
         error=error,
     )
@@ -243,7 +363,7 @@ def test_runtime_keeps_user_when_stream_does_not_complete(error: BaseException) 
 
 
 def test_runtime_keeps_user_when_answer_is_empty() -> None:
-    runtime, _, writer, _, _ = _runtime(
+    runtime, _, writer, _, _, _ = _runtime(
         chunks=[ChatLlmStreamChunk(content="  "), ChatLlmStreamChunk(content="")]
     )
 
@@ -258,7 +378,7 @@ def test_runtime_keeps_user_when_answer_is_empty() -> None:
 
 
 def test_runtime_keeps_user_when_assistant_write_fails() -> None:
-    runtime, _, writer, _, _ = _runtime(
+    runtime, _, writer, _, _, _ = _runtime(
         chunks=[ChatLlmStreamChunk(content="回答")],
         fail_assistant=True,
     )
@@ -274,7 +394,7 @@ def test_runtime_keeps_user_when_assistant_write_fails() -> None:
 
 
 def test_runtime_closes_model_stream_when_consumer_stops_early() -> None:
-    runtime, _, writer, _, model_stream = _runtime(
+    runtime, _, writer, _, _, model_stream = _runtime(
         chunks=[ChatLlmStreamChunk(content="部分回答"), ChatLlmStreamChunk(content="不会保存")]
     )
 
@@ -288,6 +408,58 @@ def test_runtime_closes_model_stream_when_consumer_stops_early() -> None:
 
     assert model_stream.closed is True
     assert [message.role for message in writer.messages] == [MessageRole.USER]
+
+
+def test_runtime_keeps_user_when_context_budget_is_exceeded() -> None:
+    runtime, _, writer, _, llm, _ = _runtime(
+        chunks=[ChatLlmStreamChunk(content="不会调用")],
+        context_budget=ContextBudget(max_cost=1),
+    )
+
+    async def scenario() -> None:
+        with pytest.raises(ContextBudgetExceededError, match="最新上下文消息"):
+            await runtime.execute(_command())
+
+    asyncio.run(scenario())
+
+    assert [message.role for message in writer.messages] == [MessageRole.USER]
+    assert llm.requests == []
+
+
+def test_runtime_keeps_user_when_history_read_fails() -> None:
+    runtime, _, writer, _, llm, _ = _runtime(
+        chunks=[ChatLlmStreamChunk(content="不会调用")],
+        reader_error=RuntimeError("数据库不可用"),
+    )
+
+    async def scenario() -> None:
+        with pytest.raises(RuntimeError, match="数据库不可用"):
+            await runtime.execute(_command())
+
+    asyncio.run(scenario())
+
+    assert [message.role for message in writer.messages] == [MessageRole.USER]
+    assert llm.requests == []
+
+
+def test_runtime_rejects_inaccessible_conversation_before_reading_history() -> None:
+    conversation_id = uuid4()
+    runtime, access, writer, reader, llm, _ = _runtime(
+        chunks=[ChatLlmStreamChunk(content="不会调用")],
+        messages=[_message(conversation_id, 1, MessageRole.USER, "旧问题")],
+        resolve_error=ConversationAccessDeniedError("会话不可用。"),
+    )
+
+    async def scenario() -> None:
+        with pytest.raises(ConversationAccessDeniedError, match="会话不可用"):
+            await runtime.execute(_command(conversation_id))
+
+    asyncio.run(scenario())
+
+    assert len(access.resolved) == 1
+    assert reader.calls == []
+    assert [message.content for message in writer.messages] == ["旧问题"]
+    assert llm.requests == []
 
 
 def test_runtime_persists_one_turn_when_adapter_retries_before_activity() -> None:
@@ -316,9 +488,14 @@ def test_runtime_persists_one_turn_when_adapter_retries_before_activity() -> Non
     conversation = Conversation(id=uuid4(), owner_subject="user-1")
     access = FakeConversationAccess(conversation)
     writer = FakeConversationWriter(conversation)
+    reader = FakeConversationReader(writer)
     runtime = StreamingConversationRuntime(
         conversation_access=access,  # type: ignore[arg-type]
         conversation_writer=writer,  # type: ignore[arg-type]
+        conversation_reader=reader,  # type: ignore[arg-type]
+        context_builder=ConversationContextBuilder(
+            CharacterCountContextMessageCostEstimator()
+        ),
         llm=llm,
     )
 

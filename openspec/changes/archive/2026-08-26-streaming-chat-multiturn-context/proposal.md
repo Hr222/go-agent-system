@@ -25,7 +25,7 @@
 
 ## Impact
 
-- 影响 `app/modules/dialogue/application/streaming_conversation.py` 及其 Composition Root 依赖组装。
+- 影响 `app/platform/dialogue/application/streaming_conversation.py` 及其 Composition Root 依赖组装。
 - 复用 `ConversationHistoryReadService`、`ConversationContextBuilder` 和现有 LLM Chat Port，不改变模块依赖方向。
 - 影响普通流式 Chat 发往 GLM/DeepSeek 的请求消息列表，但不改变 Provider、SSE 或 HTTP 请求外形。
 - 不修改 PostgreSQL Schema、Conversation/Message 数据结构或前端代码。

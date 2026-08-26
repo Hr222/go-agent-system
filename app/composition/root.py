@@ -438,6 +438,8 @@ class ApplicationContainer:
                 self.session,
                 self._streaming_chat_llm,
                 self.conversation_access(),
+                conversation_reader=self.conversation_history_read(),
+                context_builder=build_conversation_context_builder(),
             )
         return self._streaming_conversation_runtime
 

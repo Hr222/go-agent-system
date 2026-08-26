@@ -10,6 +10,8 @@ from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientF
 from app.infrastructure.persistence.repositories.conversation_write_repository import (
     ConversationWriteRepository,
 )
+from app.platform.conversation.application import ConversationContextBuilder
+from app.platform.dialogue.application import StreamingConversationRuntime
 from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.platform.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
 from app.shared.config import Settings
@@ -114,6 +116,24 @@ def test_application_container_uses_conversation_port_for_dialogue_agent_invocat
     invocation = container.dialogue_agent_invocation()
 
     assert isinstance(invocation._conversation_write, ConversationWriteRepository)
+
+
+def test_application_container_composes_streaming_runtime_with_history_context() -> None:
+    class FakeStreamingChatLlm:
+        def stream(self, request: object) -> object:
+            del request
+            raise AssertionError("测试不应启动模型流")
+
+    container = ApplicationContainer(
+        session=object(),
+        streaming_chat_llm=FakeStreamingChatLlm(),  # type: ignore[arg-type]
+    )
+
+    runtime = container.streaming_conversation_runtime()
+
+    assert isinstance(runtime, StreamingConversationRuntime)
+    assert runtime._conversation_reader is container.conversation_history_read()
+    assert isinstance(runtime._context_builder, ConversationContextBuilder)
 
 
 def test_application_container_aclose_releases_openai_client_factory() -> None:

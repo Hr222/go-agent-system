@@ -13,6 +13,7 @@ from app.interfaces.http.dependencies import (
 )
 from app.main import create_app
 from app.platform.conversation.domain import Message, MessageRole
+from app.platform.conversation.errors import ContextBudgetExceededError
 from app.platform.dialogue.application import (
     StreamingConversationEvent,
     StreamingConversationResult,
@@ -50,6 +51,12 @@ class DenyingStreamingConversation:
         from app.platform.conversation.errors import ConversationAccessDeniedError
 
         raise ConversationAccessDeniedError("会话不可用。")
+
+
+class BudgetExceededStreamingConversation:
+    async def execute(self, command):  # noqa: ANN001
+        del command
+        raise ContextBudgetExceededError("最新上下文消息的成本超过可用预算。")
 
 
 class FakeStreamingConversation:
@@ -338,6 +345,50 @@ def test_chat_stream_maps_inaccessible_conversation_without_interaction_access()
     assert events[0].name == "error"
     assert events[0].data["code"] == "CONVERSATION_ACCESS_DENIED"
     assert len(gateway.commands) == 1
+
+
+def test_chat_stream_maps_context_budget_failure_to_existing_input_error() -> None:
+    gateway = RecordingGateway(
+        GatewayResult(
+            status="authorized",
+            message="server authorized",
+            direct_execution=DirectCapabilityExecution(
+                capability_code="chat.general",
+                dispatch_key="llm.chat",
+                inputs={"message": "继续刚才的问题"},
+            ),
+        )
+    )
+    application = InteractionChatStreamApplication(
+        gateway,
+        BudgetExceededStreamingConversation(),  # type: ignore[arg-type]
+    )
+
+    preparation = application.prepare(
+        InteractionChatStreamCommand(
+            user_input="继续刚才的问题",
+            principal=RequestPrincipal.anonymous(),
+            provided_inputs={},
+        )
+    )
+
+    async def scenario() -> list[object]:
+        return [
+            event
+            async for event in application.stream(
+                preparation,
+                is_disconnected=_connected,
+            )
+        ]
+
+    events = asyncio.run(scenario())
+
+    assert [event.name for event in events] == ["error"]
+    assert events[0].data == {
+        "code": "CHAT_INPUT_INVALID",
+        "message": "请求内容无效。",
+        "retryable": False,
+    }
 
 
 def test_chat_stream_emits_approval_without_starting_model_execution() -> None:

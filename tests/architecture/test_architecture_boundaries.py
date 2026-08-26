@@ -264,6 +264,17 @@ def test_dialogue_runtime_depends_only_on_controlled_interaction_contracts() -> 
     )
 
 
+def test_streaming_dialogue_runtime_uses_platform_application_contracts() -> None:
+    imported = _imported_modules(
+        APP_ROOT / "platform" / "dialogue" / "application" / "streaming_conversation.py"
+    )
+
+    assert "app.platform.conversation.application" in imported
+    assert "app.platform.conversation.ports" in imported
+    assert "app.platform.llm.contracts" in imported
+    assert not any(module.startswith("app.modules") for module in imported)
+
+
 def test_platform_capability_catalog_is_independent_of_dialogue_and_agent_runtime() -> None:
     catalog_roots = (
         APP_ROOT / "platform" / "interaction" / "domain" / "capability.py",
