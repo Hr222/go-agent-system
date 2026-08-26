@@ -1,466 +1,384 @@
-# 当前系统架构基线
+# Go Agent System 架构
 
-> 状态：当前唯一架构基线。最后整理：2026-08-21。
->
-> 本文档覆盖后端、LLM 对话体系和前端工程。新的 Change、设计与实现以本文为准。
->
-## 目录
+> 本文档是系统技术架构的唯一基线，描述一份完整、稳定的设计。项目进度由系统看板记录，具体交付由 OpenSpec Change 管理；这些内容不在本文档重复维护。
 
-1. 后端架构
-   - 当前能力状态
-   - 核心原则
-   - 分层定义与依赖方向
-   - 总体结构
-   - 后端能力边界
-   - 多轮对话与 Agent 请求流程
-   - HTTP 契约与适配边界
-   - 后端物理结构
-2. 前端架构
-   - 定位与技术选型
-   - 前端分层
-   - 请求、状态与类型
-   - 页面与能力边界
-   - 视觉与可用性约束
-3. 当前范围外与演化规则
-4. 质量、安全与验证
+## 1. 系统定位
 
-## 1. 后端架构
+Go Agent System 是一个面向 Agent 开发的平台型应用。平台提供 LLM、Knowledge/RAG、资料处理、对话、交互、Agent Management、附件和安全等可复用能力；业务应用在平台能力之上实现具体领域 Agent 与业务流程。
 
-### 1.1 当前能力状态
+系统以两类输入为基础：一类是可检索、可追溯的业务资料，另一类是用户的自然语言请求。资料经过通用 Ingestion Pipeline 进入 Knowledge/RAG；用户可以通过直接业务接口使用能力，也可以通过自然语言 Chat 由 Gateway 识别能力并受控调用 Agent 或对话能力。
 
-| 范围 | 当前状态 | 说明 |
-|---|---|---|
-| 知识库与入库 | 已实现 | 文档接入、解析、OCR、清洗、切分、向量化、发布、检索、引用和证据不足处理。 |
-| Online RAG 与规则判断 | 已实现 | 通过知识查询能力提供检索、问答与规则场景结果。 |
-| LLM 能力 | 已实现 | 无状态 Chat、结构化输出、纯文本 Embedding 和 Provider 适配。 |
-| Conversation | 已实现基础 | 会话、消息、Turn、事件、历史读取/写入和首版 Context Builder。 |
-| Dialogue Runtime | 已实现基础 | 多轮普通对话、Agent 调用、Agent 结果续写。 |
-| Interaction Gateway | 已实现基础 | 候选识别、能力策略、显式确认、受控分发、流式对话入口。 |
-| Tender Agent 与附件 | 已实现当前链路 | 已授权的 Tender 调用、动态附件解析、上传、访问绑定与结果下载。 |
-| 请求主体插口 | 已实现 Mock | HTTP 注入 `RequestPrincipal`，可使用匿名或静态 resolver；没有真实用户模块。 |
-| 会话 owner 隔离 | 已实现基础 | Conversation `owner_subject`、Access 以及创建/列表/历史/流式入口的主体范围校验已实现；当前主体由 Mock resolver 提供。 |
-| 真实认证、授权和用户模块 | 未实施 | JWT、Session、SSO、用户表与权限服务均不在当前范围。 |
-| Redis、上下文压缩、长期摘要 | 未实施 | PostgreSQL 保持长期事实源；缓存与压缩另行设计。 |
-| SubAgent、Workflow、Task Management、Harness | 未实施 | 仅保留扩展边界，不提前决定其运行时实现。 |
+## 2. 架构边界
 
-### 1.2 核心原则
-
-1. **能力独立。** LLM、Conversation、Interaction、Agent、Knowledge、Ingestion、Attachment 和 Security 是边界清晰的能力；一个能力不得借由另一个能力的内部实现完成职责。
-2. **依赖向内。** 外部接口调用应用能力；应用能力通过 Domain 和 Ports 定义需要的契约；基础设施从外部实现 Ports；`app/composition/` 统一选择并组装实现。
-3. **协议与业务分离。** HTTP、Function Calling 和 MCP 是适配协议，不是 Domain 模型。HTTP Schema、前端类型和 Provider SDK 不得泄漏到应用层和领域层。
-4. **安全与编排分离。** Security 解析可信主体，Interaction 校验能力调用，Conversation 负责资源归属。Dialogue 只编排一轮，不能独占或绕过安全检查。
-5. **证据优先。** RAG 与业务判断必须追踪来源；缺少有效证据时返回资料不足，不生成无依据结论。
-6. **渐进演化。** 没有真实需求时，不引入 LangGraph 复杂编排、SubAgent、Workflow、Redis、MongoDB 或压缩 Worker。
-
-### 1.3 分层定义与依赖方向
+### 2.1 语义分层
 
 ```text
-外部调用者 / 前端
-  -> Interfaces（HTTP / Agent Protocol Adapter）
-  -> Security Boundary（可信主体解析）
-  -> Application Capabilities（业务用例与一次请求编排）
-  -> Domain + Ports（业务规则与所需能力契约）
-  <- Infrastructure Adapters（数据库 / LLM / OCR / 文件系统）
+平台能力层 / Platform Capabilities
+  LLM、Knowledge/RAG、Ingestion、Conversation、Dialogue、Interaction
+  Agent Management、Attachment、Security
 
-Composition Root 横向组装全部具体实现。
+业务应用层 / Business Applications
+  online、agents/tender
+
+横向技术层 / Technical Layers
+  interfaces、infrastructure、composition、shared
 ```
 
-| 层级 | 职责 | 允许依赖 | 禁止事项 |
-|---|---|---|---|
-| Interfaces | HTTP 路由、Schema、Assembler、依赖注入、协议异常映射 | Application Command/Query/Result；Security resolver | 业务规则、SQL、LLM SDK、ORM 细节。 |
-| Security Boundary | 将服务端可信上下文解析成 `RequestPrincipal` | HTTP 请求上下文、配置、认证适配器 | 信任客户端提交的权限、角色、能力代码或分发键。 |
-| Application Capabilities | 用例编排、状态转换、调用 Ports、跨能力协调 | 自己的 Domain、Ports、稳定的其他能力契约 | FastAPI、`UploadFile`、ORM、具体 Provider SDK。 |
-| Domain + Ports | 业务对象、不变量、Ports 和内部契约 | 同模块 Domain 类型 | HTTP、数据库、LangChain、LangGraph、具体文件/模型客户端。 |
-| Infrastructure | 实现 Repository、LLM、Embedding、OCR、文件存储等 Ports | Ports、配置、外部 SDK | 反向编排业务用例，或成为业务模块依赖。 |
-| Composition Root | 选择适配器、构造对象图、注册依赖 | 所有具体实现和公开构造器 | 放业务规则、HTTP 协议或领域判断。 |
+平台能力是可复用的系统能力，不绑定某个具体业务。业务应用组合平台能力，承载领域规则和业务输出。横向技术层为平台和业务提供协议、外部系统适配、对象组装以及共享基础设施。
 
-下列规则长期有效：
+### 2.2 物理分层
 
-- `online` 与 `ingestion` 不直接依赖；二者通过 Knowledge Capability 协作。
-- Agent 适配器和 Agent 业务能力必须调用 Application Capability 或 Port，不得直连 Repository、数据库或模型 SDK。
-- Interaction 的能力候选索引与政策知识库索引必须分离；它们可以共享 Embedding Provider，不能共享领域模型或 Repository。
-- 前端仅访问稳定 HTTP API，不访问数据库、Repository、Domain Entity、LLM Provider 或 Agent Runtime 内部实现。
+```text
+外部调用者 / 前端 / Agent 协议
+  -> interfaces
+  -> platform 或 business 的 Application Capability
+  -> Domain + Ports
+  <- infrastructure adapters
 
-### 1.4 总体结构
+composition 负责构造对象图、注入适配器和固定分发绑定。
+shared 提供配置、日志、异常等不携带领域职责的共享基础能力。
+```
+
+依赖方向由内向外保持稳定：接口层依赖应用契约，应用层依赖本模块 Domain 与 Ports，基础设施实现 Ports。Domain 不依赖 HTTP、ORM、数据库、模型 SDK 或具体 Agent 框架。应用模块不把路由、Schema、SQL 和 Provider 调用混在同一职责中。
+
+### 2.3 请求入口
+
+系统保留两种运行时入口：
+
+1. 直接 HTTP 路由：知识、资料、会话、附件和业务能力等接口由对应的 Application Capability 直接处理。Security 在需要时解析并提供 `RequestPrincipal`，但这些请求不经过 Gateway。
+2. 自然语言 Chat：Chat HTTP 请求进入 `InteractionChatStreamApplication`，再由 Gateway 识别候选能力、检查目录与策略、处理确认并进入 Dialogue 或 Agent 分支。
+
+Gateway 是自然语言入口的控制面，不是所有 HTTP API 的中转层。Composition Root 只负责对象组装，不参与请求转发。
+
+## 3. 总体结构
 
 ```mermaid
 flowchart TB
-    User["用户"] --> Frontend["React 前端"]
-    Frontend --> Http["HTTP Interfaces"]
-    External["Function Calling / MCP"] --> Protocol["Agent Protocol Adapters"]
+    User[用户] --> Frontend[React 前端]
+    External[Function Calling / MCP] --> Protocol[Agent 协议适配器]
 
-    Http --> Security["Security Boundary\nPrincipal Resolver"]
-    Security --> Interaction["Interaction Gateway\n识别 / 授权 / 确认"]
-    Protocol --> AgentRuntime["Agent Runtime"]
+    subgraph Interfaces[interfaces 外部接口层]
+        Http[HTTP Routes / Schemas / Assemblers]
+        Protocol
+    end
+    Frontend --> Http
 
-    subgraph Capabilities["应用能力层"]
-        Dialogue["Dialogue Runtime\n一轮对话编排"]
-        Conversation["Conversation\n会话 / 消息 / 上下文"]
-        Context["Context Builder\n历史选择 / Model Context"]
-        LLM["LLM\nChat / Structured Output / Embedding"]
-        AgentRuntime
-        Tender["Tender Agent"]
-        Attachment["Attachment"]
-        Online["Online\nRAG / 规则判断"]
-        Knowledge["Knowledge\n查询 / 写入 / 发布"]
-        Ingestion["Ingestion\n解析 / 入库"]
+    subgraph Platform[platform 平台能力]
+        Security[Security
+RequestPrincipal]
+        Direct[直接 HTTP Application Capabilities]
+        Chat[InteractionChatStreamApplication]
+        Gateway[Gateway
+自然语言识别 / 确认 / 受控分发]
+        Catalog[Platform Capability Catalog]
+        Dialogue[Dialogue Runtime]
+        Conversation[Conversation
+历史 / Context Builder]
+        AgentManagement[Agent Management
+Catalog / Policy / Dispatcher / Runtime]
+        LLM[LLM
+Chat / Structured / Embedding]
+        Knowledge[Knowledge / RAG
+Query / Write / Publish / Evidence]
+        Ingestion[Ingestion Pipeline]
+        Attachment[Attachment]
     end
 
-    Interaction --> Dialogue
+    Http --> Direct
+    Http --> Chat
+    Http -.需要时.-> Security
+    Chat --> Gateway
+    Gateway --> Catalog
+    Gateway --> Dialogue
+    Gateway --> AgentManagement
+    Protocol --> AgentManagement
     Dialogue --> Conversation
-    Conversation --> Context
-    Dialogue --> Context
-    Context --> LLM
     Dialogue --> LLM
-    Interaction --> AgentRuntime
-    AgentRuntime --> Tender
-    Tender --> Attachment
-    Tender --> Knowledge
-    Online --> Knowledge
+    Conversation --> LLM
     Ingestion --> Knowledge
+    Ingestion --> LLM
+    Direct --> Knowledge
+    Direct --> Ingestion
+    Direct --> Conversation
+    Direct --> Attachment
 
-    Conversation --> ConversationPorts["Conversation Ports"]
-    Knowledge --> KnowledgePorts["Knowledge Ports"]
-    LLM --> LlmPorts["LLM Ports"]
-    Attachment --> AttachmentPorts["Attachment Ports"]
+    subgraph Business[ business 业务应用]
+        Online[online
+Knowledge Query / RAG 业务应用]
+        Tender[agents/tender
+业务 Agent]
+    end
+    Online --> Knowledge
+    AgentManagement --> Tender
+    Tender --> Attachment
 
-    ConversationPorts --> Persistence[("PostgreSQL\nConversation / Messages / Events")]
-    KnowledgePorts --> KnowledgeStore[("PostgreSQL + pgvector\nKnowledge Storage")]
-    LlmPorts --> Providers["LLM / Embedding Providers"]
-    AttachmentPorts --> FileStore["File Storage"]
+    subgraph Ports[Ports 契约]
+        ConversationPorts[Conversation Ports]
+        KnowledgePorts[Knowledge Ports]
+        LlmPorts[LLM / Embedding Ports]
+        AttachmentPorts[Attachment / File Ports]
+        BusinessPorts[业务应用 Ports]
+    end
+    Conversation --> ConversationPorts
+    Knowledge --> KnowledgePorts
+    LLM --> LlmPorts
+    Ingestion --> LlmPorts
+    Attachment --> AttachmentPorts
+    Online --> BusinessPorts
+    Tender --> BusinessPorts
 
-    Composition["Composition Root"] -.组装.-> Security
-    Composition -.组装.-> Dialogue
-    Composition -.组装.-> Interaction
-    Composition -.组装.-> AgentRuntime
-    Composition -.组装.-> Providers
+    subgraph Infrastructure[infrastructure 基础设施适配]
+        Persistence[(PostgreSQL / pgvector)]
+        Providers[LLM / Embedding Providers]
+        Files[文件存储 / OCR / 文档处理]
+    end
+    ConversationPorts --> Persistence
+    KnowledgePorts --> Persistence
+    LlmPorts --> Providers
+    AttachmentPorts --> Files
+    BusinessPorts --> Providers
+    BusinessPorts --> Files
+
+    Composition[composition
+Composition Root] -.对象组装 / 固定绑定.-> Platform
+    Composition -.对象组装 / 固定绑定.-> Business
+    Composition -.注入具体适配器.-> Infrastructure
 ```
 
-### 1.5 后端能力边界
+图中的实线表示运行时调用或能力使用，虚线表示组装关系。`Direct` 是对直接 HTTP 应用能力的概念归纳，具体路由仍位于 `interfaces/http/routes/`，并分别调用对应的平台或业务用例。
 
-#### 1.5.1 LLM
+## 4. 平台能力
 
-`modules/llm` 是通用、无状态的模型能力，不属于任何 Agent。它负责：
+### 4.1 LLM
 
-- Chat Completion、结构化输出及 Schema 校验。
-- 纯文本的单条/批量 Embedding。
-- Provider 配置、超时、重试和标准化错误契约。
+LLM 是通用、无状态的模型能力，提供：
 
-它不负责会话历史、用户意图、能力授权、业务规则、Function Calling 执行、MCP 会话或 Agent 编排。`infrastructure/llm` 只实现 LLM Ports，SDK 和 LangChain 细节不能泄漏到上层。
+- 文本 Chat 与流式 Chat。
+- 结构化输出及 Schema 校验。
+- 文本 Embedding。
+- Provider 配置、请求治理、超时、重试和标准化错误。
 
-#### 1.5.2 Conversation 与 Context
+LLM 不负责会话历史、意图识别、能力授权、业务规则、Agent 分发或附件生命周期。具体 Provider SDK 只出现在 `infrastructure/llm/`，上层通过 LLM Ports 和稳定契约调用。
 
-Conversation 是会话历史和长期事实的边界，当前负责 `Conversation`、`Message`、`Turn`、`ConversationEvent`、历史读写和有序上下文构建。
+### 4.2 Knowledge / RAG
 
-```text
-Conversation History
-  -> Context Policy（选择有业务意义的历史）
-  -> Model Budget Adapter（Provider / Token 约束）
-  -> Model Context
-  -> Chat Model Port
+Knowledge 是独立的平台知识能力，负责知识查询、向量与关键词检索、结果融合、排序、知识写入、版本发布、引用和证据表达。RAG 使用 Knowledge 提供的检索证据，再由业务应用通过自己的应用契约生成领域回答。
+
+Knowledge 不拥有某个业务应用的判断规则。检索结果保留文档、版本、章节、页码和原文片段等来源信息；没有足够证据时，调用方返回资料不足，不生成无依据的业务结论。
+
+### 4.3 Ingestion
+
+Ingestion 是平台级通用资料处理 Pipeline，负责接收资料并编排文件读取、格式解析、OCR、文本清洗、结构提取、分块、Embedding 和写入 Knowledge 的过程。
+
+政策资料是该 Pipeline 的代表性验证样本，不构成 Ingestion 的业务边界。具体资料类型通过 Pipeline 的输入契约和适配器扩展，不需要为每类资料复制一套平台模块。
+
+```mermaid
+flowchart LR
+    Material[业务资料] --> Pipeline[Ingestion Pipeline]
+    Pipeline --> Read[读取 / 解析 / OCR]
+    Read --> Clean[清洗 / 结构化 / 分块]
+    Clean --> Embed[LLM Embedding Port]
+    Clean --> Write[Knowledge Write Capability]
+    Embed --> Vector[(向量索引)]
+    Write --> Store[(Knowledge Storage)]
+    Online[online] --> Query[Knowledge Query / RAG]
+    Query --> Store
+    Query --> Evidence[引用与证据]
 ```
 
-`Context Builder` 属于 Conversation 应用能力，不属于 LLM 内部。LLM Adapter 仅消费本次调用的 `Model Context`，不自行保存记忆。普通单轮模型调用也不得隐式创建 Conversation。
+### 4.4 Conversation 与 Context
 
-当前使用 PostgreSQL 保存会话、消息和事件。未来可以引入 Redis 作为热上下文或短 TTL 缓存，但不得替代 PostgreSQL 的长期事实源；摘要检查点、上下文压缩和异步 Compaction Worker 需要独立 Change。
+Conversation 是会话事实、消息、事件、访问范围和上下文构建的边界。它负责会话生命周期、历史读写、主体范围校验和把有序历史转换为模型中立的上下文。
 
-#### 1.5.3 Dialogue Runtime
+多轮请求的上下文设计如下：
 
-Dialogue Runtime 编排一轮对话，连接 Conversation、Context Builder、Interaction Gateway、LLM 和 Agent Runtime。它负责在恰当位置记录用户消息、模型回答、Agent 调用和 Agent 结果。
-
-它不拥有用户认证或权限来源。当前 Dialogue 只能使用已通过 Conversation Access 验证的会话，不能仅凭客户端 `conversation_id` 读取或写入历史。
-
-#### 1.5.4 Security 与主体边界
-
-`PrincipalResolverPort` 是将来用户模块的插口。HTTP 层从服务端上下文解析 `RequestPrincipal` 并注入 Interaction/Agent 调用链；当前可使用匿名或静态 resolver 作为 Mock。
-
-```text
-HTTP 请求
-  -> PrincipalResolverPort
-  -> RequestPrincipal(subject, permissions, authenticated)
-  -> Interaction Gateway / Dialogue / Attachment
+```mermaid
+flowchart LR
+    Input[当前用户输入] --> Persist[写入 Conversation]
+    Persist --> Read[History Read Service
+读取同一 Conversation 的有序历史]
+    Read --> Exclude[排除本轮当前输入]
+    Exclude --> Builder[Context Builder
+连续近期窗口 + 成本预算]
+    Builder --> Request[ChatLlmRequest.history_messages]
+    Input --> Prompt[user_prompt
+当前输入仅发送一次]
+    Request --> LLM[LLM]
+    Prompt --> LLM
 ```
 
-字段责任必须分开：
+Context Builder 选择连续的近期消息后缀，使用 `max_messages=20` 和 `max_cost=12_000`。历史消息保留原始角色和顺序；当前用户输入不重复放入 `history_messages`，只作为 `user_prompt` 发送一次。LLM 只消费本次请求提供的上下文，不自行持久化会话记忆。
 
-| 字段 | 用途 | 当前/未来规则 |
-|---|---|---|
-| `subject` | 资源归属的稳定、不透明标识 | 当前作为 `Conversation.owner_subject` 和附件归属的键；不等同于展示名。 |
-| `permissions` | 能力调用授权 | 由 Interaction Gateway 按服务端目录校验；不是资源归属依据。 |
-| `authenticated` | 持久化会话等准入信号 | 真实用户模块接入后由认证适配器决定。 |
+### 4.5 Dialogue
 
-当前还没有 User 表、JWT、Session 或 SSO；owner-scoped Conversation Access 已实现，但主体仍由匿名或静态 resolver 提供。会话读写必须同时以 `owner_subject + conversation_id` 查询；客户端 UUID、请求体权限、角色和模型输出都不能构成授权依据。未来用户模块只替换 resolver，不改变 Dialogue、Conversation、Gateway 的契约方向。
+Dialogue Runtime 编排一轮对话，连接 Conversation、Context Builder、Interaction 和 LLM。它负责持久化本轮用户消息、Agent 调用事件、Agent 结果以及最终 assistant 消息，并在需要时将 Agent 结果转换为同一会话中的自然语言回答。
 
-#### 1.5.5 Interaction Gateway 与能力目录
+Dialogue 不拥有认证主体，也不绕过 Conversation Access 或 Interaction 的授权检查。普通对话和 Agent 结果续写都使用统一的上下文请求契约。
 
-Interaction 是面向自然语言入口的统一控制面。它负责确定性规则、候选召回、结构化意图识别、参数复核、权限校验、澄清、显式确认和受控分发。
+### 4.6 Interaction 与 Gateway
+
+Interaction 是自然语言交互控制面，包含意图识别、平台能力目录、确认提议、输入校验、调用策略和受控分发。Gateway 的处理顺序为：
 
 ```text
 用户输入
-  -> 确定性规则（确认 / 取消 / 输入安全）
+  -> 确定性规则与安全检查
   -> Platform Capability Catalog 召回候选
-  -> 在候选范围内的 Structured LLM 识别
-  -> 代码校验参数、权限、确认策略
-  -> 澄清或展示待执行提议
-  -> 用户显式确认
-  -> Controlled Dispatcher 固定映射到目标能力
+  -> 候选范围内的结构化意图识别
+  -> 服务端目录、参数、权限和确认策略复核
+  -> 澄清 / 确认提议 / 直接执行
+  -> 固定分发到目标 Application Capability
 ```
 
-`Platform Capability Catalog` 是平台可调用能力的唯一目录，覆盖 Agent 和非 Agent 能力。目录项包含稳定能力代码、输入输出 Schema、启用状态、权限、确认策略、超时、错误边界及固定分发目标。LLM 只能在已召回候选中产生受约束的结构化结果，不能生成 URL、类名、工具名或目录外能力代码，也没有直接调用 Agent 的权限。
+模型输出只提供识别结果，不构成执行权限。客户端提交的能力代码、分发键、权限和文件路径也不构成执行权限；所有执行目标都必须由服务端目录重新读取并校验。
 
-确认提议可以使用短 TTL、一次性消费的 `Proposal Store`，但该状态不等同 Conversation 或 Task。跨会话恢复、持久化审批和异步执行需要各自独立演化。
+### 4.7 Agent Management
 
-#### 1.5.6 Agent Runtime、Tender 与外部协议
+Agent Management 是平台对 Agent 能力进行登记、发现、授权和运行时调用管理的能力。其受控结构包括：
 
-Agent Runtime 在授权后的受控分发中执行 Agent Call，并负责将结果返回给 Dialogue。Tender 是具体业务 Agent，输入、输出、附件引用、超时和失败由自身应用契约定义。
+- `Platform Capability Catalog`：统一记录可用能力的类型、输入契约、权限、确认策略和分发键。
+- `Agent Call Policy`：结合当前主体、目录条目、输入和批准信息判断是否允许调用。
+- `AgentCallDispatcher`：执行策略通过且仍与服务端目录一致的 Agent 调用。
+- `Agent Runtime`：根据目录中的固定分发绑定调用业务 Agent，不维护第二份注册表。
 
-- Agent 可使用 LLM、Knowledge、Attachment 和外部服务，但不重复实现 LLM Chat。
-- 一个 Agent 不等于一个 Chat 页面；是否对话式交互由产品用例和后端契约决定。
-- Function Calling、MCP 是协议适配器，最终必须落到 Application Capability 或 Agent Port，不得直接操作 Repository、数据库或 Provider Client。
-- LangGraph 未来可作为 Agent Runtime Adapter，但 Domain、LLM Port 和具体 Agent 不得依赖它。
-
-SubAgent、Workflow、Task Management 与 Harness 都尚未实现。Task Management 将来只负责任务 ID、状态、重试、幂等和恢复，不负责会话上下文、LLM 调用或业务编排。
-
-#### 1.5.7 Knowledge、Ingestion、Online 与 Attachment
-
-| 能力 | 职责 | 关键约束 |
-|---|---|---|
-| Knowledge | 知识查询、写入、发布、检索策略与来源追踪 | 通过 Read/Write/Publication Ports 访问存储。 |
-| Ingestion | 文件接入、解析、OCR、清洗、切分、向量化和入库 | 依赖端口，不直接耦合 Online。 |
-| Online | RAG 问答、规则获取、数据获取和业务结果编排 | 通过 Knowledge Capability 检索，不直接访问向量库。 |
-| Attachment | 临时文件、上传、访问绑定、应用输入解析和下载 | 文件流仅停留在 HTTP/Adapter 边界；业务能力消费稳定的文件引用。 |
-
-知识检索返回来源文档、版本、章节、页码和原文片段。`ask` 在没有有效证据时必须拒绝生成无依据结论。Checklist 场景属于 `modules/online/domain/checklist`；它经 Online Application 调用 Knowledge Query，而不直接访问 Repository。
-
-能力目录的意图索引回答“用户想使用什么能力”，政策/知识检索回答“哪些资料支持结论”。这两个索引必须拥有独立领域模型、Repository 和数据集，不能混用。
-
-### 1.6 多轮对话与 Agent 请求流程
-
-浏览器对话的统一入口是 `POST /api/v1/interaction/chat/stream`。旧 `/api/v1/llm/chat` 及其流式变体已经退场，不保留兼容入口。
+自然语言 Agent 调用链路如下：
 
 ```mermaid
 sequenceDiagram
-    participant U as 用户
-    participant H as HTTP Interfaces
-    participant S as Principal Resolver
-    participant I as Interaction Gateway
-    participant D as Dialogue Runtime
-    participant C as Conversation / Context
-    participant L as LLM
-    participant A as Agent Runtime
-    participant T as Tender Agent
+    participant Client as Chat HTTP
+    participant Chat as InteractionChatStreamApplication
+    participant Gateway as Gateway / Capability Catalog
+    participant Policy as 确认策略 / Agent Call Policy
+    participant Invoke as DialogueAgentInvocation
+    participant Dispatch as AgentCallDispatcher
+    participant Runtime as Agent Runtime
+    participant Agent as 业务 Agent
+    participant Continue as DialogueAgentContinuation
+    participant LLM as LLM
 
-    U->>H: message + conversation_id? + attachments?
-    H->>S: 解析可信主体
-    S-->>H: RequestPrincipal
-    H->>I: 识别请求与能力策略
-    I-->>H: Chat / 澄清 / 待确认调用
-
-    alt 普通对话
-        H->>D: Start / Continue Turn
-        D->>C: 读取会话历史并构建 Model Context
-        D->>L: Chat Completion
-        L-->>D: Final Answer
-        D->>C: 写入 assistant_message
-        D-->>H: 流式响应
-    else 需要确认
-        I-->>H: approval_required / clarification
-        H-->>U: 展示提议或澄清
-    else 已确认的 Agent 调用
-        H->>D: 启动受控调用
-        D->>A: Authorized Agent Call
-        A->>T: 执行 Tender Agent
-        T-->>A: Agent Result
-        A-->>D: Agent Result
-        D->>C: 写入 agent_call 与 agent_result
-        D->>C: 重建包含结果的上下文
-        D->>L: Continuation Completion
-        L-->>D: Final Answer
-        D->>C: 写入 assistant_message
-        D-->>H: 流式响应
-    end
+    Client->>Chat: 自然语言请求
+    Chat->>Gateway: 识别并读取服务端目录
+    Gateway->>Policy: 校验权限、输入和确认要求
+    Policy-->>Chat: 确认提议
+    Client->>Chat: 明确确认
+    Chat->>Invoke: 创建已批准的 Agent 调用
+    Invoke->>Dispatch: 受控分发
+    Dispatch->>Runtime: 校验目录并执行
+    Runtime->>Agent: 固定 dispatch_key
+    Agent-->>Runtime: 结构化结果
+    Runtime-->>Dispatch: 调用结果
+    Dispatch-->>Invoke: 结果或受控错误
+    Invoke->>Continue: 读取已持久化 Agent 结果
+    Continue->>LLM: 结合 Conversation history 生成回答
+    LLM-->>Continue: assistant 回答
 ```
 
-附件上传与使用遵循独立链条：
+### 4.8 Attachment
+
+Attachment 负责上传、访问绑定、读取和文件存储边界。它为 Conversation 和业务 Agent 提供受主体约束的附件引用；文件内容、路径和存储实现不进入 Domain 或 HTTP 之外的业务契约。
+
+### 4.9 Security
+
+Security 通过 `PrincipalResolverPort` 将服务端可信上下文解析为 `RequestPrincipal`，供 Interaction、Conversation 和 Attachment 进行权限与资源归属校验。主体、权限和资源 owner 是不同概念：权限决定能力是否可调用，主体决定资源访问范围，业务模块不能信任客户端提交的授权字段。
+
+## 5. 业务应用
+
+### 5.1 online
+
+`app/business/online/` 是使用平台 Knowledge/RAG 的业务应用。它通过 Knowledge Query Capability 获取检索证据，通过自身的 `AnswerGenerator` Port 生成业务回答，并提供规则检索、材料核验和结构化判断等业务用例。
+
+Online 不拥有通用 RAG 引擎，也不直接依赖某个 LLM Provider。回答生成适配器由 Composition Root 绑定，业务应用只依赖自己的 Port 和 Knowledge 的稳定查询契约。
+
+### 5.2 agents/tender
+
+`app/business/agents/tender/` 是业务 Agent 实现。它通过自身的 Application、Domain 和 Ports 完成招标文档读取、结构化分析、分块处理、投标骨架规划和文档渲染；它使用 Attachment、文档读取、渲染和结构化 LLM 契约。
+
+Tender 是 Agent Management 所管理的一项业务能力，不是平台一级能力，也不与 Knowledge/RAG 建立未经定义的直接依赖。
+
+## 6. 接口与适配器边界
+
+### 6.1 HTTP 与 Agent 协议
 
 ```text
-文件选择
-  -> HTTP Upload Adapter
-  -> 临时或受控附件引用
-  -> 当前主体/会话访问绑定
-  -> Interaction Attachment Resolver 校验
-  -> Tender 输入适配
-  -> Agent 结果与可下载产物
-```
-
-上传界面不会把浏览器 `File` 或 multipart 对象传入领域层；Tender 也不能信任由客户端构造的文件路径或附件归属。
-
-### 1.7 HTTP 契约与适配边界
-
-```text
-前端
-  -> Request Schema / Route
-  -> HTTP Assembler
+HTTP / MCP / Function Calling
+  -> interfaces adapter
   -> Application Command / Query
-  -> Capability / Use Case
-  -> Port
-  -> Repository / Provider
-
-Repository / Provider
-  -> Application Result
-  -> HTTP Assembler
-  -> Response Schema
-  -> 前端
+  -> Platform 或 Business Capability
+  -> Domain + Port
+  -> Infrastructure Adapter
 ```
 
-| 对象 | 所属位置 | 约束 |
-|---|---|---|
-| Request / Response Schema | `app/interfaces/http/schemas/` | 只描述 JSON、multipart、path/query 和响应协议；不传入应用层。 |
-| Route | `app/interfaces/http/routes/` | 依赖注入、调用用例、异常映射；不编排业务。 |
-| HTTP Assembler | `app/interfaces/http/assemblers/` | HTTP Schema 与 Application Command/Result 互转；不含业务规则。 |
-| Application Command / Query / Result | `app/modules/*/application/` | 可被多个适配器使用；不依赖 FastAPI 或前端类型。 |
-| Port | `app/modules/*/ports/` | 由内层定义、由基础设施实现。 |
+`interfaces/http/` 负责路由、协议 Schema、Assembler、依赖注入和异常映射；`interfaces/agent/` 负责 MCP、Function Calling 等协议适配。协议适配器只能调用应用能力，不得直接访问 Repository、数据库或 Provider SDK。
 
-知识库管理、检索、上传预览、正式入库、发布和入库重试都通过独立 HTTP 契约接入。管理列表与详情使用 Application Read Model，不把页面字段加入 Domain Entity；`hits`、`citations`、`debug` 是 HTTP 展示契约，而召回、融合、rerank 仍属于 Knowledge Retrieval。
+### 6.2 基础设施
 
-### 1.8 后端物理结构
+`infrastructure/` 实现平台和业务 Ports，包括：
 
-```text
-app/
-├── modules/
-│   ├── agent/              # Agent Runtime 与具体 Agent（当前含 tender）
-│   ├── attachment/         # 附件契约与访问/解析边界
-│   ├── conversation/       # 会话、消息、事件、上下文
-│   ├── dialogue/           # 单轮对话编排与 Agent 续写
-│   ├── ingestion/          # 文档解析与入库
-│   ├── interaction/        # 意图、目录、确认、分发与流式交互
-│   ├── knowledge/          # 知识查询、写入、发布、检索
-│   ├── llm/                # 通用模型与 Embedding 能力
-│   ├── online/             # RAG 与规则判断
-│   └── security/           # RequestPrincipal 与 resolver Port
-├── interfaces/
-│   ├── http/               # routes、schemas、assemblers、dependencies
-│   └── agent/              # Function Calling / MCP 等协议适配器
-├── infrastructure/
-│   ├── documents/          # 文档处理具体实现
-│   ├── filesystem/         # 文件与附件存储适配器
-│   ├── llm/                # Provider / SDK 适配器
-│   ├── ocr/                # OCR 适配器
-│   └── persistence/        # ORM、Session、Repository、迁移支持
-├── composition/            # ApplicationContainer 与对象组装
-└── shared/                 # 配置、日志、异常与少量基础类型
+- `persistence/`：SQLAlchemy、Session、Repository 和持久化模型。
+- `llm/`：Chat、结构化输出、Embedding Provider 适配器及请求治理。
+- `documents/`：DOCX 等具体文档读取与渲染。
+- `ocr/`：OCR Provider 适配器。
+- `filesystem/`：上传、附件和文件存储。
 
-frontend/                   # 独立 React / TypeScript 应用
-tests/                      # 模块测试、基础设施测试、架构边界测试和测试支持
-```
+具体适配器不反向编排业务用例，不把外部 SDK 类型泄漏到应用层。
 
-禁止重新引入 `app/api`、`app/services`、`app/repositories`、`app/schemas` 等按技术横切堆放业务代码的旧目录。新增目录或跨模块依赖需要先更新架构基线并通过 Change 评审。
+## 7. 前端架构
 
-## 2. 前端架构
+前端是独立的 React/TypeScript 应用，通过稳定 HTTP API 使用平台和业务能力。它负责页面交互、请求状态、上传进度、错误处理、重试、下载和结果展示，不访问数据库、Repository、Domain Entity、Provider 或 Agent Runtime 内部实现。
 
-### 2.1 定位与技术选型
-
-前端是独立应用层，通过稳定 HTTP API 使用平台能力。它负责页面交互、请求状态、上传进度、错误、重试、下载和结果展示；不依赖或感知 GLM、LangChain、LangGraph、MCP、Repository、数据库或后端编排实现。
-
-| 范围 | 选型 / 规则 |
-|---|---|
-| 框架与语言 | React 18、TypeScript，开启 `strict: true`。 |
-| 构建 | Vite，复用现有 `frontend` 工程，不创建第二套前端包。 |
-| UI 与图标 | Ant Design 5、`lucide-react`。 |
-| 路由 | React Router。 |
-| HTTP | Axios 统一客户端；不在页面组件直接创建请求，也不额外包装原生 `fetch`。 |
-| 服务端状态 | TanStack React Query。 |
-| 表单 | Ant Design Form + Zod。 |
-| 样式 | Ant Design Token + CSS Modules。 |
-| 测试 | Vitest + React Testing Library；关键链路使用 Playwright。 |
-
-### 2.2 前端分层
+技术选型为 React 18、严格模式 TypeScript、Vite、Ant Design、Axios、TanStack React Query、React Router、Zod、Vitest、React Testing Library 和 Playwright。
 
 ```text
 frontend/src/
 ├── app/                    # router、providers、应用配置
 ├── layouts/                # 工作台布局
-├── features/
-│   ├── chat/               # 通用对话页面、hooks、API、类型
-│   ├── knowledge-base/     # 知识库管理、上传、检索
-│   └── agent/
-│       └── tender/         # Tender 的页面、组件、hooks、API、类型
-├── services/http/          # Axios client、错误处理、请求类型
-├── shared/                 # 通用组件、常量、类型、工具
-├── styles/                 # theme 与全局样式
+├── features/               # chat、knowledge-base、agent/tender 等业务界面
+├── services/http/          # Axios 客户端和 HTTP 类型
+├── shared/                 # 通用组件、常量、类型和工具
+├── styles/                 # 主题与全局样式
 └── main.tsx
 ```
 
-现有 `features/mock-workspace/` 可以作为正式 UI 基线逐步拆分；只替换 Mock 数据、行为与状态来源，不要求先废弃已有界面。业务模块通过公开 API 或 `shared` 交互，不跨 feature 引用内部文件。
+页面通过 React Query Hook 调用业务 API，Axios Client 统一处理 `/api` 前缀、超时、错误转换和上传进度。页面组件不直接编排 HTTP 请求或后端业务规则。
 
-### 2.3 请求、状态与类型
+## 8. 后端物理结构
 
 ```text
-Page Component
-  -> React Query Hook
-  -> Business API
-  -> Axios Client
-  -> Backend API
+app/
+├── platform/
+│   ├── agent/              # Agent Runtime
+│   ├── attachment/         # 附件契约、访问与存储边界
+│   ├── conversation/       # 会话、消息、事件与上下文
+│   ├── dialogue/           # 对话与 Agent 结果续写
+│   ├── ingestion/          # 通用资料处理 Pipeline
+│   ├── interaction/        # Gateway、目录、确认与分发
+│   ├── knowledge/          # Knowledge/RAG 查询、写入与发布
+│   ├── llm/                # LLM 契约与应用能力
+│   └── security/           # RequestPrincipal 与安全端口
+├── business/
+│   ├── online/             # Knowledge/RAG 业务应用
+│   └── agents/tender/      # Tender 业务 Agent
+├── interfaces/
+│   ├── http/               # HTTP routes、schemas、assemblers
+│   └── agent/              # Function Calling / MCP 适配器
+├── infrastructure/        # 数据库、Provider、OCR、文件和文档适配器
+├── composition/            # Composition Root 与固定绑定
+└── shared/                 # 配置、日志、异常和共享基础能力
+
+frontend/                   # React / TypeScript 前端
+tests/                      # 单元、应用、协议和架构边界测试
+openspec/                   # 需求变更与交付产物
+docs/                       # 看板、设计说明和业务资料
+tools/                      # 人工诊断、验收和样本处理脚本
+sql/                        # 数据库初始化与结构脚本
+docker/                     # 本地基础设施配置
+.runtime/                   # 本地运行产物，不提交到 Git
 ```
 
-| 状态类型 | 管理方式 | 约束 |
-|---|---|---|
-| 输入框、弹窗、Tab | React State | 仅限组件局部交互。 |
-| 服务端数据 | React Query | 负责缓存、重试、失效与轮询。 |
-| 上传进度 | Axios 回调 + 组件状态 | 需要取消时使用 `AbortSignal`。 |
-| 跨页临时状态 | 必要时 Zustand | 不默认建立全局业务状态。 |
+## 9. 质量与安全约束
 
-所有 API 都经统一 Axios Client：统一 `/api` 前缀、超时、请求头注入、错误转换、开发日志和上传进度。业务 API 描述接口，Hook 管理页面状态，组件不直接处理 HTTP 错误对象。
-
-TypeScript 不使用默认 `any`；请求和响应分别建模；组件 Props 必须声明类型；API 错误使用统一错误类型；区分浏览器 `File` 和后端附件/文档记录。前端认证信息的请求拦截器仅作为适配插口，不能自行决定权限。
-
-### 2.4 页面与能力边界
-
-| 页面/模块 | 路由 | 前端职责 |
-|---|---|---|
-| 通用对话 | `/chat` | 发送消息、选择/上传附件、展示流式回复、确认、错误与重试。 |
-| Agent 工作台 | `/agents` | 展示可用 Agent 与运行状态。 |
-| Tender | `/agents/tender` 及任务详情 | 收集业务输入、展示进度、结果预览与下载。 |
-| 知识库 | `/knowledge-bases` 及子页面 | 管理知识库、文档、处理状态、重试和检索结果。 |
-| Workflow | `/workflow` | 仅预留入口；不因路由存在而假定 Workflow 已实现。 |
-
-知识库是平台共享能力，不归属 Tender。Agent 页面只消费后端 Agent/Application API，不承担 Agent Runtime、工具执行或模型调用。通用 Chat 与 Agent 任务页面独立；只有后端为某个 Agent 定义会话契约时，才增加相应的对话式 UI。
-
-知识库页面支持管理列表、表单校验、批量/拖拽上传、进度、处理状态、失败重试、删除确认、文档详情、检索结果和空状态。文档解析、向量化、索引和持久化仍在后端。
-
-### 2.5 视觉与可用性约束
-
-- 工作台以高信息密度、清晰扫描和重复操作效率为主；深色侧栏承载导航，内容区保持可读。
-- 卡片使用弱边框和清晰层级，不堆叠装饰性卡片；状态色明确区分成功、处理中和失败。
-- 图标优先使用 `lucide-react`；图标按钮提供可理解的 tooltip。
-- 页面必须覆盖 loading、empty、error、retry、upload progress 和 download 状态；文本在桌面与移动端均不得溢出或遮挡。
-- 前端测试至少覆盖核心交互，所有前端改动运行 `npm run build`；上传、任务和下载等跨界链路由 Playwright 覆盖。
-
-## 3. 当前范围外与演化规则
-
-下列能力均需独立小 Change，且不得反向修改当前模块职责：
-
-1. **普通 Chat 历史上下文与压缩。** 将流式 Conversation Runtime 接入 Context Builder、上下文策略和 token 预算；必要时增加摘要检查点与可恢复压缩流程，保持原始消息和摘要的可追溯关系。
-2. **真实认证与授权。** 实现 JWT、Session、SSO、用户模块或权限服务时，只替换 Security resolver 与授权适配器。
-3. **缓存。** Redis 仅用于可丢弃的热数据、短 TTL Proposal 或速率控制；不得作为 Conversation 的事实源。
-4. **多 Agent 编排。** 只有出现真实多步骤、分支、失败回退、可恢复状态或协作需求后，才选择 Workflow/Task/Agent Runtime Adapter。
-
-每个 Change 要小到可以独立验证，不将认证、会话 owner、缓存、压缩和多 Agent 编排打包到同一改动中。
-
-## 4. 质量、安全与验证
-
-- 后端变更补充 `pytest`；前端变更至少运行 `npm run build`。
-- 架构边界优先使用 AST/依赖扫描测试，而不是只检查目录名称。
-- 外部模型、Embedding、OCR 和业务系统测试使用稳定替身、固定输出或明确 skip 条件。
-- 敏感资料、密钥、真实业务文件与运行产物不得提交；运行时文件放入 `.runtime/`。
-- 未经测试或人工验收，不得把实现描述为完成或通过验收。
-
-常用检查：
-
-```powershell
-python -m pytest -q
-ruff check app tests
-python -m compileall -q app tests
-Set-Location frontend
-npm run build
-```
+- 领域层不依赖外部协议、数据库、模型框架或具体基础设施。
+- 所有 Agent 调用经过服务端能力目录、主体权限、输入契约和确认策略校验。
+- RAG 和业务判断保留来源信息；证据不足时返回受控结果。
+- 外部模型、Embedding、OCR 和文件系统通过 Port 接入，并使用稳定替身进行自动化测试。
+- 密钥、数据库凭据、真实业务资料和运行产物不得提交到 Git；运行时文件放入 `.runtime/`。
+- 架构边界通过 AST 或依赖扫描测试验证，不能只依赖目录名称。

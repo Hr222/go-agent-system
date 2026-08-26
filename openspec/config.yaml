@@ -2,15 +2,22 @@ schema: spec-driven
 
 context: |
   项目：Go Agent System。仓库名称沿用历史命名；当前实现是 Python 后端与 React/TypeScript 前端。
-  后端：Python 3.11 及以上、FastAPI 风格的 HTTP 接口、PostgreSQL、pgvector，以及用于本地基础设施的 Docker。
+  后端：Python 3.11 及以上、FastAPI 风格 HTTP 接口、PostgreSQL、pgvector，以及用于本地基础设施的 Docker。
   前端：React 18、开启严格模式的 TypeScript、Vite、Ant Design、Axios、TanStack React Query。
-  架构依据：agent.md、ARCHITECTURE.md，以及 docs/ 下当前 Phase 3 的文档。
-  后端依赖方向：interfaces -> application/modules -> domain and ports -> infrastructure implementations。具体适配器统一在 app/composition/ 中组装。
-  模块边界：online、knowledge、ingestion、llm、conversation、task management 和 agent capabilities 保持独立。Conversation 负责历史消息与上下文；Task Management 负责任务生命周期与状态。Agent 适配器必须调用应用层能力，不得直接访问 Repository 或 SDK。
-  产品重点：可解释、可追溯证据的知识检索，以及投标 Agent 相关能力。当前阶段不代表已经具备完整的多 Agent 平台。
-  语言与表达：proposal、spec、design、tasks 以及面向用户的说明一律使用自然、准确的简体中文。不得把英文模板逐句直译成中文，不得为了显得正式而堆砌“应当进行”“实现了一个”等空泛表达。代码符号、接口路径、字段名、类名、库名、协议名和 OpenSpec 必需的结构标记可以保留英文。
-  中文术语：优先使用项目已有术语和业界通用译法；首次出现的必要英文术语可写成“中文（English）”，后续统一使用同一种叫法。不要在同一份文档中混用“任务管理/Task Management”“供应商/Provider”等多个译法。
-  Brownfield 规则：只描述当前 Change 实际要改变的行为，不要把整个现有代码库补写成 OpenSpec 规格。
+
+  文档职责：ARCHITECTURE.md 是稳定的系统架构基线；docs/go agent system - 系统看板.md 记录实际进度和优先级；当前 Change 的 proposal、specs、design、tasks 描述本次交付；README.md 说明运行与使用入口；agent.md 规定协作、安全、验证和 Git 交付规则。设计、进度和当前代码不一致时，必须指出差异，不得把设计直接声称为已实现。
+
+  后端物理分层：app/platform 是可复用平台能力，app/business 是业务应用，interfaces、infrastructure、composition、shared 是横向技术层。依赖方向为：外部协议 -> interfaces -> platform 或 business 的 Application Capability -> Domain + Ports <- infrastructure adapters。composition 负责依赖注入、对象组装和固定绑定，不参与运行时请求转发；shared 仅放置配置、日志、异常等共享基础能力。
+
+  平台能力：LLM、Knowledge/RAG、Ingestion、Conversation、Dialogue、Interaction、Agent Management、Attachment、Security。业务应用：online、agents/tender。Ingestion 是通用资料处理 Pipeline，政策资料只是验证样本；Knowledge/RAG 独立于 LLM 与业务应用；online 通过 Knowledge 查询和自身 AnswerGenerator Port 使用检索证据，不直接依赖 LLM Provider；Tender 是业务 Agent，不是平台一级能力，也不默认依赖 Knowledge/RAG。Agent Management 包含 Capability Catalog、Agent Call Policy、AgentCallDispatcher 和 Agent Runtime。Gateway 只负责自然语言识别、确认和受控分发，直接 HTTP Application 接口不必经过 Gateway。
+
+  工程边界：Interfaces 负责 HTTP、MCP、Function Calling 等协议适配，不承载复杂业务规则；Domain 与 Ports 不依赖 HTTP、数据库、ORM、LLM SDK 或具体 Agent 框架；Infrastructure 实现 Ports，不反向编排用例；Agent 适配器和业务 Agent 只能调用 Application Capability 或 Port，不得直连 Repository、数据库或 Provider SDK。RAG 和业务判断必须保留来源；证据不足时返回受控结果，不编造事实。
+
+  开发与验证：复杂函数、关键流程、跨模块协调、非直观业务规则、安全边界、兼容逻辑、失败处理和重要取舍必须使用简洁中文注释或说明；直白代码不得逐行翻译或堆叠重复注释。后端改动至少执行相关 pytest；前端改动至少执行相关测试和 npm run build；架构边界优先使用 AST 或依赖扫描测试；外部模型、Embedding、OCR 和业务系统测试使用稳定替身、固定输出或明确 skip 条件。未完成验证时不得声称完成。
+
+  安全与 Git：密钥、数据库密码、真实业务资料、真实 SQL 备份、OCR 原始输出、.env、.tmp、.runtime、backups 和工具运行产物不得提交到 Git。提交标题使用“分类（模块）：简洁的中文动作描述”，并使用显式文件路径暂存；提交前检查工作区、暂存差异和 git diff --check。远程 push 必须有用户明确指令。
+
+  文档语言：proposal、spec、design、tasks 以及面向用户的说明使用自然、准确的简体中文。代码符号、接口路径、字段名、类名、库名、协议名和 OpenSpec 必需结构标记可以保留英文。首次出现的必要英文术语可写成“中文（English）”，后续统一使用同一种术语。存量项目采用 delta-first：只描述当前 Change 实际要改变的行为，不为整个历史代码库补写规格。
 
 rules:
   proposal:
@@ -23,10 +30,10 @@ rules:
     - 使用具体的 WHEN、THEN、AND 场景，覆盖输入校验失败、Provider 失败、重试、权限不足和证据不足等适用分支。
     - 涉及 RAG 或业务判断时，必须定义来源追踪方式，以及证据不足时系统如何返回、提示或拒绝判断。
     - Requirement 和 Scenario 的标题使用自然中文；保留 OpenSpec 要求的结构标记，不要把整句英文模板留在规格中。
-    - 增量规格只描述当前 Change 新增、修改或删除的行为，不要复制现有架构文档或阶段计划。
+    - 增量规格只描述当前 Change 新增、修改或删除的行为，不要复制架构文档、系统看板或阶段计划。
   design:
-    - 模块归属和依赖方向必须与 agent.md、ARCHITECTURE.md 保持一致。
-    - 变更涉及相关内容时，说明应用层契约、Ports、Adapters、持久化、Composition Root 组装方式，以及前后端边界。
+    - 模块归属和依赖方向必须与 ARCHITECTURE.md 和 agent.md 保持一致；不要用当前局部代码静默覆盖稳定架构设计。
+    - 变更涉及相关内容时，说明 Application Capability、Ports、Adapters、持久化、Composition Root 组装方式，以及前后端边界。
     - 适用时说明错误映射、幂等性、状态流转、可观测性、安全、回滚和数据迁移方案；不适用时明确写“无”。
     - 除非需求明确要求，否则不要引入 LangGraph、SubAgent 编排或其他复杂框架。
     - 设计说明应解释关键取舍和影响，不要只罗列类名、目录名或实现步骤。
