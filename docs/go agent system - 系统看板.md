@@ -1,101 +1,82 @@
-# 当前阶段与下一阶段计划
+# 项目进度看板
 
-## 1. 文档定位
+## 1. 文档职责
 
-本文档是项目的**高层阶段看板**：说明已经完成什么、当前正在验证什么，以及后续能力的大致推进顺序。
+本文档只记录项目交付状态、已完成 Change、当前验证和待办，不定义系统架构、模块边界、接口契约或技术选型。
 
-它不替代需求、接口、设计或验收标准。项目的目标工作方式是每一项可交付能力均通过独立的 OpenSpec Change 管理；具体范围、设计决策、任务拆分和验收条件以该 Change 的 `proposal.md`、`design.md`、`tasks.md` 与 `specs/` 为准。
+当前系统架构唯一依据是 [`ARCHITECTURE.md`](../ARCHITECTURE.md)。模块职责、依赖方向、后端与前端结构以及当前能力边界均在该文档维护；本看板不重复描述。
 
-迁移期的 Phase 3 已完成：Chat 流式 Change，以及 DeepSeek Provider、Tender MCP 骨架生成、结构化输出归一化和 Tender 分块分析 Change 均已完成规格同步和归档。`docs/第三阶段工作计划.md` 与前后端联合进度文档保留为结项记录，不再承接新需求；后续阶段不再新建同类阶段拆分计划文档，而从 OpenSpec Explore/Change 开始管理详细交付。
+具体需求、设计、任务和验收条件以对应的 OpenSpec Change 为准。已完成 Change 位于 [`openspec/changes/archive/`](../openspec/changes/archive/)，当前 Change 位于 [`openspec/changes/`](../openspec/changes/)。
 
-项目长期定位是：
+## 2. 当前状态
 
-> **Go Agent System 是一套让业务方能够自由编排、运行和演进 Agent 的平台系统，其目的在于提升业务端的处理效率。**
+当前项目处于平台能力整合与稳定性验证阶段。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；最近一组普通流式对话 Change 已完成实现、验证和归档。
 
-投标助手是当前用于验证平台基础能力的一个业务场景，并非系统的唯一产品边界，也不应反向决定平台的长期架构。
+| 领域 | 状态 | 当前进度 |
+|---|---|---|
+| 知识库与文档入库 | 已完成基础链路 | 文档解析、OCR、清洗、切分、Embedding、入库、发布、检索和引用可用。 |
+| RAG 与规则判断 | 已完成基础链路 | 支持混合检索、证据引用、资料不足判断和材料核验场景。 |
+| LLM 与流式交互 | 已完成基础链路 | 支持 Chat、结构化输出、Embedding、Provider 适配、SSE、重试、限流和并发治理。 |
+| Interaction 与 Agent | 已完成基础链路 | 支持能力目录、候选识别、确认、受控分发和 Tender Agent 调用。 |
+| 附件与产物 | 已完成基础链路 | 支持上传、主体/会话访问绑定、Tender 输入解析和受控下载。 |
+| Conversation 与 Dialogue | 已完成当前交付 | 支持会话持久化、历史读取、列表管理、话题概括、主体隔离、轮次串行、Agent 异步执行、上下文窗口和异步持久化。 |
+| 真实身份认证与多 Agent 编排 | 当前未实施 | 不作为当前验收项，具体边界以 `ARCHITECTURE.md` 的当前边界为准。 |
 
-## 2. 阶段总览
+## 3. 已完成 Change
 
-| 阶段 | 状态 | 目标 |
-| --- | --- | --- |
-| Phase 1：知识库基础 | 已完成 | 建立资料接入、解析、清洗、切分、向量化、存储与最小 RAG 验证能力。 |
-| Phase 2：检索与规则数据基础 | 已完成 | 建立可解释的检索、混合召回、重排、引用追溯，以及规则/数据结果 PoC 能力。 |
-| Phase 3：单 Agent 真实业务调用 | 已完成 | 已以投标助手完成单个 Agent 的招标文件解析、Structured LLM 调用、投标书骨架文件生成，以及真实单卷、多卷的 HTTP、MCP 和前端验收，为后续 SubAgent 编排做准备。 |
-| Phase 4：Agent 编排与多 Agent 协作 | 后续 | 建立可组合的 Agent 执行与编排能力，使业务流程能够由多个专业 Agent 协同完成。 |
-| Phase 5：任务管理 | 后续 | 建立独立的长流程任务生命周期管理能力。 |
-| Phase 6：会话与上下文管理 | 后续 | 建立独立的会话、上下文持久化与恢复能力。 |
-| 后续业务能力 | 规划中 | 在平台能力稳定后，逐步扩展更多业务 Agent 与业务流程。 |
+以下为当前平台能力的主要已完成交付，完整归档记录以 [`openspec/changes/archive/`](../openspec/changes/archive/) 为准：
 
-## 3. Phase 3 完成结论
+| 交付组 | 已完成内容 |
+|---|---|
+| 知识库与检索 | 知识查询、写入、发布、混合检索、rerank、HNSW、规则判断和入库流水线。 |
+| LLM 与 Chat | 流式 Chat、Provider 接入、结构化输出归一化、流式展示、重试、限流和 GLM 配置分离。 |
+| Interaction 与 Agent | 意图候选召回、能力目录、结构化识别、确认策略、受控 Agent 分发、Tender MCP 和分块分析。 |
+| Conversation 与 Dialogue | 会话模型与存储、主体范围创建/列表/历史、流式持久化、Agent 续写、会话管理和附件输入。 |
+| 安全与附件 | RequestPrincipal、HTTP 主体绑定、会话 owner 隔离、附件访问绑定、Tender 附件适配和 Agent 产物下载。 |
+| 架构文档 | `ARCHITECTURE.md` 作为当前系统架构唯一来源，阶段看板不再复制架构内容。 |
 
-### 3.1 阶段终点
+## 4. 最近完成的 Change
 
-Phase 3 的终点不是完成一套完整投标工作台，而是验证一个真实、可同步调用并能产出骨架文件的单 Agent 闭环：
+| Change | Commit | 状态 |
+|---|---|---|
+| `serialize-streaming-conversation-turns` | `270a9a8` | 已完成并归档 |
+| `make-agent-turn-execution-asynchronous` | `a92b7eb` | 已完成并归档 |
+| `serialize-agent-continuation-turns` | `a3240f7` | 已完成并归档 |
+| `stabilize-conversation-context-window` | `6d07003` | 已完成并归档 |
+| `make-conversation-persistence-asynchronous` | `a61715c` | 已完成并归档 |
 
-```text
-招标文件 + 用户关注点
-  -> 请求级隔离解析
-  -> 单个 Tender Agent 通过 LangChain 调用 Structured LLM
-  -> 生成符合招标要求的投标书骨架
-  -> 前端在同一页面展示并提供骨架文件
-```
+当前没有活动中的 Change；完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
 
-前端与后端作为同一个垂直切片交付，不再分别维护互相滞后的阶段计划。聊天流式与打字机展示已完成验证；Phase 3 的四个相关 Change 共 70 项任务已完成、同步正式规格并归档，真实单卷、多卷的 HTTP、MCP 和前端验收也已完成。
+## 5. 当前验证
 
-### 3.2 范围边界
+最近一组 Change 的后端验收结果：
 
-本阶段仅实现完成上述闭环所需的最小能力：
+`python -m pytest -q`：`650 passed`；PostgreSQL 交界测试：`1 passed`；`ruff check app tests`、`python -m compileall -q app tests`、`git diff --check` 和相关 OpenSpec strict validate 均通过。
 
-- 单个 Tender Agent 的同步真实调用。
-- 招标文件的请求级临时处理、解析与清理。
-- 生成可供后续填充的投标书骨架和骨架文件。
-- 复用现有 LangChain Structured LLM 适配能力。
-- 一个最小的投标入口页：文件、关注点、一次提交、结果/错误/引用展示。
+外部 LLM、Embedding、OCR、MCP 和浏览器链路还需要使用项目现有的诊断脚本或人工验收记录结果；不能只凭单元测试宣称外部服务验收完成。
 
-本阶段不引入以下能力：
+## 6. 后续能力优先级
 
-- 任务创建、`task_id`、轮询、重试、取消、下载、持久化或恢复。
-- 会话历史、对话上下文持久化或恢复。
-- 公司资料库检索、资料不足判断、公司内容填充、建议生成和公司知识库引用；这些属于后续 V2。
-- Agent Runtime、LangGraph、Function Calling、SubAgent 或多 Agent 编排；Phase 3 包含 MCP 能力适配，但不包含 MCP 编排。
-- 将招标文件写入政策知识库。
-- 投标书正文生成、人工确认工作流，或把现有 Mock 任务页接入真实接口。
+以下只记录能力优先级，不提前定义未来架构。具体实施时分别创建独立的 OpenSpec Change：
 
-`Task Management` 与 `Conversation / Context Management` 是独立模块，不应为了当前单 Agent 调用而提前塞入 LLM 或 Tender Agent 内部。它们将在后续以各自独立的 OpenSpec Change 设计和交付。
+| 优先级 | 能力 | 状态 |
+|---|---|---|
+| 1 | 上下文压缩与摘要 | 当前优先项；现有 `streaming-chat-multiturn-context` 提供历史上下文基础，但尚未包含摘要、压缩或 Compaction。 |
+| 2 | Task Management | 待规划；尚未创建 Change。 |
+| 3 | 多 Agent / Workflow | 待规划；尚未创建 Change。 |
+| 4 | 真实认证与用户模块 | 待规划；尚未创建 Change。 |
 
-## 4. 后续阶段
+## 7. 当前待办
 
-### Phase 4：Agent 编排与多 Agent 协作
+1. 为上下文压缩与摘要创建独立 OpenSpec Change，并在范围明确后实施。
+2. 评估 Task Management 的实际需求和异步任务生命周期。
+3. 根据实际代码和验证结果持续同步 OpenSpec 正式规格并归档已完成 Change。
+4. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。
 
-在 Phase 3 验证单 Agent 真实调用和骨架产出稳定后，下一阶段聚焦平台的核心差异化能力：让多个职责明确的 Agent 可被组合、调度和观察，从而承载更复杂的业务流程。
+## 8. 相关文档
 
-该阶段的具体运行时模型、编排方式、Agent 边界、失败处理与可观测性，必须先经 OpenSpec 探索与 Change 设计确定，本文不预先规定实现方案。
-
-### Phase 5：任务管理
-
-当业务流程确实需要长耗时、异步执行、状态查询、重试、取消或恢复时，新增独立的任务管理模块。该模块服务于平台级执行生命周期，不是某个具体业务 Agent 的附属字段。
-
-### Phase 6：会话与上下文管理
-
-当业务需要跨轮协作、上下文沉淀、历史追溯或恢复时，新增独立的会话与上下文管理模块。知识库中文档版本历史不等同于会话上下文。
-
-### 后续业务能力
-
-投标助手可以在平台能力成熟后继续演进，也可以接入其他业务 Agent。诸如投标书正文生成、人工确认等能力，均应作为独立业务需求评估，并通过各自的 OpenSpec Change 推进。
-
-Tender Agent V2 将在取得真实公司资料后，基于 V1 骨架接入公司资料库检索、资料不足判断、内容填充、建议和真实引用；当前 Phase 3 不以这些资料或 RAG 结果作为验收前提。
-
-## 5. OpenSpec 使用原则
-
-1. 出现新业务能力或新模块需求时，可先使用 `openspec-explore` 澄清问题与边界；探索不是 Change，也不直接实现代码。
-2. Phase 3 已结项，联合蓝本和前后端联合进度文档仅保留历史证据；已存在的 Chat 流式 Change 及四个 Phase 3 Change 均已完成 OpenSpec 规格同步和归档。
-3. 从 Phase 4 起，确定要交付的能力必须创建独立 OpenSpec Change，并维护完整的提案、设计、任务和增量规格。
-4. 一个 Change 同时覆盖前端与后端的垂直切片，避免两侧计划脱节；实现完成后先验证任务与规格，再同步增量规格并归档。
-5. 本文仅更新阶段状态和方向；实现细节、接口契约和验收标准不在此重复维护。
-
-## 6. 架构基准
-
-- 平台、模块、前端分层和页面边界均以 `ARCHITECTURE.md` 为准。
-- HTTP 层负责协议、组装和错误映射；应用层负责用例编排；领域层负责规则与端口；基础设施层承载 LLM、文件、数据库等具体实现；Composition Root 负责依赖组装。
-- 前端仅通过稳定的 HTTP API 使用后端能力，不直接耦合数据库、Repository 或后端领域对象。
-- 每一阶段新增的复杂能力均需要相应的自动化验证；外部模型调用使用可控替身或固定输出来保持测试稳定。
+- [`ARCHITECTURE.md`](../ARCHITECTURE.md)：当前唯一系统架构。
+- [`README.md`](../README.md)：项目定位、当前能力、运行方式和访问入口。
+- [`agent.md`](../agent.md)：协作、工程开发、测试、安全和 Git 约定。
+- [`openspec/README.md`](../openspec/README.md)：OpenSpec 工作流和 Change 约定。
+- [`tools/ocr/README.md`](../tools/ocr/README.md)：OCR 与样本分类工具说明。
