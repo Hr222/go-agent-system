@@ -15,6 +15,17 @@ from app.platform.dialogue.application.agent_invocation import (
     DialogueAgentInvocationService,
 )
 from app.platform.dialogue.application.agent_result_projection import AgentResultProjector
+from app.platform.dialogue.application.agent_turn import (
+    DialogueAgentTurnCommand,
+    DialogueAgentTurnConfirmation,
+    DialogueAgentTurnExecutor,
+    DialogueAgentTurnPreparation,
+    DialogueAgentTurnRequest,
+    DialogueAgentTurnResult,
+    DialogueAgentTurnWorker,
+    DialogueAgentTurnWorkerFactoryPort,
+    DialogueAgentTurnWorkerPort,
+)
 from app.platform.dialogue.application.basic_chat import (
     DEFAULT_DIALOGUE_CONTEXT_BUDGET,
     DEFAULT_DIALOGUE_CONTEXT_POLICY,
@@ -47,6 +58,15 @@ __all__ = [
     "DEFAULT_DIALOGUE_PROMPT_VERSION",
     "DEFAULT_DIALOGUE_SYSTEM_PROMPT",
     "BasicDialogueRuntime",
+    "DialogueAgentTurnCommand",
+    "DialogueAgentTurnConfirmation",
+    "DialogueAgentTurnExecutor",
+    "DialogueAgentTurnPreparation",
+    "DialogueAgentTurnRequest",
+    "DialogueAgentTurnResult",
+    "DialogueAgentTurnWorker",
+    "DialogueAgentTurnWorkerFactoryPort",
+    "DialogueAgentTurnWorkerPort",
     "ConversationTurnCoordinator",
     "ConversationTurnLease",
     "DialogueCommand",
@@ -71,3 +91,4 @@ __all__ = [
     "StreamingConversationResult",
     "StreamingConversationRuntime",
 ]
+

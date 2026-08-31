@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.interfaces.http import dependencies
+from app.platform.dialogue.application import ConversationTurnCoordinator
 
 
 class TrackingContainer:
@@ -67,6 +68,7 @@ def test_request_container_releases_resources_when_dependency_generator_closes(
         dependency = dependencies.get_application_container(
             session=object(),
             attachment_storage=object(),
+            conversation_turn_coordinator=ConversationTurnCoordinator(),
         )
         container = await anext(dependency)
         assert container.closed is False
@@ -76,6 +78,17 @@ def test_request_container_releases_resources_when_dependency_generator_closes(
 
     assert len(TrackingContainer.instances) == 1
     assert TrackingContainer.instances[0].closed is True
+
+
+def test_conversation_turn_coordinator_is_process_shared() -> None:
+    dependencies.get_conversation_turn_coordinator.cache_clear()
+    try:
+        assert (
+            dependencies.get_conversation_turn_coordinator()
+            is dependencies.get_conversation_turn_coordinator()
+        )
+    finally:
+        dependencies.get_conversation_turn_coordinator.cache_clear()
 
 
 def test_application_lifespan_releases_the_stateless_container(
