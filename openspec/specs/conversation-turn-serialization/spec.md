@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+确保单个后端进程内，同一 Conversation 的普通流式 Chat 和已确认 Agent 轮次按完整轮次互斥执行，避免并发请求交错写入会话事实或读取不完整历史。
+
+## Requirements
 
 ### Requirement: 同一进程内的普通流式 Chat 按 Conversation 互斥执行
 
