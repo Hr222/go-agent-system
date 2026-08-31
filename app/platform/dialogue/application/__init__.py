@@ -24,6 +24,10 @@ from app.platform.dialogue.application.basic_chat import (
     DialogueCommand,
     DialogueResult,
 )
+from app.platform.dialogue.application.conversation_turn_coordinator import (
+    ConversationTurnCoordinator,
+    ConversationTurnLease,
+)
 from app.platform.dialogue.application.pending_invocation import (
     InMemoryPendingAgentInvocationStore,
     PendingAgentInvocation,
@@ -43,6 +47,8 @@ __all__ = [
     "DEFAULT_DIALOGUE_PROMPT_VERSION",
     "DEFAULT_DIALOGUE_SYSTEM_PROMPT",
     "BasicDialogueRuntime",
+    "ConversationTurnCoordinator",
+    "ConversationTurnLease",
     "DialogueCommand",
     "DialogueResult",
     "AgentResultProjector",

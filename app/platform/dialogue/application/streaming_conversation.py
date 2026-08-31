@@ -24,6 +24,10 @@ from app.platform.conversation.domain import (
 )
 from app.platform.conversation.errors import ConversationAccessDeniedError
 from app.platform.conversation.ports import MAX_HISTORY_PAGE_SIZE
+from app.platform.dialogue.application.conversation_turn_coordinator import (
+    ConversationTurnCoordinator,
+    ConversationTurnLease,
+)
 from app.platform.llm.contracts import (
     ChatLlmMessage,
     ChatLlmMessageRole,
@@ -80,6 +84,40 @@ class StreamingConversationEvent:
     result: StreamingConversationResult | None = None
 
 
+class _LeaseReleasingStream(AsyncIterator[StreamingConversationEvent]):
+    """Close an inner Conversation stream and release its turn lease once."""
+
+    def __init__(
+        self,
+        stream: AsyncIterator[StreamingConversationEvent],
+        lease: ConversationTurnLease,
+    ) -> None:
+        self._stream = stream
+        self._lease = lease
+        self._closed = False
+
+    def __aiter__(self) -> _LeaseReleasingStream:
+        return self
+
+    async def __anext__(self) -> StreamingConversationEvent:
+        if self._closed:
+            raise StopAsyncIteration
+        try:
+            return await anext(self._stream)
+        except BaseException:
+            await self.aclose()
+            raise
+
+    async def aclose(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            await _close_stream(self._stream)
+        finally:
+            self._lease.release()
+
+
 class StreamingConversationRuntime:
     """持久化普通流式对话事实，并在完整成功后提交 assistant 消息。"""
 
@@ -91,6 +129,7 @@ class StreamingConversationRuntime:
         conversation_reader: ConversationHistoryReadService,
         context_builder: ConversationContextBuilder,
         llm: StreamingChatLlmPort,
+        conversation_turn_coordinator: ConversationTurnCoordinator,
         context_policy: ContextPolicy = DEFAULT_STREAMING_CONTEXT_POLICY,
         context_budget: ContextBudget = DEFAULT_STREAMING_CONTEXT_BUDGET,
         system_prompt: str = DEFAULT_STREAMING_CONVERSATION_SYSTEM_PROMPT,
@@ -110,6 +149,7 @@ class StreamingConversationRuntime:
         self._conversation_reader = conversation_reader
         self._context_builder = context_builder
         self._llm = llm
+        self._conversation_turn_coordinator = conversation_turn_coordinator
         self._context_policy = context_policy
         self._context_budget = context_budget
         self._system_prompt = system_prompt
@@ -119,27 +159,36 @@ class StreamingConversationRuntime:
         self,
         command: StreamingConversationCommand,
     ) -> AsyncIterator[StreamingConversationEvent]:
-        conversation, user_message = self._prepare_turn(command)
-        context = self._context_builder.build(
-            conversation_id=conversation.id,
-            messages=self._load_history(conversation.id),
-            policy=self._context_policy,
-            budget=self._context_budget,
-        )
-        request = self._build_llm_request(
-            context=context,
-            current_user_message=user_message,
-        )
-        return self._stream_turn(
-            conversation=conversation,
-            user_message=user_message,
-            request=request,
-        )
+        conversation = self._resolve_conversation(command)
+        lease = await self._conversation_turn_coordinator.acquire(conversation.id)
+        try:
+            user_message = self._append_user_message(conversation, command.message)
+            context = self._context_builder.build(
+                conversation_id=conversation.id,
+                messages=self._load_history(conversation.id),
+                policy=self._context_policy,
+                budget=self._context_budget,
+            )
+            request = self._build_llm_request(
+                context=context,
+                current_user_message=user_message,
+            )
+            return _LeaseReleasingStream(
+                self._stream_turn(
+                    conversation=conversation,
+                    user_message=user_message,
+                    request=request,
+                ),
+                lease,
+            )
+        except BaseException:
+            lease.release()
+            raise
 
-    def _prepare_turn(
+    def _resolve_conversation(
         self,
         command: StreamingConversationCommand,
-    ) -> tuple[Conversation, Message]:
+    ) -> Conversation:
         if not isinstance(command, StreamingConversationCommand):
             raise ValueError("流式 Conversation 命令无效。")
         if not isinstance(command.principal, RequestPrincipal):
@@ -150,7 +199,7 @@ class StreamingConversationRuntime:
             raise ValueError("会话标识必须是 UUID。")
 
         try:
-            conversation = (
+            return (
                 self._conversation_access.create(
                     ConversationCreateCommand(principal=command.principal)
                 )
@@ -162,16 +211,24 @@ class StreamingConversationRuntime:
                     )
                 )
             )
-            user_message = self._conversation_writer.append_message(
-                conversation_id=conversation.id,
-                role=MessageRole.USER,
-                content=command.message.strip(),
-            )
         except Exception as error:
             if isinstance(error, ConversationAccessDeniedError):
                 raise
             raise StreamingConversationPersistenceError("会话消息暂时无法保存。") from error
-        return conversation, user_message
+
+    def _append_user_message(
+        self,
+        conversation: Conversation,
+        message: str,
+    ) -> Message:
+        try:
+            return self._conversation_writer.append_message(
+                conversation_id=conversation.id,
+                role=MessageRole.USER,
+                content=message.strip(),
+            )
+        except Exception as error:
+            raise StreamingConversationPersistenceError("会话消息暂时无法保存。") from error
 
     def _stream_turn(
         self,

@@ -104,6 +104,7 @@ from app.platform.conversation.application import (
     ConversationTopicSummaryUpdateService,
 )
 from app.platform.dialogue.application import (
+    ConversationTurnCoordinator,
     AgentResultProjector,
     DialogueAgentContinuationService,
     DialogueAgentInvocationService,
@@ -162,6 +163,7 @@ class ApplicationContainer:
         intent_structured_llm: StructuredLlmPort | None = None,
         chat_llm: ChatLlmPort | None = None,
         streaming_chat_llm: StreamingChatLlmPort | None = None,
+        conversation_turn_coordinator: ConversationTurnCoordinator | None = None,
         openai_client_factory: OpenAICompatibleClientFactory | None = None,
         capability_catalog: CapabilityCatalogPort | None = None,
         capability_candidate_retrieval: CapabilityCandidateRetrieval | None = None,
@@ -180,6 +182,11 @@ class ApplicationContainer:
         self._chat_llm = chat_llm
         self._chat_application: ChatApplication | None = None
         self._streaming_chat_llm = streaming_chat_llm
+        self._conversation_turn_coordinator = (
+            conversation_turn_coordinator
+            if conversation_turn_coordinator is not None
+            else ConversationTurnCoordinator()
+        )
         self._streaming_chat_application: StreamingChatApplication | None = None
         self._streaming_conversation_runtime: StreamingConversationRuntime | None = None
         self._openai_client_factory = openai_client_factory
@@ -440,6 +447,7 @@ class ApplicationContainer:
                 self.conversation_access(),
                 conversation_reader=self.conversation_history_read(),
                 context_builder=build_conversation_context_builder(),
+                conversation_turn_coordinator=self._conversation_turn_coordinator,
             )
         return self._streaming_conversation_runtime
 

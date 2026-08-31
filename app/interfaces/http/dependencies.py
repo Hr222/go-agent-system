@@ -14,6 +14,7 @@ from app.platform.conversation.application import (
     ConversationTopicSummaryUpdateService,
 )
 from app.platform.dialogue.application import (
+    ConversationTurnCoordinator,
     InMemoryPendingAgentInvocationStore,
 )
 from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
@@ -38,6 +39,13 @@ def get_stateless_application_container() -> ApplicationContainer:
     return ApplicationContainer()
 
 
+@lru_cache(maxsize=1)
+def get_conversation_turn_coordinator() -> ConversationTurnCoordinator:
+    """Provide one process-local coordinator for ordinary Conversation turns."""
+
+    return ConversationTurnCoordinator()
+
+
 def get_attachment_storage(
     container: ApplicationContainer = Depends(get_stateless_application_container),
 ):
@@ -48,9 +56,16 @@ def get_attachment_storage(
 async def get_application_container(
     session=Depends(get_db_session),  # noqa: ANN001
     attachment_storage=Depends(get_attachment_storage),  # noqa: ANN001
+    conversation_turn_coordinator: ConversationTurnCoordinator = Depends(
+        get_conversation_turn_coordinator
+    ),
 ) -> AsyncIterator[ApplicationContainer]:
     """为需要数据库能力的请求提供统一装配容器。"""
-    container = ApplicationContainer(session, attachment_storage=attachment_storage)
+    container = ApplicationContainer(
+        session,
+        attachment_storage=attachment_storage,
+        conversation_turn_coordinator=conversation_turn_coordinator,
+    )
     try:
         yield container
     finally:

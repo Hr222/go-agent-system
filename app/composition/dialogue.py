@@ -16,6 +16,7 @@ from app.platform.dialogue.application import (
     DEFAULT_DIALOGUE_CONTEXT_BUDGET,
     DEFAULT_DIALOGUE_CONTEXT_POLICY,
     BasicDialogueRuntime,
+    ConversationTurnCoordinator,
     StreamingConversationRuntime,
 )
 from app.platform.llm.contracts import ChatLlmPort, StreamingChatLlmPort
@@ -46,6 +47,7 @@ def build_streaming_conversation_runtime(
     conversation_access: ConversationAccessService,
     *,
     conversation_reader: ConversationHistoryReadService | None = None,
+    conversation_turn_coordinator: ConversationTurnCoordinator,
     context_builder: ConversationContextBuilder | None = None,
 ) -> StreamingConversationRuntime:
     """组装带 Conversation 历史上下文的流式 Dialogue 运行时。"""
@@ -58,4 +60,5 @@ def build_streaming_conversation_runtime(
         ),
         context_builder=context_builder or build_conversation_context_builder(),
         llm=streaming_llm,
+        conversation_turn_coordinator=conversation_turn_coordinator,
     )
