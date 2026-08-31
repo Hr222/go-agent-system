@@ -10,12 +10,16 @@ from app.platform.conversation.ports.event_port import (
 from app.platform.conversation.ports.read_port import (
     DEFAULT_CONVERSATION_LIST_PAGE_SIZE,
     DEFAULT_HISTORY_PAGE_SIZE,
+    DEFAULT_RECENT_MESSAGE_WINDOW_SIZE,
     MAX_CONVERSATION_LIST_PAGE_SIZE,
     MAX_HISTORY_PAGE_SIZE,
+    MAX_RECENT_MESSAGE_WINDOW_SIZE,
     ConversationHistoryPage,
     ConversationListCursor,
     ConversationListReadPort,
     ConversationReadPort,
+    ConversationRecentMessageReadPort,
+    ConversationRecentMessageWindow,
     ConversationSummary,
     ConversationSummaryPage,
 )
@@ -30,6 +34,8 @@ __all__ = [
     "ConversationListCursor",
     "ConversationListReadPort",
     "ConversationHistoryPage",
+    "ConversationRecentMessageReadPort",
+    "ConversationRecentMessageWindow",
     "ContextMessageCostEstimator",
     "ConversationEventReadPort",
     "ConversationEventWritePort",
@@ -44,4 +50,6 @@ __all__ = [
     "DEFAULT_HISTORY_PAGE_SIZE",
     "MAX_CONVERSATION_LIST_PAGE_SIZE",
     "MAX_HISTORY_PAGE_SIZE",
+    "DEFAULT_RECENT_MESSAGE_WINDOW_SIZE",
+    "MAX_RECENT_MESSAGE_WINDOW_SIZE",
 ]

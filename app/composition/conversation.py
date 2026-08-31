@@ -24,6 +24,7 @@ from app.platform.conversation.application import (
     ConversationHistoryReadService,
     ConversationListReadService,
     ConversationManagementService,
+    ConversationRecentMessageReadService,
     ConversationTopicSummaryUpdateService,
     ConversationWriteService,
     RuleBasedConversationTopicSummaryGenerator,
@@ -79,6 +80,14 @@ def build_conversation_history_read_service(
     """组装 Conversation 历史读取应用服务及其只读适配器。"""
 
     return ConversationHistoryReadService(build_conversation_history_read_repository(session))
+
+
+def build_conversation_recent_message_read_service(
+    session: Session,
+) -> ConversationRecentMessageReadService:
+    """组装用于上下文构建的有界最近消息读取服务。"""
+
+    return ConversationRecentMessageReadService(build_conversation_history_read_repository(session))
 
 
 def build_conversation_list_read_repository(session: Session) -> ConversationListReadRepository:

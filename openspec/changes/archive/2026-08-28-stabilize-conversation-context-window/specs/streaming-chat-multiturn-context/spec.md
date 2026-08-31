@@ -1,12 +1,4 @@
-# streaming-chat-multiturn-context Specification
-
-## Purpose
-
-Define how ordinary streaming Chat uses recent history from the current
-Conversation while preserving existing persistence and streaming failure
-semantics.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: 普通流式 Chat 使用同一会话的最近历史
 
@@ -78,7 +70,7 @@ semantics.
 
 ### Requirement: 流式失败不得产生虚构的助手历史
 
-系统 MUST 保持现有普通流式持久化语义：客户端取消、上游错误、空回答或 assistant 写入失败时不得追加 assistant Message；上下文接入不得改变既有 SSE 事件和安全错误映射。
+系统 MUST 保持现有普通流式持久化语义：客户端取消、上游错误、空回答或 assistant 写入失败时不得追加 assistant Message；上下文快照接入不得改变既有 SSE 事件和安全错误映射。
 
 #### Scenario: 第二轮流式生成中途失败
 

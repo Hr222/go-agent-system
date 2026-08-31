@@ -18,6 +18,9 @@ from app.platform.conversation.application.management_service import (
     ConversationManagementService,
     ConversationPinCommand,
 )
+from app.platform.conversation.application.recent_message_read_service import (
+    ConversationRecentMessageReadService,
+)
 from app.platform.conversation.application.topic_summary import (
     RuleBasedConversationTopicSummaryGenerator,
     normalize_topic_summary,
@@ -34,6 +37,7 @@ __all__ = [
     "ConversationCreateCommand",
     "ConversationContextBuilder",
     "ConversationHistoryReadService",
+    "ConversationRecentMessageReadService",
     "ConversationListReadService",
     "ConversationDeleteCommand",
     "ConversationManagementService",

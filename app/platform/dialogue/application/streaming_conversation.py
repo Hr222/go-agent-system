@@ -10,6 +10,7 @@ from app.platform.conversation.application import (
     ConversationContextBuilder,
     ConversationCreateCommand,
     ConversationHistoryReadService,
+    ConversationRecentMessageReadService,
     ConversationResolveQuery,
     ConversationWriteService,
 )
@@ -23,7 +24,7 @@ from app.platform.conversation.domain import (
     ModelContextMessage,
 )
 from app.platform.conversation.errors import ConversationAccessDeniedError
-from app.platform.conversation.ports import MAX_HISTORY_PAGE_SIZE
+from app.platform.conversation.ports import ConversationRecentMessageWindow
 from app.platform.dialogue.application.conversation_turn_coordinator import (
     ConversationTurnCoordinator,
     ConversationTurnLease,
@@ -126,7 +127,7 @@ class StreamingConversationRuntime:
         *,
         conversation_access: ConversationAccessService,
         conversation_writer: ConversationWriteService,
-        conversation_reader: ConversationHistoryReadService,
+        conversation_reader: ConversationRecentMessageReadService,
         context_builder: ConversationContextBuilder,
         llm: StreamingChatLlmPort,
         conversation_turn_coordinator: ConversationTurnCoordinator,
@@ -165,7 +166,10 @@ class StreamingConversationRuntime:
             user_message = self._append_user_message(conversation, command.message)
             context = self._context_builder.build(
                 conversation_id=conversation.id,
-                messages=self._load_history(conversation.id),
+                messages=self._read_recent_messages(
+                    conversation.id,
+                    user_message.sequence,
+                ),
                 policy=self._context_policy,
                 budget=self._context_budget,
             )
@@ -304,24 +308,22 @@ class StreamingConversationRuntime:
             if stream is not None:
                 await _close_stream(stream)
 
-    def _load_history(self, conversation_id: UUID) -> tuple[Message, ...]:
-        history: list[Message] = []
-        after_sequence: int | None = None
-
-        while True:
-            page = self._conversation_reader.read_history(
+    def _read_recent_messages(
+        self,
+        conversation_id: UUID,
+        through_sequence: int,
+    ) -> tuple[Message, ...]:
+        try:
+            window: ConversationRecentMessageWindow = self._conversation_reader.read_recent_messages(
                 conversation_id=conversation_id,
-                limit=MAX_HISTORY_PAGE_SIZE,
-                after_sequence=after_sequence,
+                through_sequence=through_sequence,
+                limit=self._context_policy.max_messages,
             )
-            history.extend(page.messages)
-            if not page.has_more:
-                return tuple(history)
-            if page.next_after_sequence is None or (
-                after_sequence is not None and page.next_after_sequence <= after_sequence
-            ):
-                raise RuntimeError("历史分页游标未前进。")
-            after_sequence = page.next_after_sequence
+            return window.messages
+        except Exception as error:
+            raise StreamingConversationPersistenceError(
+                str(error) or "会话历史暂时无法读取。"
+            ) from error
 
     def _build_llm_request(
         self,
@@ -374,3 +376,4 @@ __all__ = [
     "DEFAULT_STREAMING_CONTEXT_BUDGET",
     "DEFAULT_STREAMING_CONTEXT_POLICY",
 ]
+

@@ -9,6 +9,8 @@ from app.platform.conversation.domain import Conversation, Message
 
 DEFAULT_HISTORY_PAGE_SIZE = 50
 MAX_HISTORY_PAGE_SIZE = 200
+DEFAULT_RECENT_MESSAGE_WINDOW_SIZE = 20
+MAX_RECENT_MESSAGE_WINDOW_SIZE = 200
 DEFAULT_CONVERSATION_LIST_PAGE_SIZE = 50
 MAX_CONVERSATION_LIST_PAGE_SIZE = 200
 
@@ -52,6 +54,14 @@ class ConversationHistoryPage:
     next_after_sequence: int | None
 
 
+@dataclass(frozen=True, slots=True)
+class ConversationRecentMessageWindow:
+    """用于模型上下文的有界、按顺序消息快照。"""
+
+    conversation_id: UUID
+    messages: tuple[Message, ...]
+
+
 class ConversationReadPort(Protocol):
     """Conversation 历史读取用例依赖的持久化端口。"""
 
@@ -62,6 +72,18 @@ class ConversationReadPort(Protocol):
         limit: int,
         after_sequence: int | None,
     ) -> ConversationHistoryPage: ...
+
+
+class ConversationRecentMessageReadPort(Protocol):
+    """Conversation 上下文最近消息快照依赖的持久化端口。"""
+
+    def read_recent_messages(
+        self,
+        *,
+        conversation_id: UUID,
+        through_sequence: int,
+        limit: int,
+    ) -> ConversationRecentMessageWindow: ...
 
 
 class ConversationListReadPort(Protocol):

@@ -9,6 +9,7 @@ from app.platform.conversation.domain import Conversation, Message, MessageRole
 from app.platform.conversation.ports import (
     DEFAULT_HISTORY_PAGE_SIZE,
     ConversationHistoryPage,
+    ConversationRecentMessageWindow,
 )
 
 
@@ -32,6 +33,28 @@ class FakeConversationReadPort:
             }
         )
         return self.page
+
+
+class FakeRecentMessageReadPort:
+    def __init__(self, window: ConversationRecentMessageWindow) -> None:
+        self.window = window
+        self.calls: list[dict[str, object]] = []
+
+    def read_recent_messages(
+        self,
+        *,
+        conversation_id: UUID,
+        through_sequence: int,
+        limit: int,
+    ) -> ConversationRecentMessageWindow:
+        self.calls.append(
+            {
+                "conversation_id": conversation_id,
+                "through_sequence": through_sequence,
+                "limit": limit,
+            }
+        )
+        return self.window
 
 
 def _empty_page() -> ConversationHistoryPage:
@@ -122,3 +145,92 @@ def test_history_page_can_carry_ordered_domain_messages() -> None:
     )
 
     assert [message.sequence for message in page.messages] == [1, 2]
+
+
+def test_recent_message_read_service_passes_valid_snapshot_parameters() -> None:
+    from app.platform.conversation.application import ConversationRecentMessageReadService
+
+    conversation = Conversation(owner_subject="user-1")
+    message = Message(
+        conversation_id=conversation.id,
+        role=MessageRole.USER,
+        content="当前问题",
+        sequence=3,
+    )
+    port = FakeRecentMessageReadPort(
+        ConversationRecentMessageWindow(
+            conversation_id=conversation.id,
+            messages=(message,),
+        )
+    )
+
+    result = ConversationRecentMessageReadService(port).read_recent_messages(
+        conversation_id=conversation.id,
+        through_sequence=3,
+        limit=20,
+    )
+
+    assert result.messages == (message,)
+    assert port.calls == [
+        {
+            "conversation_id": conversation.id,
+            "through_sequence": 3,
+            "limit": 20,
+        }
+    ]
+
+
+@pytest.mark.parametrize("through_sequence", [0, -1, True, 1.0])
+def test_recent_message_read_service_rejects_invalid_sequence_boundary(
+    through_sequence: object,
+) -> None:
+    from app.platform.conversation.application import ConversationRecentMessageReadService
+
+    conversation_id = uuid4()
+    port = FakeRecentMessageReadPort(
+        ConversationRecentMessageWindow(conversation_id=conversation_id, messages=())
+    )
+
+    with pytest.raises(ValueError, match="截止顺序号"):
+        ConversationRecentMessageReadService(port).read_recent_messages(
+            conversation_id=conversation_id,
+            through_sequence=through_sequence,  # type: ignore[arg-type]
+        )
+
+    assert port.calls == []
+
+
+@pytest.mark.parametrize("limit", [0, 201, True, 1.0])
+def test_recent_message_read_service_rejects_invalid_window_limit(limit: object) -> None:
+    from app.platform.conversation.application import ConversationRecentMessageReadService
+
+    conversation_id = uuid4()
+    port = FakeRecentMessageReadPort(
+        ConversationRecentMessageWindow(conversation_id=conversation_id, messages=())
+    )
+
+    with pytest.raises(ValueError, match="数量上限"):
+        ConversationRecentMessageReadService(port).read_recent_messages(
+            conversation_id=conversation_id,
+            through_sequence=1,
+            limit=limit,  # type: ignore[arg-type]
+        )
+
+    assert port.calls == []
+
+
+def test_recent_message_read_service_rejects_window_from_another_conversation() -> None:
+    from app.platform.conversation.application import ConversationRecentMessageReadService
+
+    conversation_id = uuid4()
+    port = FakeRecentMessageReadPort(
+        ConversationRecentMessageWindow(conversation_id=uuid4(), messages=())
+    )
+
+    with pytest.raises(ValueError, match="其他会话"):
+        ConversationRecentMessageReadService(port).read_recent_messages(
+            conversation_id=conversation_id,
+            through_sequence=1,
+        )
+
+    assert len(port.calls) == 1

@@ -33,6 +33,7 @@ from app.composition.conversation import (
     build_conversation_history_read_service,
     build_conversation_list_read_service,
     build_conversation_management_service,
+    build_conversation_recent_message_read_service,
     build_conversation_topic_summary_update_service,
     build_conversation_write_repository,
     build_conversation_write_service,
@@ -474,7 +475,7 @@ class ApplicationContainer:
                 self.session,
                 self._streaming_chat_llm,
                 self.conversation_access(),
-                conversation_reader=self.conversation_history_read(),
+                conversation_reader=build_conversation_recent_message_read_service(self.session),
                 context_builder=build_conversation_context_builder(),
                 conversation_turn_coordinator=self._conversation_turn_coordinator,
             )
@@ -741,3 +742,4 @@ class _SessionScopedDialogueAgentTurnWorker(DialogueAgentTurnWorkerPort):
                 asyncio.run(self._container.aclose())
             finally:
                 self._session.close()
+

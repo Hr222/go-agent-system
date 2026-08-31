@@ -17,10 +17,15 @@ from app.platform.conversation.errors import ConversationNotFoundError
 from app.platform.conversation.ports.read_port import (
     ConversationHistoryPage,
     ConversationReadPort,
+    ConversationRecentMessageReadPort,
+    ConversationRecentMessageWindow,
 )
 
 
-class ConversationHistoryReadRepository(ConversationReadPort):
+class ConversationHistoryReadRepository(
+    ConversationReadPort,
+    ConversationRecentMessageReadPort,
+):
     """Conversation 历史 PostgreSQL 只读适配器。"""
 
     def __init__(self, session: Session) -> None:
@@ -60,6 +65,41 @@ class ConversationHistoryReadRepository(ConversationReadPort):
                 messages=messages,
                 has_more=has_more,
                 next_after_sequence=messages[-1].sequence if has_more else None,
+            )
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def read_recent_messages(
+        self,
+        *,
+        conversation_id: UUID,
+        through_sequence: int,
+        limit: int,
+    ) -> ConversationRecentMessageWindow:
+        """按会话和顺序截止倒序限量读取，再恢复为正序。"""
+
+        try:
+            conversation_exists = self.session.scalar(
+                select(ConversationRecord.id).where(ConversationRecord.id == conversation_id)
+            )
+            if conversation_exists is None:
+                raise ConversationNotFoundError(f"会话不存在：{conversation_id}")
+
+            statement = (
+                select(ConversationMessageRecord)
+                .where(
+                    ConversationMessageRecord.conversation_id == conversation_id,
+                    ConversationMessageRecord.sequence <= through_sequence,
+                )
+                .order_by(ConversationMessageRecord.sequence.desc())
+                .limit(limit)
+            )
+            records = list(self.session.scalars(statement).all())
+            records.reverse()
+            return ConversationRecentMessageWindow(
+                conversation_id=conversation_id,
+                messages=tuple(message_from_record(record) for record in records),
             )
         except Exception:
             self.session.rollback()

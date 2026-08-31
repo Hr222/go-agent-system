@@ -3,10 +3,12 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.dialects import postgresql
 
 from app.composition.conversation import (
     build_conversation_history_read_service,
+    build_conversation_recent_message_read_service,
     build_conversation_write_service,
 )
 from app.infrastructure.persistence.models.conversation import (
@@ -154,5 +156,78 @@ def test_history_cursor_pages_have_no_duplicates_and_continue_after_append() -> 
             assert continued_page.messages[0].content == "消息 4"
         finally:
             continued_session.close()
+    finally:
+        harness.drop_schema()
+
+
+def test_recent_message_read_returns_bounded_ordered_snapshot() -> None:
+    harness = SchemaHarness("conversation_recent_window")
+    harness.create_schema()
+    try:
+        conversation_id = _seed_conversation(harness, 5)
+        session = harness.session_local()
+        try:
+            window = build_conversation_recent_message_read_service(session).read_recent_messages(
+                conversation_id=conversation_id,
+                through_sequence=4,
+                limit=2,
+            )
+
+            assert window.conversation_id == conversation_id
+            assert [message.sequence for message in window.messages] == [3, 4]
+        finally:
+            session.close()
+    finally:
+        harness.drop_schema()
+
+
+def test_recent_message_read_returns_empty_window_before_first_message() -> None:
+    harness = SchemaHarness("conversation_recent_window_empty")
+    harness.create_schema()
+    try:
+        conversation_id = _seed_conversation(harness, 0)
+        session = harness.session_local()
+        try:
+            window = build_conversation_recent_message_read_service(session).read_recent_messages(
+                conversation_id=conversation_id,
+                through_sequence=1,
+                limit=20,
+            )
+
+            assert window.messages == ()
+        finally:
+            session.close()
+    finally:
+        harness.drop_schema()
+
+
+def test_recent_message_query_can_use_existing_conversation_sequence_index() -> None:
+    """验证最近窗口的过滤和倒序限制具备现有唯一索引的执行依据。"""
+
+    harness = SchemaHarness("conversation_recent_explain")
+    harness.create_schema()
+    try:
+        conversation_id = _seed_conversation(harness, 20)
+        statement = (
+            select(ConversationMessageRecord)
+            .where(
+                ConversationMessageRecord.conversation_id == conversation_id,
+                ConversationMessageRecord.sequence <= 15,
+            )
+            .order_by(ConversationMessageRecord.sequence.desc())
+            .limit(5)
+        )
+        compiled = statement.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+        with harness.test_engine.begin() as connection:
+            connection.execute(text("SET LOCAL enable_seqscan = off"))
+            plan = connection.execute(
+                text(f"EXPLAIN (FORMAT JSON) {compiled}")
+            ).scalar_one()
+
+        plan_text = str(plan)
+        assert "uq_conversation_message_conversation_sequence" in plan_text
     finally:
         harness.drop_schema()
