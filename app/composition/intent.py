@@ -4,19 +4,11 @@ from collections.abc import AsyncIterator
 from typing import Protocol
 
 from app.platform.attachment.ports.read_port import AttachmentReadPort
-from app.platform.dialogue.application import (
-    DialogueAgentContinuationService,
-    DialogueAgentInvocationService,
-    InMemoryPendingAgentInvocationStore,
-)
 from app.platform.interaction.application.attachment_resolution import (
     CapabilityAttachmentResolver,
 )
 from app.platform.interaction.application.candidate_retrieval import (
     CapabilityCandidateRetrieval,
-)
-from app.platform.interaction.application.chat_stream import (
-    InteractionChatStreamApplication,
 )
 from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
 from app.platform.interaction.application.gateway import (
@@ -65,18 +57,3 @@ def build_intent_interaction_gateway(
         attachment_resolver=CapabilityAttachmentResolver(attachment_reader),
     )
 
-
-def build_interaction_chat_stream_application(
-    gateway: IntentInteractionGateway,
-    streaming_conversation: StreamingRuntime,
-    dialogue_agent_invocation: DialogueAgentInvocationService | None = None,
-    dialogue_agent_continuation: DialogueAgentContinuationService | None = None,
-    pending_agent_invocations: InMemoryPendingAgentInvocationStore | None = None,
-) -> InteractionChatStreamApplication:
-    return InteractionChatStreamApplication(
-        gateway,
-        streaming_conversation,
-        dialogue_agent_invocation=dialogue_agent_invocation,
-        dialogue_agent_continuation=dialogue_agent_continuation,
-        pending_agent_invocations=pending_agent_invocations,
-    )

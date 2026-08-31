@@ -20,11 +20,16 @@ from app.shared.config import settings
 
 if TYPE_CHECKING:
     from app.platform.dialogue.application import (
-        DialogueAgentContinuationService,
         DialogueAgentInvocationService,
         InMemoryPendingAgentInvocationStore,
+        PendingAgentInvocation,
         StreamingConversationEvent,
         StreamingConversationRuntime,
+    )
+    from app.platform.dialogue.application.agent_turn import (
+        DialogueAgentTurnExecutor,
+        DialogueAgentTurnPreparation,
+        DialogueAgentTurnResult,
     )
 
 InteractionStreamEventName = Literal[
@@ -72,14 +77,14 @@ class InteractionChatStreamApplication:
         gateway: IntentInteractionGateway,
         streaming_conversation: StreamingConversationRuntime,
         dialogue_agent_invocation: DialogueAgentInvocationService | None = None,
-        dialogue_agent_continuation: DialogueAgentContinuationService | None = None,
         pending_agent_invocations: InMemoryPendingAgentInvocationStore | None = None,
+        dialogue_agent_turn_executor: DialogueAgentTurnExecutor | None = None,
     ) -> None:
         self._gateway = gateway
         self._streaming_conversation = streaming_conversation
         self._dialogue_agent_invocation = dialogue_agent_invocation
-        self._dialogue_agent_continuation = dialogue_agent_continuation
         self._pending_agent_invocations = pending_agent_invocations
+        self._dialogue_agent_turn_executor = dialogue_agent_turn_executor
 
     def prepare(
         self,
@@ -123,7 +128,7 @@ class InteractionChatStreamApplication:
             conversation_id=command.conversation_id,
         )
 
-    def confirm_agent(
+    async def confirm_agent(
         self,
         command: GatewayConfirmationCommand,
     ) -> GatewayResult | None:
@@ -131,7 +136,6 @@ class InteractionChatStreamApplication:
 
         if self._pending_agent_invocations is None or self._dialogue_agent_invocation is None:
             return None
-        from app.platform.dialogue.application import DialogueAgentInvocationCommand
         pending = self._pending_agent_invocations.read(
             proposal_id=command.proposal_id,
             subject=command.principal.subject,
@@ -139,7 +143,123 @@ class InteractionChatStreamApplication:
         if pending is None:
             return None
 
-        confirmation = self._gateway.confirm_dialogue_agent(command)
+        if command.action == "cancel":
+            return self._cancel_agent_confirmation(command, pending)
+        if self._dialogue_agent_turn_executor is None:
+            return GatewayResult(
+                status="failed",
+                message="对话 Agent 调用暂时不可用。",
+                error_code="DIALOGUE_AGENT_UNAVAILABLE",
+            )
+        conversation_id = pending.command.conversation_id
+        if conversation_id is None:
+            return GatewayResult(
+                status="rejected",
+                message="对话 Agent 调用上下文不可用。",
+                error_code="DIALOGUE_AGENT_CONTEXT_UNAVAILABLE",
+            )
+
+        # 锁等待期间不运行此确认操作，取消请求因而不会消费一次性状态。
+        from app.platform.dialogue.application.agent_turn import DialogueAgentTurnRequest
+
+        result = await self._dialogue_agent_turn_executor.execute(
+            DialogueAgentTurnRequest(
+                conversation_id=conversation_id,
+                confirm=lambda: self._confirm_agent_in_turn(command, pending),
+            )
+        )
+        return _gateway_result_from_agent_turn(result)
+
+    def _confirm_agent_in_turn(
+        self,
+        command: GatewayConfirmationCommand,
+        pending: PendingAgentInvocation,
+    ) -> DialogueAgentTurnPreparation:
+        """在 Dialogue 租约内保留 Gateway 的确认与授权控制面职责。"""
+
+        from app.platform.dialogue.application.agent_turn import (
+            DialogueAgentTurnCommand,
+            DialogueAgentTurnPreparation,
+            DialogueAgentTurnResult,
+        )
+
+        try:
+            confirmation = self._gateway.confirm_dialogue_agent(command)
+        except BaseException:
+            # Gateway 可能已经消费 proposal；此时 pending 不能遗留到 TTL。
+            self._pending_agent_invocations.consume(
+                proposal_id=command.proposal_id,
+                subject=command.principal.subject,
+            )
+            raise
+
+        # proposal 一旦进入终态，matching pending invocation 必须同步收口。
+        consumed = self._pending_agent_invocations.consume(
+            proposal_id=command.proposal_id,
+            subject=command.principal.subject,
+        )
+        if confirmation.status == "rejected":
+            return DialogueAgentTurnPreparation(
+                result=DialogueAgentTurnResult(
+                    status="rejected",
+                    message=confirmation.message,
+                    error_code=confirmation.error_code,
+                    conversation_id=pending.command.conversation_id,
+                )
+            )
+        if (
+            consumed is None
+            or consumed.command.conversation_id is None
+            or consumed.command.call is None
+        ):
+            return DialogueAgentTurnPreparation(
+                result=DialogueAgentTurnResult(
+                    status="rejected",
+                    message="对话 Agent 调用上下文不可用。",
+                    error_code="DIALOGUE_AGENT_CONTEXT_UNAVAILABLE",
+                )
+            )
+        if confirmation.approved_dispatch is None:
+            return DialogueAgentTurnPreparation(
+                result=DialogueAgentTurnResult(
+                    status="rejected",
+                    message="确认提议未生成有效批准信息。",
+                    error_code="APPROVED_DISPATCH_UNAVAILABLE",
+                    conversation_id=consumed.command.conversation_id,
+                )
+            )
+
+        return DialogueAgentTurnPreparation(
+            command=DialogueAgentTurnCommand(
+                conversation_id=consumed.command.conversation_id,
+                capability_code=consumed.command.capability_code,
+                inputs=dict(consumed.command.inputs),
+                principal=command.principal,
+                approved_dispatch=confirmation.approved_dispatch,
+                call=consumed.command.call,
+            )
+        )
+
+    def _cancel_agent_confirmation(
+        self,
+        command: GatewayConfirmationCommand,
+        pending: PendingAgentInvocation,
+    ) -> GatewayResult:
+        """取消不执行 Agent，沿用既有短路径但始终清理一次性状态。"""
+
+        try:
+            confirmation = self._gateway.confirm_dialogue_agent(command)
+        except BaseException:
+            self._pending_agent_invocations.consume(
+                proposal_id=command.proposal_id,
+                subject=command.principal.subject,
+            )
+            raise
+
+        consumed = self._pending_agent_invocations.consume(
+            proposal_id=command.proposal_id,
+            subject=command.principal.subject,
+        )
         if confirmation.status == "rejected":
             return GatewayResult(
                 status="rejected",
@@ -147,11 +267,6 @@ class InteractionChatStreamApplication:
                 error_code=confirmation.error_code,
                 conversation_id=pending.command.conversation_id,
             )
-
-        consumed = self._pending_agent_invocations.consume(
-            proposal_id=command.proposal_id,
-            subject=command.principal.subject,
-        )
         if (
             consumed is None
             or consumed.command.conversation_id is None
@@ -162,82 +277,24 @@ class InteractionChatStreamApplication:
                 message="对话 Agent 调用上下文不可用。",
                 error_code="DIALOGUE_AGENT_CONTEXT_UNAVAILABLE",
             )
-
-        if confirmation.status == "cancelled":
-            try:
-                result = self._dialogue_agent_invocation.cancel_confirmation(
-                    conversation_id=consumed.command.conversation_id,
-                    call=consumed.command.call,
-                    principal=command.principal,
-                )
-            except ConversationAccessDeniedError:
-                return _conversation_access_denied_result()
-            return GatewayResult(
-                status=result.status,
-                message=result.message,
-                error_code=result.error_code,
-                conversation_id=result.conversation_id,
-            )
-
-        if confirmation.approved_dispatch is None:
+        if confirmation.status != "cancelled":
             return GatewayResult(
                 status="rejected",
-                message="确认提议未生成有效批准信息。",
-                error_code="APPROVED_DISPATCH_UNAVAILABLE",
+                message="确认提议未生成有效取消信息。",
+                error_code="CANCELLATION_UNAVAILABLE",
                 conversation_id=consumed.command.conversation_id,
             )
         try:
-            result = self._dialogue_agent_invocation.invoke(
-                DialogueAgentInvocationCommand(
-                    conversation_id=consumed.command.conversation_id,
-                    capability_code=consumed.command.capability_code,
-                    inputs=dict(consumed.command.inputs),
-                    principal=command.principal,
-                    approved_dispatch=confirmation.approved_dispatch,
-                    call=consumed.command.call,
-                    persist_call_event=False,
-                )
+            result = self._dialogue_agent_invocation.cancel_confirmation(
+                conversation_id=consumed.command.conversation_id,
+                call=consumed.command.call,
+                principal=command.principal,
             )
         except ConversationAccessDeniedError:
             return _conversation_access_denied_result()
-        if result.status == "completed" and self._dialogue_agent_continuation is not None:
-            from app.platform.dialogue.application import DialogueAgentContinuationCommand
-
-            continuation = self._dialogue_agent_continuation.execute(
-                DialogueAgentContinuationCommand(
-                    conversation_id=result.conversation_id,
-                    call_id=result.call.call_id,
-                    principal=command.principal,
-                )
-            )
-            if continuation.status == "completed":
-                return GatewayResult(
-                    status="completed",
-                    message=continuation.message,
-                    execution_result={
-                        "answer": continuation.answer,
-                        "agent_result": result.output,
-                        "model": continuation.model,
-                        "prompt_version": continuation.prompt_version,
-                        "usage": {
-                            "input_tokens": continuation.input_tokens,
-                            "output_tokens": continuation.output_tokens,
-                            "total_tokens": continuation.total_tokens,
-                        },
-                    },
-                    conversation_id=result.conversation_id,
-                )
-            return GatewayResult(
-                status="failed",
-                message=continuation.message,
-                execution_result={"agent_result": result.output},
-                error_code=continuation.error_code,
-                conversation_id=result.conversation_id,
-            )
         return GatewayResult(
             status=result.status,
             message=result.message,
-            execution_result=result.output,
             error_code=result.error_code,
             conversation_id=result.conversation_id,
         )
@@ -467,6 +524,18 @@ def _conversation_access_denied_result() -> GatewayResult:
         status="rejected",
         message="会话不可用。",
         error_code="CONVERSATION_ACCESS_DENIED",
+    )
+
+
+def _gateway_result_from_agent_turn(result: DialogueAgentTurnResult) -> GatewayResult:
+    """保持确认 HTTP 响应外形，Dialogue 只返回与协议无关的受控终态。"""
+
+    return GatewayResult(
+        status=result.status,
+        message=result.message,
+        execution_result=result.execution_result,
+        error_code=result.error_code,
+        conversation_id=result.conversation_id,
     )
 
 

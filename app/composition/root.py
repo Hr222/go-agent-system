@@ -1,3 +1,4 @@
+import asyncio
 from __future__ import annotations
 
 from collections.abc import Generator
@@ -108,6 +109,10 @@ from app.platform.dialogue.application import (
     AgentResultProjector,
     DialogueAgentContinuationService,
     DialogueAgentInvocationService,
+    DialogueAgentTurnExecutor,
+    DialogueAgentTurnWorker,
+    DialogueAgentTurnWorkerFactoryPort,
+    DialogueAgentTurnWorkerPort,
     StreamingConversationRuntime,
 )
 from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
@@ -221,6 +226,8 @@ class ApplicationContainer:
         self._agent_call_dispatcher: AgentCallDispatcher | None = None
         self._dialogue_agent_invocation: DialogueAgentInvocationService | None = None
         self._dialogue_agent_continuation: DialogueAgentContinuationService | None = None
+        self._dialogue_agent_turn_worker: DialogueAgentTurnWorker | None = None
+        self._dialogue_agent_turn_executor: DialogueAgentTurnExecutor | None = None
         self._conversation_access: ConversationAccessService | None = None
         self._conversation_history_read: ConversationHistoryReadService | None = None
         self._conversation_list_read: ConversationListReadService | None = None
@@ -312,6 +319,28 @@ class ApplicationContainer:
             )
         return self._dialogue_agent_continuation
 
+    def dialogue_agent_turn_worker(self) -> DialogueAgentTurnWorker:
+        """组装只在私有同步 worker 内使用的 Agent 事实链执行器。"""
+
+        if self.session is None:
+            raise RuntimeError("对话 Agent 轮次需要数据库 session，但容器未提供。")
+        if self._dialogue_agent_turn_worker is None:
+            self._dialogue_agent_turn_worker = DialogueAgentTurnWorker(
+                invocation=self.dialogue_agent_invocation(),
+                continuation=self.dialogue_agent_continuation(),
+            )
+        return self._dialogue_agent_turn_worker
+
+    def dialogue_agent_turn_executor(self) -> DialogueAgentTurnExecutor:
+        """提供持有会话租约并异步监督私有 Agent worker 的 Dialogue 用例。"""
+
+        if self._dialogue_agent_turn_executor is None:
+            self._dialogue_agent_turn_executor = DialogueAgentTurnExecutor(
+                coordinator=self._conversation_turn_coordinator,
+                worker_factory=_SessionScopedDialogueAgentTurnWorkerFactory(),
+            )
+        return self._dialogue_agent_turn_executor
+
     def conversation_access(self) -> ConversationAccessService:
         if self.session is None:
             raise RuntimeError("会话访问需要数据库 session，但容器未提供。")
@@ -401,12 +430,12 @@ class ApplicationContainer:
         proposal_store: PendingProposalStorePort,
         pending_agent_invocations=None,  # noqa: ANN001
     ) -> InteractionChatStreamApplication:
-        return build_interaction_chat_stream_application(
+        return InteractionChatStreamApplication(
             self.intent_interaction_gateway(proposal_store),
             self.streaming_conversation_runtime(),
             dialogue_agent_invocation=self.dialogue_agent_invocation(),
-            dialogue_agent_continuation=self.dialogue_agent_continuation(),
             pending_agent_invocations=pending_agent_invocations,
+            dialogue_agent_turn_executor=self.dialogue_agent_turn_executor(),
         )
 
     def chat_application(self) -> ChatApplication:
@@ -660,3 +689,55 @@ class ApplicationContainer:
                 self.knowledge_read_repository()
             )
         return self._knowledge_management_service
+
+
+class _SessionScopedDialogueAgentTurnWorkerFactory(DialogueAgentTurnWorkerFactoryPort):
+    """在 worker 线程中创建独立容器，避免复用 HTTP 请求的 Session。"""
+
+    def create(self) -> DialogueAgentTurnWorkerPort:
+        session = SessionLocal()
+        container = ApplicationContainer(session)
+        try:
+            worker = container.dialogue_agent_turn_worker()
+        except BaseException:
+            try:
+                asyncio.run(container.aclose())
+            finally:
+                session.close()
+            raise
+        return _SessionScopedDialogueAgentTurnWorker(
+            worker=worker,
+            container=container,
+            session=session,
+        )
+
+
+class _SessionScopedDialogueAgentTurnWorker(DialogueAgentTurnWorkerPort):
+    """将私有 Container 与 Session 的关闭收口到一次 Agent worker 执行。"""
+
+    def __init__(
+        self,
+        *,
+        worker: DialogueAgentTurnWorkerPort,
+        container: ApplicationContainer,
+        session: Session,
+    ) -> None:
+        self._worker = worker
+        self._container = container
+        self._session = session
+        self._closed = False
+
+    def execute(self, command):  # noqa: ANN001
+        return self._worker.execute(command)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._worker.close()
+        finally:
+            try:
+                asyncio.run(self._container.aclose())
+            finally:
+                self._session.close()

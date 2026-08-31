@@ -277,6 +277,63 @@ def test_chat_stream_times_out_when_no_upstream_activity_arrives(
     assert chat.closed is True
 
 
+def test_chat_stream_does_not_treat_conversation_lock_wait_as_provider_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class LockWaitingStreamingConversation(FakeStreamingConversation):
+        def __init__(self) -> None:
+            super().__init__([ChatLlmStreamChunk(content="锁已释放后的回答")])
+            self.waiting_for_turn = asyncio.Event()
+            self.turn_available = asyncio.Event()
+
+        async def execute(self, command):  # noqa: ANN001
+            self.waiting_for_turn.set()
+            await self.turn_available.wait()
+            return await super().execute(command)
+
+    monkeypatch.setattr(
+        chat_stream_module,
+        "settings",
+        Settings(
+            _env_file=None,
+            llm_stream_first_token_timeout_seconds=0.001,
+            llm_retry_max_attempts=1,
+        ),
+    )
+    gateway = RecordingGateway(
+        GatewayResult(
+            status="authorized",
+            message="server authorized",
+            direct_execution=DirectCapabilityExecution(
+                capability_code="chat.general",
+                dispatch_key="llm.chat",
+                inputs={"message": "解释一下向量检索"},
+            ),
+        )
+    )
+    chat = LockWaitingStreamingConversation()
+    application = InteractionChatStreamApplication(gateway, chat)  # type: ignore[arg-type]
+
+    async def scenario() -> list[InteractionStreamEvent]:
+        preparation = application.prepare(_command())
+        stream = application.stream(preparation, is_disconnected=_connected)
+        first_event = asyncio.create_task(anext(stream))
+
+        await chat.waiting_for_turn.wait()
+        await asyncio.sleep(0.01)
+        assert not first_event.done()
+
+        chat.turn_available.set()
+        events = [await first_event]
+        events.extend([event async for event in stream])
+        return events
+
+    events = asyncio.run(scenario())
+
+    assert [event.name for event in events] == ["meta", "delta", "complete"]
+    assert all(event.data.get("code") != "UPSTREAM_TIMEOUT" for event in events)
+
+
 def test_chat_stream_passes_conversation_context_to_gateway() -> None:
     gateway = RecordingGateway(
         GatewayResult(
@@ -637,7 +694,7 @@ def test_http_confirmation_uses_dialogue_agent_result_when_context_is_bound() ->
         def __init__(self) -> None:
             self.commands = []
 
-        def confirm_agent(self, command):  # noqa: ANN001
+        async def confirm_agent(self, command):  # noqa: ANN001
             self.commands.append(command)
             return GatewayResult(
                 status="completed",
@@ -679,7 +736,7 @@ def test_http_confirmation_uses_dialogue_agent_result_when_context_is_bound() ->
 
 def test_http_confirmation_keeps_agent_result_when_continuation_fails() -> None:
     class FailedContinuationApplication:
-        def confirm_agent(self, command):  # noqa: ANN001
+        async def confirm_agent(self, command):  # noqa: ANN001
             del command
             return GatewayResult(
                 status="failed",
@@ -692,10 +749,15 @@ def test_http_confirmation_keeps_agent_result_when_continuation_fails() -> None:
                 error_code="CONTINUATION_LLM_UNAVAILABLE",
             )
 
+    class UnexpectedGateway:
+        def confirm(self, command):  # noqa: ANN001
+            raise AssertionError("已绑定的对话 Agent 不应进入通用分发确认路径")
+
     application = create_app()
     application.dependency_overrides[get_interaction_chat_stream_application] = (
         FailedContinuationApplication
     )
+    application.dependency_overrides[get_intent_interaction_gateway] = UnexpectedGateway
     try:
         response = TestClient(application).post(
             "/api/v1/interaction/proposals/proposal-agent-1/confirmation",

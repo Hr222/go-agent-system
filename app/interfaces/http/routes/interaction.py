@@ -90,7 +90,7 @@ async def confirm_intent_proposal(
 
     try:
         command = confirmation_command(proposal_id, request, principal)
-        dialogue_result = application.confirm_agent(command)
+        dialogue_result = await application.confirm_agent(command)
         if dialogue_result is not None:
             return gateway_response(dialogue_result)
         return gateway_response(
