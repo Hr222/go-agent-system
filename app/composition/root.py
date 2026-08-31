@@ -1,6 +1,6 @@
-import asyncio
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Generator
 from pathlib import Path
 
@@ -50,7 +50,6 @@ from app.composition.ingestion import (
 from app.composition.intent import (
     build_explicit_capability_confirmation,
     build_intent_interaction_gateway,
-    build_interaction_chat_stream_application,
     build_structured_intent_recognition,
 )
 from app.composition.interaction import (
@@ -100,14 +99,18 @@ from app.interfaces.agent import FunctionCallingAdapter
 from app.platform.agent.runtime import AgentRuntime
 from app.platform.conversation.application import (
     ConversationAccessService,
+    ConversationCreateCommand,
     ConversationHistoryReadService,
     ConversationListReadService,
     ConversationManagementService,
+    ConversationResolveQuery,
     ConversationTopicSummaryUpdateService,
 )
+from app.platform.conversation.domain import Message, MessageRole
+from app.platform.conversation.ports import ConversationRecentMessageWindow
 from app.platform.dialogue.application import (
-    ConversationTurnCoordinator,
     AgentResultProjector,
+    ConversationTurnCoordinator,
     DialogueAgentContinuationService,
     DialogueAgentInvocationService,
     DialogueAgentTurnExecutor,
@@ -115,6 +118,12 @@ from app.platform.dialogue.application import (
     DialogueAgentTurnWorkerFactoryPort,
     DialogueAgentTurnWorkerPort,
     StreamingConversationRuntime,
+    ThreadedStreamingConversationPersistence,
+)
+from app.platform.dialogue.ports import (
+    StreamingConversationPersistencePort,
+    StreamingConversationPersistenceWorkerFactoryPort,
+    StreamingConversationPersistenceWorkerPort,
 )
 from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.platform.ingestion.application.retry_ingestion import RetryIngestionUseCase
@@ -170,6 +179,7 @@ class ApplicationContainer:
         chat_llm: ChatLlmPort | None = None,
         streaming_chat_llm: StreamingChatLlmPort | None = None,
         conversation_turn_coordinator: ConversationTurnCoordinator | None = None,
+        streaming_conversation_persistence: StreamingConversationPersistencePort | None = None,
         openai_client_factory: OpenAICompatibleClientFactory | None = None,
         capability_catalog: CapabilityCatalogPort | None = None,
         capability_candidate_retrieval: CapabilityCandidateRetrieval | None = None,
@@ -188,6 +198,7 @@ class ApplicationContainer:
         self._chat_llm = chat_llm
         self._chat_application: ChatApplication | None = None
         self._streaming_chat_llm = streaming_chat_llm
+        self._streaming_conversation_persistence = streaming_conversation_persistence
         self._conversation_turn_coordinator = (
             conversation_turn_coordinator
             if conversation_turn_coordinator is not None
@@ -464,22 +475,27 @@ class ApplicationContainer:
     def streaming_conversation_runtime(self) -> StreamingConversationRuntime:
         """提供依赖 Conversation 事实写入的流式 Dialogue 用例。"""
 
-        if self.session is None:
-            raise RuntimeError("流式 Conversation 对话需要数据库 session，但容器未提供。")
         if self._streaming_conversation_runtime is None:
             if self._streaming_chat_llm is None:
                 self._streaming_chat_llm = build_streaming_chat_llm(
                     self.openai_client_factory()
                 )
             self._streaming_conversation_runtime = build_streaming_conversation_runtime(
-                self.session,
                 self._streaming_chat_llm,
-                self.conversation_access(),
-                conversation_reader=build_conversation_recent_message_read_service(self.session),
-                context_builder=build_conversation_context_builder(),
                 conversation_turn_coordinator=self._conversation_turn_coordinator,
+                conversation_persistence=self.streaming_conversation_persistence(),
+                context_builder=build_conversation_context_builder(),
             )
         return self._streaming_conversation_runtime
+
+    def streaming_conversation_persistence(self) -> StreamingConversationPersistencePort:
+        """为普通流式 Chat 提供不复用 HTTP Session 的异步持久化边界。"""
+
+        if self._streaming_conversation_persistence is None:
+            self._streaming_conversation_persistence = ThreadedStreamingConversationPersistence(
+                _SessionScopedStreamingConversationPersistenceWorkerFactory()
+            )
+        return self._streaming_conversation_persistence
 
     def openai_client_factory(self) -> OpenAICompatibleClientFactory:
         """返回供 RAG 和 Agent 共享的 OpenAI-compatible Client Factory。"""
@@ -743,3 +759,94 @@ class _SessionScopedDialogueAgentTurnWorker(DialogueAgentTurnWorkerPort):
             finally:
                 self._session.close()
 
+
+class _SessionScopedStreamingConversationPersistenceWorkerFactory(
+    StreamingConversationPersistenceWorkerFactoryPort
+):
+    """为每次短操作创建独立 Session，避免数据库连接跨模型流占用。"""
+
+    def create(self) -> StreamingConversationPersistenceWorkerPort:
+        session = SessionLocal()
+        try:
+            return _SessionScopedStreamingConversationPersistenceWorker(session)
+        except BaseException:
+            try:
+                session.rollback()
+            finally:
+                session.close()
+            raise
+
+
+class _SessionScopedStreamingConversationPersistenceWorker(
+    StreamingConversationPersistenceWorkerPort
+):
+    """在 Composition 侧把同步 Conversation 应用能力收口到一个短 worker。"""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self._access = build_conversation_access_service(session)
+        self._writer = build_conversation_write_service(session)
+        self._recent_reader = build_conversation_recent_message_read_service(session)
+        self._closed = False
+
+    def create_conversation(self, *, principal):  # noqa: ANN001
+        return self._run(
+            lambda: self._access.create(ConversationCreateCommand(principal=principal))
+        )
+
+    def resolve_conversation(self, *, principal, conversation_id):  # noqa: ANN001
+        return self._run(
+            lambda: self._access.resolve(
+                ConversationResolveQuery(
+                    principal=principal,
+                    conversation_id=conversation_id,
+                )
+            )
+        )
+
+    def append_message(
+        self,
+        *,
+        conversation_id,
+        role: MessageRole,
+        content: str,
+    ) -> Message:
+        return self._run(
+            lambda: self._writer.append_message(
+                conversation_id=conversation_id,
+                role=role,
+                content=content,
+            )
+        )
+
+    def read_recent_messages(
+        self,
+        *,
+        conversation_id,
+        through_sequence: int,
+        limit: int,
+    ) -> ConversationRecentMessageWindow:
+        return self._run(
+            lambda: self._recent_reader.read_recent_messages(
+                conversation_id=conversation_id,
+                through_sequence=through_sequence,
+                limit=limit,
+            )
+        )
+
+    def _run(self, operation):  # noqa: ANN001
+        if self._closed:
+            raise RuntimeError("持久化 worker 已关闭。")
+        try:
+            result = operation()
+            self._session.commit()
+            return result
+        except BaseException:
+            self._session.rollback()
+            raise
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._session.close()

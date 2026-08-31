@@ -1,6 +1,9 @@
 import asyncio
 from unittest.mock import AsyncMock
 
+import pytest
+
+import app.composition.root as composition_root
 from app.business.agents.tender.application.service import TenderApplication
 from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.business.online.domain.checklist import COURT_EVALUATION_MATERIALS_SCENARIO
@@ -11,7 +14,10 @@ from app.infrastructure.persistence.repositories.conversation_write_repository i
     ConversationWriteRepository,
 )
 from app.platform.conversation.application import ConversationContextBuilder
-from app.platform.dialogue.application import StreamingConversationRuntime
+from app.platform.dialogue.application import (
+    ConversationTurnCoordinator,
+    StreamingConversationRuntime,
+)
 from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.platform.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
 from app.shared.config import Settings
@@ -124,16 +130,48 @@ def test_application_container_composes_streaming_runtime_with_history_context()
             del request
             raise AssertionError("测试不应启动模型流")
 
+    coordinator = ConversationTurnCoordinator()
     container = ApplicationContainer(
         session=object(),
         streaming_chat_llm=FakeStreamingChatLlm(),  # type: ignore[arg-type]
+        conversation_turn_coordinator=coordinator,
     )
 
     runtime = container.streaming_conversation_runtime()
 
     assert isinstance(runtime, StreamingConversationRuntime)
-    assert runtime._conversation_reader is container.conversation_history_read()
+    assert runtime._conversation_persistence is container.streaming_conversation_persistence()
     assert isinstance(runtime._context_builder, ConversationContextBuilder)
+    assert runtime._conversation_turn_coordinator is coordinator
+
+    container.intent_interaction_gateway = lambda proposal_store: object()  # type: ignore[method-assign]
+    container.dialogue_agent_invocation = lambda: object()  # type: ignore[method-assign]
+    container.dialogue_agent_turn_executor = lambda: object()  # type: ignore[method-assign]
+    interaction = container.interaction_chat_stream_application(
+        proposal_store=object(),
+        pending_agent_invocations=object(),
+    )
+
+    assert interaction._streaming_conversation is runtime
+    assert interaction._dialogue_agent_turn_executor is not None
+
+
+def test_streaming_runtime_accepts_async_persistence_without_request_session() -> None:
+    class FakeStreamingChatLlm:
+        def stream(self, request: object) -> object:
+            del request
+            raise AssertionError("测试不应启动模型流")
+
+    persistence = object()
+    container = ApplicationContainer(
+        streaming_chat_llm=FakeStreamingChatLlm(),  # type: ignore[arg-type]
+        streaming_conversation_persistence=persistence,  # type: ignore[arg-type]
+    )
+
+    runtime = container.streaming_conversation_runtime()
+
+    assert container.session is None
+    assert runtime._conversation_persistence is persistence
 
 
 def test_application_container_aclose_releases_openai_client_factory() -> None:
@@ -143,3 +181,87 @@ def test_application_container_aclose_releases_openai_client_factory() -> None:
     asyncio.run(container.aclose())
 
     factory.aclose.assert_awaited_once_with()
+
+
+def test_private_agent_turn_worker_closes_its_container_and_session(monkeypatch) -> None:  # noqa: ANN001
+    class TrackingSession:
+        def __init__(self) -> None:
+            self.closed = 0
+
+        def close(self) -> None:
+            self.closed += 1
+
+    class TrackingWorker:
+        def __init__(self) -> None:
+            self.closed = 0
+
+        def execute(self, command):  # noqa: ANN001
+            return command
+
+        def close(self) -> None:
+            self.closed += 1
+
+    class TrackingContainer:
+        instances: list["TrackingContainer"] = []
+
+        def __init__(self, session) -> None:  # noqa: ANN001
+            self.session = session
+            self.worker = TrackingWorker()
+            self.aclose_calls = 0
+            self.instances.append(self)
+
+        def dialogue_agent_turn_worker(self) -> TrackingWorker:
+            return self.worker
+
+        async def aclose(self) -> None:
+            self.aclose_calls += 1
+
+    session = TrackingSession()
+    monkeypatch.setattr(composition_root, "SessionLocal", lambda: session)
+    monkeypatch.setattr(composition_root, "ApplicationContainer", TrackingContainer)
+
+    worker = composition_root._SessionScopedDialogueAgentTurnWorkerFactory().create()
+
+    assert worker.execute("agent-command") == "agent-command"
+    worker.close()
+    worker.close()
+
+    container = TrackingContainer.instances[0]
+    assert container.worker.closed == 1
+    assert container.aclose_calls == 1
+    assert session.closed == 1
+
+
+def test_private_agent_turn_worker_factory_closes_async_resources_on_setup_failure(
+    monkeypatch,
+) -> None:  # noqa: ANN001
+    class TrackingSession:
+        def __init__(self) -> None:
+            self.closed = 0
+
+        def close(self) -> None:
+            self.closed += 1
+
+    class FailingContainer:
+        instances: list["FailingContainer"] = []
+
+        def __init__(self, session) -> None:  # noqa: ANN001
+            self.session = session
+            self.aclose_calls = 0
+            self.instances.append(self)
+
+        def dialogue_agent_turn_worker(self) -> object:
+            raise RuntimeError("worker setup failed")
+
+        async def aclose(self) -> None:
+            self.aclose_calls += 1
+
+    session = TrackingSession()
+    monkeypatch.setattr(composition_root, "SessionLocal", lambda: session)
+    monkeypatch.setattr(composition_root, "ApplicationContainer", FailingContainer)
+
+    with pytest.raises(RuntimeError, match="worker setup failed"):
+        composition_root._SessionScopedDialogueAgentTurnWorkerFactory().create()
+
+    assert FailingContainer.instances[0].aclose_calls == 1
+    assert session.closed == 1

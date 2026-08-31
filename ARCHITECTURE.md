@@ -188,17 +188,18 @@ flowchart LR
 
 ### 4.4 Conversation 与 Context
 
-Conversation 是会话事实、消息、事件、访问范围和上下文构建的边界。它负责会话生命周期、历史读写、主体范围校验和把有序历史转换为模型中立的上下文。
+Conversation 是会话事实、消息、事件、访问范围和上下文构建的边界。它负责会话生命周期、历史读写、主体范围校验和把有序消息转换为模型中立的上下文。面向模型上下文的读取使用独立的最近消息快照能力；面向用户恢复历史的正向分页仍保持原有契约。
 
 多轮请求的上下文设计如下：
 
 ```mermaid
 flowchart LR
     Input[当前用户输入] --> Persist[写入 Conversation]
-    Persist --> Read[History Read Service
-读取同一 Conversation 的有序历史]
-    Read --> Exclude[排除本轮当前输入]
-    Exclude --> Builder[Context Builder
+    Persist --> Boundary[本轮 user sequence
+作为读取截止边界]
+    Boundary --> Read[最近消息快照读取
+只取有界窗口]
+    Read --> Builder[Context Builder
 连续近期窗口 + 成本预算]
     Builder --> Request[ChatLlmRequest.history_messages]
     Input --> Prompt[user_prompt
@@ -207,11 +208,15 @@ flowchart LR
     Prompt --> LLM
 ```
 
-Context Builder 选择连续的近期消息后缀，使用 `max_messages=20` 和 `max_cost=12_000`。历史消息保留原始角色和顺序；当前用户输入不重复放入 `history_messages`，只作为 `user_prompt` 发送一次。LLM 只消费本次请求提供的上下文，不自行持久化会话记忆。
+普通流式 Chat 在既有 Conversation 轮次租约内先持久化本轮 user Message，再以其 `sequence` 作为包含截止边界读取最近消息快照。快照读取只返回当前 Conversation 中不晚于该边界的有界窗口，不扫描完整历史；用户恢复历史使用独立的正向分页能力。Context Builder 再在快照内选择连续的近期消息后缀，使用 `max_messages=20` 和 `max_cost=12_000`。历史消息保留原始角色和顺序；当前用户输入不重复放入 `history_messages`，只作为 `user_prompt` 发送一次。LLM 只消费本次请求提供的上下文，不自行持久化会话记忆。
 
 ### 4.5 Dialogue
 
 Dialogue Runtime 编排一轮对话，连接 Conversation、Context Builder、Interaction 和 LLM。它负责持久化本轮用户消息、Agent 调用事件、Agent 结果以及最终 assistant 消息，并在需要时将 Agent 结果转换为同一会话中的自然语言回答。
+
+同一 Conversation 的普通流式对话和已确认 Agent 调用共享由 Dialogue 持有的进程内轮次租约；租约覆盖本轮事实写入至最终终态。已确认 Agent 的同步执行与续写在每轮私有 worker 中完成，不复用 HTTP 请求的持久化资源，因此不同 Conversation 可以继续推进。Interaction 仍负责提议消费、目录、权限和输入复核，只把服务端产生的批准分发信息交给该轮次。
+
+普通流式 Chat 的同步 Conversation Access、消息写入和最近消息读取通过异步持久化边界进入独立 worker。每个短操作使用独立的 Session，完成提交或回滚后立即关闭；Provider 流期间不持有 Conversation Session 或数据库连接。该边界只隔离同步持久化操作，不改变既有轮次租约，也不引入第二套锁或长事务。
 
 Dialogue 不拥有认证主体，也不绕过 Conversation Access 或 Interaction 的授权检查。普通对话和 Agent 结果续写都使用统一的上下文请求契约。
 
@@ -246,6 +251,7 @@ Agent Management 是平台对 Agent 能力进行登记、发现、授权和运�
 sequenceDiagram
     participant Client as Chat HTTP
     participant Chat as InteractionChatStreamApplication
+    participant Turn as Dialogue Conversation Turn
     participant Gateway as Gateway / Capability Catalog
     participant Policy as 确认策略 / Agent Call Policy
     participant Invoke as DialogueAgentInvocation
@@ -260,7 +266,11 @@ sequenceDiagram
     Gateway->>Policy: 校验权限、输入和确认要求
     Policy-->>Chat: 确认提议
     Client->>Chat: 明确确认
-    Chat->>Invoke: 创建已批准的 Agent 调用
+    Chat->>Turn: 提交同会话确认操作
+    Turn->>Gateway: 消费提议并重新复核
+    Gateway->>Policy: 校验目录、权限和输入
+    Policy-->>Turn: 已批准的受控分发信息
+    Turn->>Invoke: 在私有 worker 中创建已批准的 Agent 调用
     Invoke->>Dispatch: 受控分发
     Dispatch->>Runtime: 校验目录并执行
     Runtime->>Agent: 固定 dispatch_key

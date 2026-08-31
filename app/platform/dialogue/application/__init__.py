@@ -51,6 +51,9 @@ from app.platform.dialogue.application.streaming_conversation import (
     StreamingConversationResult,
     StreamingConversationRuntime,
 )
+from app.platform.dialogue.application.streaming_persistence import (
+    ThreadedStreamingConversationPersistence,
+)
 
 __all__ = [
     "DEFAULT_DIALOGUE_CONTEXT_BUDGET",
@@ -90,5 +93,5 @@ __all__ = [
     "StreamingConversationPersistenceError",
     "StreamingConversationResult",
     "StreamingConversationRuntime",
+    "ThreadedStreamingConversationPersistence",
 ]
-

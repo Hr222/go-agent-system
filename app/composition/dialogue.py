@@ -5,15 +5,9 @@ from sqlalchemy.orm import Session
 from app.composition.conversation import (
     build_conversation_context_builder,
     build_conversation_history_read_service,
-    build_conversation_recent_message_read_service,
     build_conversation_write_service,
 )
-from app.platform.conversation.application import (
-    ConversationAccessService,
-    ConversationContextBuilder,
-    ConversationHistoryReadService,
-    ConversationRecentMessageReadService,
-)
+from app.platform.conversation.application import ConversationContextBuilder
 from app.platform.dialogue.application import (
     DEFAULT_DIALOGUE_CONTEXT_BUDGET,
     DEFAULT_DIALOGUE_CONTEXT_POLICY,
@@ -21,6 +15,7 @@ from app.platform.dialogue.application import (
     ConversationTurnCoordinator,
     StreamingConversationRuntime,
 )
+from app.platform.dialogue.ports import StreamingConversationPersistencePort
 from app.platform.llm.contracts import ChatLlmPort, StreamingChatLlmPort
 
 
@@ -44,24 +39,17 @@ def build_basic_dialogue_runtime(
 
 
 def build_streaming_conversation_runtime(
-    session: Session,
     streaming_llm: StreamingChatLlmPort,
-    conversation_access: ConversationAccessService,
     *,
-    conversation_reader: ConversationRecentMessageReadService | None = None,
     conversation_turn_coordinator: ConversationTurnCoordinator,
+    conversation_persistence: StreamingConversationPersistencePort,
     context_builder: ConversationContextBuilder | None = None,
 ) -> StreamingConversationRuntime:
     """组装带 Conversation 历史上下文的流式 Dialogue 运行时。"""
 
     return StreamingConversationRuntime(
-        conversation_access=conversation_access,
-        conversation_writer=build_conversation_write_service(session),
-        conversation_reader=(
-            conversation_reader or build_conversation_recent_message_read_service(session)
-        ),
+        conversation_persistence=conversation_persistence,
         context_builder=context_builder or build_conversation_context_builder(),
         llm=streaming_llm,
         conversation_turn_coordinator=conversation_turn_coordinator,
     )
-

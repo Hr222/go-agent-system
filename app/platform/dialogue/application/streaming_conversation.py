@@ -6,13 +6,7 @@ from typing import Literal
 from uuid import UUID
 
 from app.platform.conversation.application import (
-    ConversationAccessService,
     ConversationContextBuilder,
-    ConversationCreateCommand,
-    ConversationHistoryReadService,
-    ConversationRecentMessageReadService,
-    ConversationResolveQuery,
-    ConversationWriteService,
 )
 from app.platform.conversation.domain import (
     ContextBudget,
@@ -29,6 +23,7 @@ from app.platform.dialogue.application.conversation_turn_coordinator import (
     ConversationTurnCoordinator,
     ConversationTurnLease,
 )
+from app.platform.dialogue.ports import StreamingConversationPersistencePort
 from app.platform.llm.contracts import (
     ChatLlmMessage,
     ChatLlmMessageRole,
@@ -125,9 +120,7 @@ class StreamingConversationRuntime:
     def __init__(
         self,
         *,
-        conversation_access: ConversationAccessService,
-        conversation_writer: ConversationWriteService,
-        conversation_reader: ConversationRecentMessageReadService,
+        conversation_persistence: StreamingConversationPersistencePort,
         context_builder: ConversationContextBuilder,
         llm: StreamingChatLlmPort,
         conversation_turn_coordinator: ConversationTurnCoordinator,
@@ -145,9 +138,7 @@ class StreamingConversationRuntime:
         if not isinstance(prompt_version, str) or not prompt_version.strip():
             raise ValueError("对话提示版本不能为空。")
 
-        self._conversation_access = conversation_access
-        self._conversation_writer = conversation_writer
-        self._conversation_reader = conversation_reader
+        self._conversation_persistence = conversation_persistence
         self._context_builder = context_builder
         self._llm = llm
         self._conversation_turn_coordinator = conversation_turn_coordinator
@@ -160,16 +151,18 @@ class StreamingConversationRuntime:
         self,
         command: StreamingConversationCommand,
     ) -> AsyncIterator[StreamingConversationEvent]:
-        conversation = self._resolve_conversation(command)
+        conversation = await self._resolve_conversation(command)
         lease = await self._conversation_turn_coordinator.acquire(conversation.id)
         try:
-            user_message = self._append_user_message(conversation, command.message)
+            user_message = await self._append_user_message(conversation, command.message)
             context = self._context_builder.build(
                 conversation_id=conversation.id,
-                messages=self._read_recent_messages(
-                    conversation.id,
-                    user_message.sequence,
-                ),
+                messages=(
+                    await self._read_recent_messages(
+                        conversation.id,
+                        user_message.sequence,
+                    )
+                ).messages,
                 policy=self._context_policy,
                 budget=self._context_budget,
             )
@@ -189,7 +182,7 @@ class StreamingConversationRuntime:
             lease.release()
             raise
 
-    def _resolve_conversation(
+    async def _resolve_conversation(
         self,
         command: StreamingConversationCommand,
     ) -> Conversation:
@@ -203,30 +196,26 @@ class StreamingConversationRuntime:
             raise ValueError("会话标识必须是 UUID。")
 
         try:
-            return (
-                self._conversation_access.create(
-                    ConversationCreateCommand(principal=command.principal)
+            if command.conversation_id is None:
+                return await self._conversation_persistence.create_conversation(
+                    principal=command.principal
                 )
-                if command.conversation_id is None
-                else self._conversation_access.resolve(
-                    ConversationResolveQuery(
-                        principal=command.principal,
-                        conversation_id=command.conversation_id,
-                    )
-                )
+            return await self._conversation_persistence.resolve_conversation(
+                principal=command.principal,
+                conversation_id=command.conversation_id,
             )
         except Exception as error:
             if isinstance(error, ConversationAccessDeniedError):
                 raise
             raise StreamingConversationPersistenceError("会话消息暂时无法保存。") from error
 
-    def _append_user_message(
+    async def _append_user_message(
         self,
         conversation: Conversation,
         message: str,
     ) -> Message:
         try:
-            return self._conversation_writer.append_message(
+            return await self._conversation_persistence.append_message(
                 conversation_id=conversation.id,
                 role=MessageRole.USER,
                 content=message.strip(),
@@ -278,7 +267,7 @@ class StreamingConversationRuntime:
 
             latest = chunks[-1] if chunks else None
             try:
-                assistant_message = self._conversation_writer.append_message(
+                assistant_message = await self._conversation_persistence.append_message(
                     conversation_id=conversation.id,
                     role=MessageRole.ASSISTANT,
                     content=answer,
@@ -308,18 +297,17 @@ class StreamingConversationRuntime:
             if stream is not None:
                 await _close_stream(stream)
 
-    def _read_recent_messages(
+    async def _read_recent_messages(
         self,
         conversation_id: UUID,
         through_sequence: int,
-    ) -> tuple[Message, ...]:
+    ) -> ConversationRecentMessageWindow:
         try:
-            window: ConversationRecentMessageWindow = self._conversation_reader.read_recent_messages(
+            return await self._conversation_persistence.read_recent_messages(
                 conversation_id=conversation_id,
                 through_sequence=through_sequence,
                 limit=self._context_policy.max_messages,
             )
-            return window.messages
         except Exception as error:
             raise StreamingConversationPersistenceError(
                 str(error) or "会话历史暂时无法读取。"
@@ -376,4 +364,3 @@ __all__ = [
     "DEFAULT_STREAMING_CONTEXT_BUDGET",
     "DEFAULT_STREAMING_CONTEXT_POLICY",
 ]
-

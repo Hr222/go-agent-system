@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from threading import Event
 from uuid import UUID, uuid4
 
 import httpx
@@ -25,10 +26,12 @@ from app.platform.conversation.errors import (
     ContextBudgetExceededError,
     ConversationAccessDeniedError,
 )
-from app.platform.conversation.ports import ConversationHistoryPage
+from app.platform.conversation.ports import ConversationHistoryPage, ConversationRecentMessageWindow
 from app.platform.dialogue.application import (
+    ConversationTurnCoordinator,
     StreamingConversationCommand,
     StreamingConversationRuntime,
+    ThreadedStreamingConversationPersistence,
 )
 from app.platform.llm.contracts import ChatLlmStreamChunk
 from app.platform.security.domain.principal import RequestPrincipal
@@ -130,6 +133,69 @@ class FakeConversationReader:
             next_after_sequence=page_messages[-1].sequence if has_more else None,
         )
 
+    def read_recent_messages(
+        self,
+        *,
+        conversation_id: UUID,
+        through_sequence: int,
+        limit: int,
+    ) -> ConversationRecentMessageWindow:
+        self.calls.append((limit, through_sequence))
+        if self.error is not None:
+            raise self.error
+        if conversation_id != self.writer.conversation.id:
+            raise RuntimeError("会话不存在")
+        records = [
+            message
+            for message in self.writer.messages
+            if message.sequence <= through_sequence
+        ]
+        return ConversationRecentMessageWindow(
+            conversation_id=conversation_id,
+            messages=tuple(records[-limit:]),
+        )
+
+
+class FakeStreamingConversationPersistence:
+    """测试用异步端口，复现 Runtime 与同步数据库的隔离边界。"""
+
+    def __init__(self, access, writer, reader) -> None:  # noqa: ANN001
+        self.access = access
+        self.writer = writer
+        self.reader = reader
+
+    async def create_conversation(self, *, principal):  # noqa: ANN001
+        return self.access.create(type("Command", (), {"principal": principal})())
+
+    async def resolve_conversation(self, *, principal, conversation_id):  # noqa: ANN001
+        return self.access.resolve(
+            type(
+                "Query",
+                (),
+                {"principal": principal, "conversation_id": conversation_id},
+            )()
+        )
+
+    async def append_message(self, *, conversation_id, role, content):  # noqa: ANN001
+        return self.writer.append_message(
+            conversation_id=conversation_id,
+            role=role,
+            content=content,
+        )
+
+    async def read_recent_messages(
+        self,
+        *,
+        conversation_id,
+        through_sequence,
+        limit,
+    ):  # noqa: ANN001
+        return self.reader.read_recent_messages(
+            conversation_id=conversation_id,
+            through_sequence=through_sequence,
+            limit=limit,
+        )
+
 
 class FakeStream:
     def __init__(self, chunks, error: BaseException | None = None):  # noqa: ANN001
@@ -203,6 +269,7 @@ def _runtime(
     resolve_error=None,
     context_policy=ContextPolicy(max_messages=20),
     context_budget=ContextBudget(max_cost=12_000),
+    coordinator: ConversationTurnCoordinator | None = None,
 ):  # noqa: ANN001
     conversation_id = messages[0].conversation_id if messages else uuid4()
     conversation = Conversation(id=conversation_id, owner_subject="user-1")
@@ -213,18 +280,18 @@ def _runtime(
         fail_assistant=fail_assistant,
     )
     reader = FakeConversationReader(writer, error=reader_error)
+    persistence = FakeStreamingConversationPersistence(access, writer, reader)
     model_stream = FakeStream(chunks, error=error)
     llm = FakeStreamingLlm(model_stream)
     runtime = StreamingConversationRuntime(
-        conversation_access=access,  # type: ignore[arg-type]
-        conversation_writer=writer,  # type: ignore[arg-type]
-        conversation_reader=reader,  # type: ignore[arg-type]
+        conversation_persistence=persistence,  # type: ignore[arg-type]
         context_builder=ConversationContextBuilder(
             CharacterCountContextMessageCostEstimator()
         ),
         llm=llm,  # type: ignore[arg-type]
         context_policy=context_policy,
         context_budget=context_budget,
+        conversation_turn_coordinator=coordinator or ConversationTurnCoordinator(),
     )
     return runtime, access, writer, reader, llm, model_stream
 
@@ -269,7 +336,7 @@ def test_runtime_creates_conversation_and_persists_complete_messages() -> None:
     ]
     assert [message.content for message in writer.messages] == ["本轮问题", "本轮回答"]
     assert access.created[0].principal.subject == "user-1"
-    assert reader.calls == [(200, None)]
+    assert reader.calls == [(20, 1)]
     assert llm.requests[0].user_prompt == "本轮问题"
     assert llm.requests[0].history_messages == ()
     assert events[-1].result is not None
@@ -334,7 +401,7 @@ def test_runtime_reads_history_across_pages_and_keeps_latest_context_window() ->
 
     asyncio.run(scenario())
 
-    assert reader.calls == [(200, None), (200, 200)]
+    assert reader.calls == [(3, 206)]
     assert [message.content for message in llm.requests[0].history_messages] == [
         "消息 204",
         "消息 205",
@@ -360,6 +427,88 @@ def test_runtime_keeps_user_when_stream_does_not_complete(error: BaseException) 
     asyncio.run(scenario())
 
     assert [message.role for message in writer.messages] == [MessageRole.USER]
+
+
+def test_runtime_cancellation_waits_for_user_worker_before_releasing_turn_lease() -> None:
+    conversation = Conversation(owner_subject="user-1")
+
+    class Worker:
+        def __init__(self, index: int, factory: "Factory") -> None:
+            self.index = index
+            self.factory = factory
+            self.closed = False
+
+        def create_conversation(self, *, principal):  # noqa: ANN001
+            del principal
+            return conversation
+
+        def resolve_conversation(self, *, principal, conversation_id):  # noqa: ANN001
+            del principal, conversation_id
+            return conversation
+
+        def append_message(self, *, conversation_id, role, content):  # noqa: ANN001
+            if role is MessageRole.USER:
+                self.factory.user_worker_started.set()
+                self.factory.release_user_worker.wait(timeout=2)
+            return _message(
+                conversation_id,
+                1,
+                role,
+                content,
+            )
+
+        def read_recent_messages(
+            self,
+            *,
+            conversation_id,
+            through_sequence,
+            limit,
+        ):  # noqa: ANN001
+            del through_sequence, limit
+            return ConversationRecentMessageWindow(
+                conversation_id=conversation_id,
+                messages=(),
+            )
+
+        def close(self) -> None:
+            self.closed = True
+
+    class Factory:
+        def __init__(self) -> None:
+            self.user_worker_started = Event()
+            self.release_user_worker = Event()
+            self.workers: list[Worker] = []
+
+        def create(self) -> Worker:
+            worker = Worker(len(self.workers), self)
+            self.workers.append(worker)
+            return worker
+
+    factory = Factory()
+    coordinator = ConversationTurnCoordinator()
+    persistence = ThreadedStreamingConversationPersistence(factory)  # type: ignore[arg-type]
+    runtime = StreamingConversationRuntime(
+        conversation_persistence=persistence,  # type: ignore[arg-type]
+        context_builder=ConversationContextBuilder(
+            CharacterCountContextMessageCostEstimator()
+        ),
+        llm=object(),  # type: ignore[arg-type]
+        conversation_turn_coordinator=coordinator,
+    )
+
+    async def scenario() -> None:
+        operation = asyncio.create_task(runtime.execute(_command()))
+        assert await asyncio.to_thread(factory.user_worker_started.wait, 1)
+        operation.cancel()
+        factory.release_user_worker.set()
+        with pytest.raises(asyncio.CancelledError):
+            await operation
+
+    asyncio.run(scenario())
+
+    assert len(factory.workers) == 2
+    assert all(worker.closed for worker in factory.workers)
+    assert coordinator.tracked_conversation_count == 0
 
 
 def test_runtime_keeps_user_when_answer_is_empty() -> None:
@@ -490,13 +639,12 @@ def test_runtime_persists_one_turn_when_adapter_retries_before_activity() -> Non
     writer = FakeConversationWriter(conversation)
     reader = FakeConversationReader(writer)
     runtime = StreamingConversationRuntime(
-        conversation_access=access,  # type: ignore[arg-type]
-        conversation_writer=writer,  # type: ignore[arg-type]
-        conversation_reader=reader,  # type: ignore[arg-type]
+        conversation_persistence=FakeStreamingConversationPersistence(access, writer, reader),  # type: ignore[arg-type]
         context_builder=ConversationContextBuilder(
             CharacterCountContextMessageCostEstimator()
         ),
         llm=llm,
+        conversation_turn_coordinator=ConversationTurnCoordinator(),
     )
 
     async def scenario() -> list[object]:
@@ -516,3 +664,176 @@ def test_runtime_persists_one_turn_when_adapter_retries_before_activity() -> Non
         "本轮问题",
         "重试后的完整回答",
     ]
+
+
+def test_runtime_serializes_same_conversation_until_assistant_is_persisted() -> None:
+    coordinator = ConversationTurnCoordinator()
+    runtime, _, writer, reader, llm, _ = _runtime(
+        chunks=[ChatLlmStreamChunk(content="第一轮回答")],
+        coordinator=coordinator,
+    )
+    command = _command(writer.conversation.id)
+
+    async def scenario() -> None:
+        first_stream = await runtime.execute(command)
+        assert (await anext(first_stream)).kind == "started"
+        assert (await anext(first_stream)).kind == "delta"
+
+        waiting_second_stream = asyncio.create_task(runtime.execute(command))
+        await asyncio.sleep(0)
+
+        assert not waiting_second_stream.done()
+        assert [message.role for message in writer.messages] == [MessageRole.USER]
+        assert len(reader.calls) == 1
+        assert len(llm.requests) == 1
+
+        [event async for event in first_stream]
+        second_stream = await waiting_second_stream
+
+        assert [message.role for message in writer.messages] == [
+            MessageRole.USER,
+            MessageRole.ASSISTANT,
+            MessageRole.USER,
+        ]
+        assert len(reader.calls) == 2
+
+        assert (await anext(second_stream)).kind == "started"
+        assert (await anext(second_stream)).kind == "delta"
+        [event async for event in second_stream]
+
+    asyncio.run(scenario())
+
+    assert [
+        (message.role.value, message.content)
+        for message in llm.requests[1].history_messages
+    ] == [("user", "本轮问题"), ("assistant", "第一轮回答")]
+    assert coordinator.tracked_conversation_count == 0
+
+
+def test_runtime_allows_different_conversations_to_start_in_parallel() -> None:
+    coordinator = ConversationTurnCoordinator()
+    first_runtime, _, _, _, first_llm, _ = _runtime(
+        chunks=[ChatLlmStreamChunk(content="第一轮回答")],
+        coordinator=coordinator,
+    )
+    second_runtime, _, _, _, second_llm, _ = _runtime(
+        chunks=[ChatLlmStreamChunk(content="第二轮回答")],
+        coordinator=coordinator,
+    )
+
+    async def scenario() -> None:
+        first_stream, second_stream = await asyncio.gather(
+            first_runtime.execute(_command()),
+            second_runtime.execute(_command()),
+        )
+        first_started, second_started = await asyncio.gather(
+            anext(first_stream),
+            anext(second_stream),
+        )
+        assert first_started.kind == "started"
+        assert second_started.kind == "started"
+
+        first_delta, second_delta = await asyncio.gather(
+            anext(first_stream),
+            anext(second_stream),
+        )
+        assert first_delta.kind == "delta"
+        assert second_delta.kind == "delta"
+        assert coordinator.tracked_conversation_count == 2
+
+        await asyncio.gather(first_stream.aclose(), second_stream.aclose())
+
+    asyncio.run(scenario())
+
+    assert len(first_llm.requests) == 1
+    assert len(second_llm.requests) == 1
+    assert coordinator.tracked_conversation_count == 0
+
+
+@pytest.mark.parametrize(
+    "error",
+    [RuntimeError("上游失败"), asyncio.CancelledError()],
+)
+def test_runtime_releases_same_conversation_after_provider_failure_or_cancellation(
+    error: BaseException,
+) -> None:
+    coordinator = ConversationTurnCoordinator()
+    runtime, _, writer, _, _, _ = _runtime(
+        chunks=[ChatLlmStreamChunk(content="部分回答")],
+        error=error,
+        coordinator=coordinator,
+    )
+    command = _command(writer.conversation.id)
+
+    async def scenario() -> None:
+        first_stream = await runtime.execute(command)
+        assert (await anext(first_stream)).kind == "started"
+        waiting_second_stream = asyncio.create_task(runtime.execute(command))
+        await asyncio.sleep(0)
+
+        assert not waiting_second_stream.done()
+        with pytest.raises(type(error)):
+            [event async for event in first_stream]
+
+        second_stream = await waiting_second_stream
+        assert [message.role for message in writer.messages] == [
+            MessageRole.USER,
+            MessageRole.USER,
+        ]
+        await second_stream.aclose()
+
+    asyncio.run(scenario())
+
+    assert coordinator.tracked_conversation_count == 0
+
+
+def test_runtime_releases_lease_when_closed_before_first_event() -> None:
+    coordinator = ConversationTurnCoordinator()
+    runtime, _, writer, _, llm, _ = _runtime(
+        chunks=[ChatLlmStreamChunk(content="不会调用")],
+        coordinator=coordinator,
+    )
+    command = _command(writer.conversation.id)
+
+    async def scenario() -> None:
+        first_stream = await runtime.execute(command)
+        await first_stream.aclose()
+
+        second_stream = await runtime.execute(command)
+        await second_stream.aclose()
+
+    asyncio.run(scenario())
+
+    assert [message.role for message in writer.messages] == [
+        MessageRole.USER,
+        MessageRole.USER,
+    ]
+    assert llm.requests == []
+    assert coordinator.tracked_conversation_count == 0
+
+
+def test_runtime_cancellation_while_waiting_does_not_write_a_message() -> None:
+    coordinator = ConversationTurnCoordinator()
+    runtime, _, writer, reader, llm, _ = _runtime(
+        chunks=[ChatLlmStreamChunk(content="不会调用")],
+        coordinator=coordinator,
+    )
+    command = _command(writer.conversation.id)
+
+    async def scenario() -> None:
+        first_stream = await runtime.execute(command)
+        waiting_second_stream = asyncio.create_task(runtime.execute(command))
+        await asyncio.sleep(0)
+
+        waiting_second_stream.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting_second_stream
+
+        assert [message.role for message in writer.messages] == [MessageRole.USER]
+        assert len(reader.calls) == 1
+        assert llm.requests == []
+        await first_stream.aclose()
+
+    asyncio.run(scenario())
+
+    assert coordinator.tracked_conversation_count == 0

@@ -271,8 +271,51 @@ def test_streaming_dialogue_runtime_uses_platform_application_contracts() -> Non
 
     assert "app.platform.conversation.application" in imported
     assert "app.platform.conversation.ports" in imported
+    assert "app.platform.dialogue.ports" in imported
+    assert "app.platform.dialogue.application.conversation_turn_coordinator" in imported
     assert "app.platform.llm.contracts" in imported
     assert not any(module.startswith("app.modules") for module in imported)
+
+
+def test_conversation_turn_coordinator_is_composed_for_streaming_chat_and_confirmed_agents(
+) -> None:
+    root_source = (APP_ROOT / "composition" / "root.py").read_text(encoding="utf-8")
+    interaction_source = (
+        APP_ROOT / "platform" / "interaction" / "application" / "chat_stream.py"
+    ).read_text(encoding="utf-8")
+    agent_turn_source = (
+        APP_ROOT / "platform" / "dialogue" / "application" / "agent_turn.py"
+    ).read_text(encoding="utf-8")
+    continuation_source = (
+        APP_ROOT / "platform" / "dialogue" / "application" / "agent_continuation.py"
+    ).read_text(encoding="utf-8")
+
+    assert "conversation_turn_coordinator=self._conversation_turn_coordinator" in root_source
+    assert "dialogue_agent_turn_executor=self.dialogue_agent_turn_executor()" in root_source
+    assert "await self._coordinator.acquire(request.conversation_id)" in agent_turn_source
+    assert "ConversationTurnLease" not in interaction_source
+    assert "ConversationTurnCoordinator" not in continuation_source
+
+
+def test_agent_turn_worker_boundary_keeps_persistence_in_composition() -> None:
+    agent_turn = APP_ROOT / "platform" / "dialogue" / "application" / "agent_turn.py"
+    imported = _imported_modules(agent_turn)
+    root_source = (APP_ROOT / "composition" / "root.py").read_text(encoding="utf-8")
+
+    forbidden_prefixes = (
+        "app.infrastructure",
+        "app.composition",
+        "sqlalchemy",
+    )
+    assert not any(
+        module.startswith(forbidden)
+        for module in imported
+        for forbidden in forbidden_prefixes
+    )
+    assert "asyncio.to_thread" in agent_turn.read_text(encoding="utf-8")
+    assert "session = SessionLocal()" in root_source
+    assert "container = ApplicationContainer(session)" in root_source
+    assert "self._session.close()" in root_source
 
 
 def test_platform_capability_catalog_is_independent_of_dialogue_and_agent_runtime() -> None:
