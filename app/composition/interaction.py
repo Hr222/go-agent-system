@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 
 from sqlalchemy.orm import Session
 
@@ -35,10 +36,52 @@ from app.platform.interaction.application.gateway import (
     DispatchHandler,
 )
 from app.platform.interaction.domain.attachment import ResolvedAttachment
+from app.platform.interaction.domain.capability import PlatformCapability
 from app.platform.interaction.ports.capability_catalog import CapabilityCatalogPort
 from app.platform.llm.application.chat import ChatApplication, ChatCommand
 from app.platform.llm.ports import TextEmbeddingPort
 from app.shared.config import settings
+
+
+class SessionScopedCapabilityCatalog(CapabilityCatalogPort):
+    """为进程级候选索引提供不持有请求 Session 的目录快照。"""
+
+    def __init__(self, session_factory: Callable[[], Session]) -> None:
+        self._session_factory = session_factory
+        self._dispatch_registry = build_capability_dispatch_registry()
+
+    @contextmanager
+    def _catalog(self) -> Iterator[PlatformCapabilityCatalog]:
+        session = self._session_factory()
+        try:
+            repository = build_capability_catalog_repository(session)
+            yield build_platform_capability_catalog(repository, self._dispatch_registry)
+        except BaseException:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def list_available(
+        self,
+        *,
+        capability_type=None,  # noqa: ANN001
+        permissions: Iterable[str] = (),
+    ) -> tuple[PlatformCapability, ...]:
+        with self._catalog() as catalog:
+            return catalog.list_available(
+                capability_type=capability_type,
+                permissions=permissions,
+            )
+
+    def get_available(
+        self,
+        code: str,
+        *,
+        permissions: Iterable[str] = (),
+    ) -> PlatformCapability | None:
+        with self._catalog() as catalog:
+            return catalog.get_available(code, permissions=permissions)
 
 
 def build_capability_catalog_repository(session: Session) -> PlatformCapabilityRepository:

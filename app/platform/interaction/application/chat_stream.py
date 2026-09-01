@@ -15,6 +15,7 @@ from app.platform.interaction.application.gateway import (
     GatewayResult,
     IntentInteractionGateway,
 )
+from app.platform.interaction.ports.chat_preparation import InteractionChatPreparationPort
 from app.platform.security.domain.principal import RequestPrincipal
 from app.shared.config import settings
 
@@ -74,23 +75,28 @@ class InteractionChatStreamApplication:
 
     def __init__(
         self,
-        gateway: IntentInteractionGateway,
+        gateway: IntentInteractionGateway | None,
         streaming_conversation: StreamingConversationRuntime,
         dialogue_agent_invocation: DialogueAgentInvocationService | None = None,
         pending_agent_invocations: InMemoryPendingAgentInvocationStore | None = None,
         dialogue_agent_turn_executor: DialogueAgentTurnExecutor | None = None,
+        preparation: InteractionChatPreparationPort | None = None,
     ) -> None:
         self._gateway = gateway
         self._streaming_conversation = streaming_conversation
         self._dialogue_agent_invocation = dialogue_agent_invocation
         self._pending_agent_invocations = pending_agent_invocations
         self._dialogue_agent_turn_executor = dialogue_agent_turn_executor
+        self._preparation = preparation
 
     def prepare(
         self,
         command: InteractionChatStreamCommand,
     ) -> InteractionStreamPreparation:
         """Complete routing before model execution or an SSE response begins."""
+
+        if self._gateway is None:
+            raise RuntimeError("同步交互 Gateway 未配置。")
 
         try:
             result = self._gateway.recognize(
@@ -127,6 +133,16 @@ class InteractionChatStreamApplication:
             principal=command.principal,
             conversation_id=command.conversation_id,
         )
+
+    async def prepare_async(
+        self,
+        command: InteractionChatStreamCommand,
+    ) -> InteractionStreamPreparation:
+        """异步流式入口使用的准备边界；兼容注入的同步测试替身。"""
+
+        if self._preparation is not None:
+            return await self._preparation.prepare(command)
+        return self.prepare(command)
 
     async def confirm_agent(
         self,

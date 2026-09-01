@@ -14,6 +14,7 @@ from app.interfaces.http.assemblers.interaction import (
 from app.interfaces.http.dependencies import (
     get_intent_interaction_gateway,
     get_interaction_chat_stream_application,
+    get_streaming_interaction_chat_stream_application,
 )
 from app.interfaces.http.schemas.interaction import (
     InteractionChatRequest,
@@ -49,13 +50,13 @@ async def interaction_chat_stream(
     http_request: Request,
     request: InteractionChatRequest,
     application: InteractionChatStreamApplication = Depends(
-        get_interaction_chat_stream_application
+        get_streaming_interaction_chat_stream_application
     ),
     principal: RequestPrincipal = Depends(get_request_principal),
 ) -> StreamingResponse:
     """Route chat on the server and return only browser-safe interaction events."""
 
-    preparation = application.prepare(chat_stream_command(request, principal))
+    preparation = await application.prepare_async(chat_stream_command(request, principal))
     async def events() -> AsyncIterator[str]:
         async for event in application.stream(
             preparation,

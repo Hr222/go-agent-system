@@ -12,6 +12,7 @@ from app.platform.dialogue.ports import (
     StreamingConversationPersistenceWorkerPort,
 )
 from app.platform.security.domain.principal import RequestPrincipal
+from app.shared.async_task import await_shielded_task
 
 
 class ThreadedStreamingConversationPersistence(StreamingConversationPersistencePort):
@@ -75,16 +76,7 @@ class ThreadedStreamingConversationPersistence(StreamingConversationPersistenceP
         """操作取消时先等待线程收口，避免租约早于数据库事实释放。"""
 
         task = asyncio.create_task(asyncio.to_thread(self._run_sync, operation))
-        try:
-            # shield 防止请求取消把仍在收口的同步事务连带取消。
-            return await asyncio.shield(task)
-        except asyncio.CancelledError:
-            try:
-                await asyncio.shield(task)
-            except BaseException:
-                # 保留请求取消语义；worker 仍已完成关闭和事务收口。
-                pass
-            raise
+        return await await_shielded_task(task)
 
     def _run_sync(
         self,

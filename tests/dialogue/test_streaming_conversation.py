@@ -431,6 +431,7 @@ def test_runtime_keeps_user_when_stream_does_not_complete(error: BaseException) 
 
 def test_runtime_cancellation_waits_for_user_worker_before_releasing_turn_lease() -> None:
     conversation = Conversation(owner_subject="user-1")
+    lifecycle_events: list[str] = []
 
     class Worker:
         def __init__(self, index: int, factory: "Factory") -> None:
@@ -472,6 +473,7 @@ def test_runtime_cancellation_waits_for_user_worker_before_releasing_turn_lease(
 
         def close(self) -> None:
             self.closed = True
+            lifecycle_events.append(f"worker-{self.index}.closed")
 
     class Factory:
         def __init__(self) -> None:
@@ -486,6 +488,13 @@ def test_runtime_cancellation_waits_for_user_worker_before_releasing_turn_lease(
 
     factory = Factory()
     coordinator = ConversationTurnCoordinator()
+    original_release = coordinator._release
+
+    def release_and_record(conversation_id, state):  # noqa: ANN001
+        lifecycle_events.append("lease.released")
+        original_release(conversation_id, state)
+
+    coordinator._release = release_and_record  # type: ignore[method-assign]
     persistence = ThreadedStreamingConversationPersistence(factory)  # type: ignore[arg-type]
     runtime = StreamingConversationRuntime(
         conversation_persistence=persistence,  # type: ignore[arg-type]
@@ -508,6 +517,7 @@ def test_runtime_cancellation_waits_for_user_worker_before_releasing_turn_lease(
 
     assert len(factory.workers) == 2
     assert all(worker.closed for worker in factory.workers)
+    assert lifecycle_events.index("worker-1.closed") < lifecycle_events.index("lease.released")
     assert coordinator.tracked_conversation_count == 0
 
 

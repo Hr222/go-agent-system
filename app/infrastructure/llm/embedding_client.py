@@ -63,6 +63,11 @@ class GiteeEmbeddingClient(TextEmbeddingPort):
         )
         return embedded
 
+    def close(self) -> None:
+        """释放进程级 Embedding 客户端。"""
+
+        self.client.close()
+
     def _validate_vector(self, vector: list[float]) -> None:
         if not isinstance(vector, list) or not all(
             isinstance(value, (int, float)) for value in vector

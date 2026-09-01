@@ -36,7 +36,9 @@ from app.shared.config import settings
 @lru_cache(maxsize=1)
 def get_stateless_application_container() -> ApplicationContainer:
     """Provide one process-wide container for stateless capabilities."""
-    return ApplicationContainer()
+    return ApplicationContainer(
+        conversation_turn_coordinator=get_conversation_turn_coordinator()
+    )
 
 
 @lru_cache(maxsize=1)
@@ -123,7 +125,12 @@ def get_intent_interaction_gateway(
     container: ApplicationContainer = Depends(get_application_container),
     proposal_store: PendingProposalStorePort = Depends(get_interaction_proposal_store),
 ) -> IntentInteractionGateway:
-    return container.intent_interaction_gateway(proposal_store)
+    return container.intent_interaction_gateway(
+        proposal_store,
+        capability_candidate_retrieval=(
+            get_stateless_application_container().capability_candidate_retrieval()
+        ),
+    )
 
 
 @lru_cache(maxsize=1)
@@ -143,6 +150,17 @@ def get_interaction_chat_stream_application(
     return container.interaction_chat_stream_application(
         proposal_store,
         pending_agent_invocations,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_streaming_interaction_chat_stream_application() -> InteractionChatStreamApplication:
+    """Provide the process-wide Chat stream app without a request Session dependency."""
+
+    container = get_stateless_application_container()
+    return container.streaming_interaction_chat_stream_application(
+        get_interaction_proposal_store(),
+        get_pending_agent_invocation_store(),
     )
 
 

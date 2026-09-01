@@ -279,8 +279,9 @@ class IntentInteractionGateway:
 
     def recognize(self, command: GatewayRecognitionCommand) -> GatewayResult:
         permissions = command.principal.permission_tuple()
-        if not self._candidate_retrieval.is_ready(permissions=permissions):
-            index_result = self._candidate_retrieval.refresh(permissions=permissions)
+        ensure_ready = getattr(self._candidate_retrieval, "ensure_ready", None)
+        if ensure_ready is not None:
+            index_result = ensure_ready(permissions=permissions)
             if index_result.status == "failed":
                 return GatewayResult(
                     status="needs_clarification",

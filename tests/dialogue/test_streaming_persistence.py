@@ -75,6 +75,55 @@ def test_cancelled_persistence_operation_waits_for_worker_cleanup() -> None:
     assert worker.closed is True
 
 
+def test_repeated_cancellation_still_waits_for_worker_cleanup() -> None:
+    worker = BlockingWorker()
+    persistence = ThreadedStreamingConversationPersistence(BlockingWorkerFactory(worker))
+
+    async def scenario() -> None:
+        operation = asyncio.create_task(
+            persistence.create_conversation(principal=object())  # type: ignore[arg-type]
+        )
+        assert await asyncio.to_thread(worker.started.wait, 1)
+        operation.cancel()
+        await asyncio.sleep(0)
+        operation.cancel()
+        await asyncio.sleep(0.01)
+        assert operation.done() is False
+        worker.release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await operation
+
+    asyncio.run(scenario())
+    assert worker.closed is True
+
+
+def test_repeated_cancellation_consumes_worker_failure_after_cleanup() -> None:
+    class FailingWorker(BlockingWorker):
+        def create_conversation(self, *, principal):  # noqa: ANN001
+            del principal
+            self.started.set()
+            self.release.wait(timeout=2)
+            raise RuntimeError("database write failed")
+
+    worker = FailingWorker()
+    persistence = ThreadedStreamingConversationPersistence(BlockingWorkerFactory(worker))
+
+    async def scenario() -> None:
+        operation = asyncio.create_task(
+            persistence.create_conversation(principal=object())  # type: ignore[arg-type]
+        )
+        assert await asyncio.to_thread(worker.started.wait, 1)
+        operation.cancel()
+        await asyncio.sleep(0)
+        operation.cancel()
+        worker.release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await operation
+
+    asyncio.run(scenario())
+    assert worker.closed is True
+
+
 class TrackingSession:
     def __init__(self) -> None:
         self.commits = 0
@@ -214,6 +263,30 @@ def test_composition_worker_rolls_back_before_closing_on_operation_failure(
                 conversation_id=state.conversation.id,
                 role=MessageRole.USER,
                 content="问题",
+            )
+        )
+
+    assert [(session.commits, session.rollbacks, session.closes) for session in sessions] == [
+        (0, 1, 1),
+    ]
+
+
+def test_composition_worker_rolls_back_before_closing_on_assistant_failure(
+    monkeypatch,
+) -> None:  # noqa: ANN001
+    state = CompositionState()
+    state.fail_append = True
+    sessions = _patch_composition_services(monkeypatch, state)
+    persistence = ThreadedStreamingConversationPersistence(
+        composition_root._SessionScopedStreamingConversationPersistenceWorkerFactory()
+    )
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        asyncio.run(
+            persistence.append_message(
+                conversation_id=state.conversation.id,
+                role=MessageRole.ASSISTANT,
+                content="回答",
             )
         )
 

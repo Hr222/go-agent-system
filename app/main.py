@@ -10,7 +10,10 @@ from app.interfaces.agent.tender_mcp import (
     TENDER_MCP_MOUNT_PATH,
     create_tender_mcp_server,
 )
-from app.interfaces.http.dependencies import get_stateless_application_container
+from app.interfaces.http.dependencies import (
+    get_stateless_application_container,
+    get_streaming_interaction_chat_stream_application,
+)
 from app.interfaces.http.router import api_router
 from app.shared.config import settings
 from app.shared.logging import configure_logging, get_logger
@@ -51,6 +54,7 @@ def create_app() -> FastAPI:
             yield
         stateless_container = get_stateless_application_container()
         await stateless_container.aclose()
+        get_streaming_interaction_chat_stream_application.cache_clear()
         get_stateless_application_container.cache_clear()
         logger.info("关闭 FastAPI 应用 name=%s", settings.app_name)
 

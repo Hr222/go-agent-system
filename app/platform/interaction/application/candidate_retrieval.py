@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from threading import RLock
 
 from app.platform.interaction.domain.candidate import (
     CandidateIndexError,
@@ -88,6 +89,7 @@ class CapabilityCandidateRetrieval:
         self.capability_catalog = capability_catalog
         self.embedding = embedding
         self._indexes: dict[PermissionScope, InMemoryCapabilityCandidateIndex] = {}
+        self._refresh_lock = RLock()
         if index is not None:
             self._indexes[()] = index
         self.default_min_score = default_min_score
@@ -96,12 +98,35 @@ class CapabilityCandidateRetrieval:
         index = self._indexes.get(_permission_scope(permissions))
         return index is not None and index.is_ready
 
+    def ensure_ready(self, *, permissions: Iterable[str] = ()) -> CapabilityIndexBuildResult:
+        """在首次请求时构建当前权限范围，避免并发请求重复构建索引。"""
+
+        scope = _permission_scope(permissions)
+        with self._refresh_lock:
+            existing = self._indexes.get(scope)
+            if existing is not None and existing.is_ready:
+                return CapabilityIndexBuildResult(
+                    status="ready" if existing.entry_count else "empty",
+                    indexed_count=existing.entry_count,
+                )
+            return self._refresh_locked(scope)
+
     def refresh(self, *, permissions: Iterable[str] = ()) -> CapabilityIndexBuildResult:
         """为当前权限范围重建索引；失败时保留同范围的旧索引。"""
 
         scope = _permission_scope(permissions)
+        with self._refresh_lock:
+            return self._refresh_locked(scope)
+
+    def invalidate(self, *, permissions: Iterable[str] = ()) -> None:
+        """丢弃一个权限范围的快照，使下一次请求重新构建。"""
+
+        with self._refresh_lock:
+            self._indexes.pop(_permission_scope(permissions), None)
+
+    def _refresh_locked(self, scope: PermissionScope) -> CapabilityIndexBuildResult:
         previous_index = self._indexes.get(scope)
-        replacement_index = previous_index or InMemoryCapabilityCandidateIndex()
+        replacement_index = InMemoryCapabilityCandidateIndex()
         try:
             capabilities = self.capability_catalog.list_available(permissions=scope)
             search_texts = [build_search_text(capability) for capability in capabilities]

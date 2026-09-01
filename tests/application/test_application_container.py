@@ -3,11 +3,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import app.composition.interaction as composition_interaction
 import app.composition.root as composition_root
 from app.business.agents.tender.application.service import TenderApplication
 from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.business.online.domain.checklist import COURT_EVALUATION_MATERIALS_SCENARIO
 from app.composition import ApplicationContainer
+from app.composition.interaction import SessionScopedCapabilityCatalog
 from app.infrastructure.llm.langchain_glm_adapter import LangChainGlmStructuredLlm
 from app.infrastructure.llm.openai_client_factory import OpenAICompatibleClientFactory
 from app.infrastructure.persistence.repositories.conversation_write_repository import (
@@ -20,6 +22,10 @@ from app.platform.dialogue.application import (
 )
 from app.platform.ingestion.application.ingestion_use_case import IngestionUseCase
 from app.platform.ingestion.application.scan_candidates import PolicyCandidateScanUseCase
+from app.platform.interaction.application.chat_stream import (
+    InteractionStreamEvent,
+    InteractionStreamPreparation,
+)
 from app.shared.config import Settings
 
 
@@ -172,6 +178,175 @@ def test_streaming_runtime_accepts_async_persistence_without_request_session() -
 
     assert container.session is None
     assert runtime._conversation_persistence is persistence
+
+
+def test_stateless_application_container_uses_session_scoped_capability_catalog() -> None:
+    container = ApplicationContainer()
+
+    retrieval = container.capability_candidate_retrieval()
+
+    assert isinstance(retrieval.capability_catalog, SessionScopedCapabilityCatalog)
+
+
+def test_session_scoped_capability_catalog_closes_session_after_success(
+    monkeypatch,
+) -> None:  # noqa: ANN001
+    class TrackingSession:
+        def __init__(self) -> None:
+            self.rollback_calls = 0
+            self.close_calls = 0
+
+        def rollback(self) -> None:
+            self.rollback_calls += 1
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    session = TrackingSession()
+    class Catalog:
+        def list_available(self, **kwargs):  # noqa: ANN003
+            del kwargs
+            return ("available",)
+
+    catalog = Catalog()
+
+    def repository_for(current_session):  # noqa: ANN001
+        assert current_session is session
+        return object()
+
+    monkeypatch.setattr(
+        composition_interaction,
+        "build_capability_catalog_repository",
+        repository_for,
+    )
+    monkeypatch.setattr(
+        composition_interaction,
+        "build_platform_capability_catalog",
+        lambda _repository, _registry: catalog,
+    )
+    scoped_catalog = SessionScopedCapabilityCatalog(lambda: session)  # type: ignore[arg-type]
+
+    assert scoped_catalog.list_available() == ("available",)
+    assert session.rollback_calls == 0
+    assert session.close_calls == 1
+
+
+def test_session_scoped_capability_catalog_rolls_back_and_closes_on_failure(
+    monkeypatch,
+) -> None:  # noqa: ANN001
+    class TrackingSession:
+        def __init__(self) -> None:
+            self.rollback_calls = 0
+            self.close_calls = 0
+
+        def rollback(self) -> None:
+            self.rollback_calls += 1
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    class FailingCatalog:
+        def list_available(self, **kwargs):  # noqa: ANN003
+            del kwargs
+            raise RuntimeError("catalog unavailable")
+
+    session = TrackingSession()
+
+    def repository_for(current_session):  # noqa: ANN001
+        assert current_session is session
+        return object()
+
+    monkeypatch.setattr(
+        composition_interaction,
+        "build_capability_catalog_repository",
+        repository_for,
+    )
+    monkeypatch.setattr(
+        composition_interaction,
+        "build_platform_capability_catalog",
+        lambda _repository, _registry: FailingCatalog(),
+    )
+    scoped_catalog = SessionScopedCapabilityCatalog(lambda: session)  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="catalog unavailable"):
+        scoped_catalog.list_available()
+
+    assert session.rollback_calls == 1
+    assert session.close_calls == 1
+
+
+def test_interaction_preparation_worker_commits_before_closing_resources() -> None:
+    events: list[str] = []
+
+    class TrackingSession:
+        def commit(self) -> None:
+            events.append("commit")
+
+        def rollback(self) -> None:
+            events.append("rollback")
+
+        def close(self) -> None:
+            events.append("session.close")
+
+    class TrackingContainer:
+        def close(self) -> None:
+            events.append("container.close")
+
+    class Application:
+        def prepare(self, command):  # noqa: ANN001
+            del command
+            return InteractionStreamPreparation(
+                kind="single_event",
+                event=InteractionStreamEvent("result", {"status": "ready"}),
+            )
+
+    worker = composition_root._SessionScopedInteractionChatPreparationWorker(
+        session=TrackingSession(),  # type: ignore[arg-type]
+        container=TrackingContainer(),  # type: ignore[arg-type]
+        application=Application(),  # type: ignore[arg-type]
+    )
+
+    worker.prepare(object())  # type: ignore[arg-type]
+    worker.close()
+
+    assert events == ["commit", "container.close", "session.close"]
+
+
+def test_interaction_preparation_worker_rolls_back_controlled_failure() -> None:
+    events: list[str] = []
+
+    class TrackingSession:
+        def commit(self) -> None:
+            events.append("commit")
+
+        def rollback(self) -> None:
+            events.append("rollback")
+
+        def close(self) -> None:
+            events.append("session.close")
+
+    class TrackingContainer:
+        def close(self) -> None:
+            events.append("container.close")
+
+    class Application:
+        def prepare(self, command):  # noqa: ANN001
+            del command
+            return InteractionStreamPreparation(
+                kind="single_event",
+                event=InteractionStreamEvent("error", {"code": "FAILED"}),
+            )
+
+    worker = composition_root._SessionScopedInteractionChatPreparationWorker(
+        session=TrackingSession(),  # type: ignore[arg-type]
+        container=TrackingContainer(),  # type: ignore[arg-type]
+        application=Application(),  # type: ignore[arg-type]
+    )
+
+    worker.prepare(object())  # type: ignore[arg-type]
+    worker.close()
+
+    assert events == ["rollback", "container.close", "session.close"]
 
 
 def test_application_container_aclose_releases_openai_client_factory() -> None:

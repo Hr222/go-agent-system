@@ -345,6 +345,35 @@ def test_dialogue_change_does_not_add_http_route() -> None:
     assert not any("dialogue" in route_path.lower() for route_path in route_paths)
 
 
+def test_streaming_interaction_route_uses_process_application_and_async_preparation() -> None:
+    route_source = (
+        APP_ROOT / "interfaces" / "http" / "routes" / "interaction.py"
+    ).read_text(encoding="utf-8")
+    dependency_source = (
+        APP_ROOT / "interfaces" / "http" / "dependencies.py"
+    ).read_text(encoding="utf-8")
+    root_source = (APP_ROOT / "composition" / "root.py").read_text(encoding="utf-8")
+
+    assert "get_streaming_interaction_chat_stream_application" in route_source
+    assert "await application.prepare_async" in route_source
+    assert "get_application_container" not in route_source
+    assert "@lru_cache(maxsize=1)\ndef get_streaming_interaction_chat_stream_application" in (
+        dependency_source
+    )
+    assert "SessionScopedCapabilityCatalog(SessionLocal)" in root_source
+    assert "ThreadedInteractionChatPreparation(" in root_source
+
+
+def test_streaming_interaction_runtime_does_not_import_request_persistence_resources() -> None:
+    source = (
+        APP_ROOT / "platform" / "interaction" / "application" / "chat_stream.py"
+    ).read_text(encoding="utf-8")
+
+    assert "SessionLocal" not in source
+    assert "ApplicationContainer" not in source
+    assert "ConversationWriteRepository" not in source
+
+
 def test_conversation_http_routes_stay_in_the_interface_adapter() -> None:
     route_paths = _literal_route_paths(APP_ROOT / "interfaces" / "http" / "routes")
 

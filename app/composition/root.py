@@ -53,6 +53,7 @@ from app.composition.intent import (
     build_structured_intent_recognition,
 )
 from app.composition.interaction import (
+    SessionScopedCapabilityCatalog,
     build_agent_call_dispatcher,
     build_agent_runtime,
     build_capability_candidate_retrieval,
@@ -132,7 +133,12 @@ from app.platform.ingestion.pipeline import PolicyIngestionService
 from app.platform.interaction.application.agent_dispatch import AgentCallDispatcher
 from app.platform.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
 from app.platform.interaction.application.catalog import PlatformCapabilityCatalog
-from app.platform.interaction.application.chat_stream import InteractionChatStreamApplication
+from app.platform.interaction.application.chat_preparation import ThreadedInteractionChatPreparation
+from app.platform.interaction.application.chat_stream import (
+    InteractionChatStreamApplication,
+    InteractionChatStreamCommand,
+    InteractionStreamPreparation,
+)
 from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
 from app.platform.interaction.application.gateway import IntentInteractionGateway
 from app.platform.interaction.application.intent_recognition import StructuredIntentRecognition
@@ -206,6 +212,9 @@ class ApplicationContainer:
         )
         self._streaming_chat_application: StreamingChatApplication | None = None
         self._streaming_conversation_runtime: StreamingConversationRuntime | None = None
+        self._streaming_interaction_chat_stream_application: (
+            InteractionChatStreamApplication | None
+        ) = None
         self._openai_client_factory = openai_client_factory
         self._persistence_gateway: PolicyPersistenceGateway | None = None
         self._write_repository: KnowledgeWriteRepository | None = None
@@ -390,8 +399,13 @@ class ApplicationContainer:
 
     def capability_candidate_retrieval(self) -> CapabilityCandidateRetrieval:
         if self._capability_candidate_retrieval is None:
+            capability_catalog = (
+                self.platform_capability_catalog()
+                if self.session is not None
+                else SessionScopedCapabilityCatalog(SessionLocal)
+            )
             self._capability_candidate_retrieval = build_capability_candidate_retrieval(
-                self.platform_capability_catalog(),
+                capability_catalog,
                 self.embedding_service(),
             )
         return self._capability_candidate_retrieval
@@ -401,10 +415,14 @@ class ApplicationContainer:
             self._intent_structured_llm = build_structured_llm(self.openai_client_factory())
         return self._intent_structured_llm
 
-    def structured_intent_recognition(self) -> StructuredIntentRecognition:
+    def structured_intent_recognition(
+        self,
+        *,
+        capability_candidate_retrieval: CapabilityCandidateRetrieval | None = None,
+    ) -> StructuredIntentRecognition:
         if self._structured_intent_recognition is None:
             self._structured_intent_recognition = build_structured_intent_recognition(
-                self.capability_candidate_retrieval(),
+                capability_candidate_retrieval or self.capability_candidate_retrieval(),
                 self.platform_capability_catalog(),
                 self.intent_structured_llm(),
             )
@@ -420,7 +438,12 @@ class ApplicationContainer:
     def intent_interaction_gateway(
         self,
         proposal_store: PendingProposalStorePort,
+        *,
+        capability_candidate_retrieval: CapabilityCandidateRetrieval | None = None,
     ) -> IntentInteractionGateway:
+        candidate_retrieval = (
+            capability_candidate_retrieval or self.capability_candidate_retrieval()
+        )
         dispatcher = build_controlled_dispatcher(
             self.platform_capability_catalog(),
             agent_runtime=self.agent_runtime,
@@ -429,8 +452,10 @@ class ApplicationContainer:
             policy_decision_application_service=self.policy_decision_application_service,
         )
         return build_intent_interaction_gateway(
-            candidate_retrieval=self.capability_candidate_retrieval(),
-            intent_recognition=self.structured_intent_recognition(),
+            candidate_retrieval=candidate_retrieval,
+            intent_recognition=self.structured_intent_recognition(
+                capability_candidate_retrieval=candidate_retrieval,
+            ),
             confirmation=self.explicit_capability_confirmation(),
             proposal_store=proposal_store,
             dispatcher=dispatcher,
@@ -449,6 +474,31 @@ class ApplicationContainer:
             pending_agent_invocations=pending_agent_invocations,
             dialogue_agent_turn_executor=self.dialogue_agent_turn_executor(),
         )
+
+    def streaming_interaction_chat_stream_application(
+        self,
+        proposal_store: PendingProposalStorePort,
+        pending_agent_invocations=None,  # noqa: ANN001
+    ) -> InteractionChatStreamApplication:
+        """提供不携带请求级数据库资源的进程级普通流式 Chat 应用。"""
+
+        if self._streaming_interaction_chat_stream_application is None:
+            streaming_conversation = self.streaming_conversation_runtime()
+            self._streaming_interaction_chat_stream_application = InteractionChatStreamApplication(
+                gateway=None,
+                streaming_conversation=streaming_conversation,
+                preparation=ThreadedInteractionChatPreparation(
+                    _SessionScopedInteractionChatPreparationWorkerFactory(
+                        capability_candidate_retrieval=self.capability_candidate_retrieval(),
+                        intent_structured_llm=self.intent_structured_llm(),
+                        attachment_storage=self.attachment_storage(),
+                        proposal_store=proposal_store,
+                        pending_agent_invocations=pending_agent_invocations,
+                        streaming_conversation=streaming_conversation,
+                    )
+                ),
+            )
+        return self._streaming_interaction_chat_stream_application
 
     def chat_application(self) -> ChatApplication:
         """提供无数据库依赖的独立单轮 LLM Chat 用例。"""
@@ -507,14 +557,22 @@ class ApplicationContainer:
         return self._openai_client_factory
 
     def close(self) -> None:
-        if self._openai_client_factory is not None:
-            self._openai_client_factory.close()
+        try:
+            if self._openai_client_factory is not None:
+                self._openai_client_factory.close()
+        finally:
+            if self._embedding_service is not None:
+                self._embedding_service.close()
 
     async def aclose(self) -> None:
         """关闭 Container 创建的异步基础设施资源。"""
 
-        if self._openai_client_factory is not None:
-            await self._openai_client_factory.aclose()
+        try:
+            if self._openai_client_factory is not None:
+                await self._openai_client_factory.aclose()
+        finally:
+            if self._embedding_service is not None:
+                self._embedding_service.close()
 
     def embedding_service(self) -> GiteeEmbeddingClient:
         if self._embedding_service is None:
@@ -775,6 +833,102 @@ class _SessionScopedStreamingConversationPersistenceWorkerFactory(
             finally:
                 session.close()
             raise
+
+
+class _SessionScopedInteractionChatPreparationWorkerFactory:
+    """在准备 Worker 内创建 Gateway，避免把请求 Session 带入进程级应用。"""
+
+    def __init__(
+        self,
+        *,
+        capability_candidate_retrieval: CapabilityCandidateRetrieval,
+        intent_structured_llm: StructuredLlmPort,
+        attachment_storage: FilesystemAttachmentStorage,
+        proposal_store: PendingProposalStorePort,
+        pending_agent_invocations: object | None,
+        streaming_conversation: StreamingConversationRuntime,
+    ) -> None:
+        self._capability_candidate_retrieval = capability_candidate_retrieval
+        self._intent_structured_llm = intent_structured_llm
+        self._attachment_storage = attachment_storage
+        self._proposal_store = proposal_store
+        self._pending_agent_invocations = pending_agent_invocations
+        self._streaming_conversation = streaming_conversation
+
+    def create(self) -> "_SessionScopedInteractionChatPreparationWorker":
+        session = SessionLocal()
+        try:
+            container = ApplicationContainer(
+                session,
+                attachment_storage=self._attachment_storage,
+                intent_structured_llm=self._intent_structured_llm,
+                capability_candidate_retrieval=self._capability_candidate_retrieval,
+            )
+            gateway = container.intent_interaction_gateway(self._proposal_store)
+            dialogue_agent_invocation = (
+                container.dialogue_agent_invocation()
+                if self._pending_agent_invocations is not None
+                else None
+            )
+            application = InteractionChatStreamApplication(
+                gateway,
+                self._streaming_conversation,
+                dialogue_agent_invocation=dialogue_agent_invocation,
+                pending_agent_invocations=self._pending_agent_invocations,
+            )
+            return _SessionScopedInteractionChatPreparationWorker(
+                session=session,
+                container=container,
+                application=application,
+            )
+        except BaseException:
+            session.rollback()
+            session.close()
+            raise
+
+
+class _SessionScopedInteractionChatPreparationWorker:
+    """交互准备完成后立即关闭其目录 Session。"""
+
+    def __init__(
+        self,
+        *,
+        session: Session,
+        container: ApplicationContainer,
+        application: InteractionChatStreamApplication,
+    ) -> None:
+        self._session = session
+        self._container = container
+        self._application = application
+        self._closed = False
+        self._rollback_required = False
+
+    def prepare(self, command: InteractionChatStreamCommand) -> InteractionStreamPreparation:
+        if self._closed:
+            raise RuntimeError("交互准备 Worker 已关闭。")
+        try:
+            preparation = self._application.prepare(command)
+        except BaseException:
+            self._rollback_required = True
+            raise
+        if preparation.event is not None and preparation.event.name == "error":
+            self._rollback_required = True
+        return preparation
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            if self._rollback_required:
+                self._session.rollback()
+            else:
+                self._session.commit()
+        finally:
+            try:
+                self._container.close()
+            finally:
+                self._session.close()
 
 
 class _SessionScopedStreamingConversationPersistenceWorker(

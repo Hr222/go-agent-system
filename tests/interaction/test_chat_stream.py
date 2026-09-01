@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.interfaces.http.dependencies import (
     get_intent_interaction_gateway,
     get_interaction_chat_stream_application,
+    get_streaming_interaction_chat_stream_application,
 )
 from app.main import create_app
 from app.platform.conversation.domain import Message, MessageRole
@@ -649,13 +650,16 @@ def test_http_chat_stream_serializes_only_browser_safe_approval_data() -> None:
                 ),
             )
 
+        async def prepare_async(self, command):  # noqa: ANN001, ANN201
+            return self.prepare(command)
+
         async def stream(self, preparation, *, is_disconnected):  # noqa: ANN001, ANN201
             del is_disconnected
             if preparation.event is not None:
                 yield preparation.event
 
     application = create_app()
-    application.dependency_overrides[get_interaction_chat_stream_application] = (
+    application.dependency_overrides[get_streaming_interaction_chat_stream_application] = (
         ApprovalOnlyApplication
     )
 
@@ -685,6 +689,9 @@ def test_http_chat_stream_accepts_user_context_but_rejects_capability_authority(
                 event=InteractionStreamEvent("result", {"status": "unrecognized", "message": "无"}),
             )
 
+        async def prepare_async(self, command: InteractionChatStreamCommand):
+            return self.prepare(command)
+
         async def stream(self, preparation, *, is_disconnected):  # noqa: ANN001
             del is_disconnected
             if preparation.event is not None:
@@ -692,7 +699,9 @@ def test_http_chat_stream_accepts_user_context_but_rejects_capability_authority(
 
     capturing = CapturingApplication()
     application = create_app()
-    application.dependency_overrides[get_interaction_chat_stream_application] = lambda: capturing
+    application.dependency_overrides[get_streaming_interaction_chat_stream_application] = (
+        lambda: capturing
+    )
     try:
         client = TestClient(application)
         accepted = client.post(

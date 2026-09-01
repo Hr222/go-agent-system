@@ -91,6 +91,39 @@ def test_conversation_turn_coordinator_is_process_shared() -> None:
         dependencies.get_conversation_turn_coordinator.cache_clear()
 
 
+def test_intent_gateway_reuses_process_candidate_retrieval(
+    monkeypatch,
+) -> None:  # noqa: ANN001
+    candidate_retrieval = object()
+    stateless_container = SimpleNamespace(
+        capability_candidate_retrieval=lambda: candidate_retrieval,
+    )
+    captured: dict[str, object] = {}
+
+    class RequestContainer:
+        def intent_interaction_gateway(self, proposal_store, **kwargs):  # noqa: ANN001
+            captured["proposal_store"] = proposal_store
+            captured.update(kwargs)
+            return "gateway"
+
+    monkeypatch.setattr(
+        dependencies,
+        "get_stateless_application_container",
+        lambda: stateless_container,
+    )
+
+    result = dependencies.get_intent_interaction_gateway(
+        container=RequestContainer(),
+        proposal_store="proposal-store",  # type: ignore[arg-type]
+    )
+
+    assert result == "gateway"
+    assert captured == {
+        "proposal_store": "proposal-store",
+        "capability_candidate_retrieval": candidate_retrieval,
+    }
+
+
 def test_application_lifespan_releases_the_stateless_container(
     monkeypatch,
 ) -> None:  # noqa: ANN001
