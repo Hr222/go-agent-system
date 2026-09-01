@@ -111,13 +111,14 @@ def _gateway(
     capability: PlatformCapability | None = None,
     store: InMemoryPendingProposalStore | None = None,
     handler: RecordingHandler | None = None,
+    intent_recognition: object | None = None,
 ) -> tuple[IntentInteractionGateway, RecordingHandler]:
     catalog = FakeCatalog(capability or _capability())
     recording_handler = handler or RecordingHandler(calls=[])
     return (
         IntentInteractionGateway(
             candidate_retrieval=ReadyCandidateRetrieval(),  # type: ignore[arg-type]
-            intent_recognition=MatchedIntentRecognition(),  # type: ignore[arg-type]
+            intent_recognition=(intent_recognition or MatchedIntentRecognition()),  # type: ignore[arg-type]
             confirmation=ExplicitCapabilityConfirmation(catalog),  # type: ignore[arg-type]
             proposal_store=store or InMemoryPendingProposalStore(),
             dispatcher=ControlledDispatcher(catalog, {"llm.chat": recording_handler}),
@@ -198,6 +199,95 @@ def test_gateway_authorizes_catalog_controlled_never_policy_without_proposal() -
     assert recognized.direct_execution.capability_code == "chat.general"
     assert recognized.direct_execution.dispatch_key == "llm.chat"
     assert recognized.direct_execution.inputs == {"message": "你好"}
+    assert handler.calls == []
+
+
+def test_gateway_routes_unrecognized_follow_up_to_catalog_controlled_general_chat() -> None:
+    gateway, handler = _gateway(
+        capability=_capability(confirmation_policy="never"),
+        intent_recognition=StaticIntentRecognition(
+            IntentAssessment(
+                status="unrecognized",
+                clarification="暂时无法理解这项请求。",
+            )
+        ),
+    )
+
+    result = gateway.recognize(
+        GatewayRecognitionCommand(
+            user_input="  刚才要求你回复什么？请只回复那句话。  ",
+            principal=_principal(),
+            provided_inputs={"message": "浏览器输入不能决定兜底消息"},
+        )
+    )
+
+    assert result.status == "authorized"
+    assert result.proposal is None
+    assert result.direct_execution is not None
+    assert result.direct_execution.capability_code == "chat.general"
+    assert result.direct_execution.dispatch_key == "llm.chat"
+    assert result.direct_execution.inputs == {
+        "message": "刚才要求你回复什么？请只回复那句话。"
+    }
+    assert handler.calls == []
+
+
+def test_gateway_does_not_route_clarification_to_general_chat_fallback() -> None:
+    gateway, handler = _gateway(
+        capability=_capability(confirmation_policy="never"),
+        intent_recognition=StaticIntentRecognition(
+            IntentAssessment(
+                status="needs_clarification",
+                capability_code="agent.tender.generate_bid_skeleton",
+                missing_fields=["source_document"],
+                clarification="请上传招标文件。",
+            )
+        ),
+    )
+
+    result = gateway.recognize(
+        GatewayRecognitionCommand("生成投标骨架", _principal(), {})
+    )
+
+    assert result.status == "needs_clarification"
+    assert result.direct_execution is None
+    assert result.proposal is None
+    assert handler.calls == []
+
+
+def test_gateway_keeps_unrecognized_result_when_general_chat_is_not_approval_free() -> None:
+    gateway, handler = _gateway(
+        capability=_capability(confirmation_policy="always"),
+        intent_recognition=StaticIntentRecognition(
+            IntentAssessment(status="unrecognized", clarification="无法识别。")
+        ),
+    )
+
+    result = gateway.recognize(
+        GatewayRecognitionCommand("刚才说了什么？", _principal(), {})
+    )
+
+    assert result.status == "unrecognized"
+    assert result.direct_execution is None
+    assert result.proposal is None
+    assert handler.calls == []
+
+
+def test_gateway_keeps_unrecognized_result_when_general_chat_is_unavailable() -> None:
+    gateway, handler = _gateway(
+        capability=_capability("chat.unavailable", confirmation_policy="never"),
+        intent_recognition=StaticIntentRecognition(
+            IntentAssessment(status="unrecognized", clarification="无法识别。")
+        ),
+    )
+
+    result = gateway.recognize(
+        GatewayRecognitionCommand("刚才说了什么？", _principal(), {})
+    )
+
+    assert result.status == "unrecognized"
+    assert result.direct_execution is None
+    assert result.proposal is None
     assert handler.calls == []
 
 

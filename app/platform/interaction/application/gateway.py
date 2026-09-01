@@ -42,6 +42,9 @@ DialogueConfirmationStatus = Literal["confirmed", "cancelled", "rejected"]
 DispatchHandler = Callable[[dict[str, object]], object]
 AgentDispatchHandler = Callable[[str, str, dict[str, object], RequestPrincipal], object]
 
+_GENERAL_CHAT_CAPABILITY_CODE = "chat.general"
+_GENERAL_CHAT_DISPATCH_KEY = "llm.chat"
+
 
 @dataclass(frozen=True, slots=True)
 class GatewayRecognitionCommand:
@@ -292,6 +295,14 @@ class IntentInteractionGateway:
                 provided_inputs=dict(command.provided_inputs),
             )
         )
+        if assessment.status == "unrecognized":
+            fallback = self._prepare_general_chat_fallback(
+                command=command,
+                assessment=assessment,
+                permissions=permissions,
+            )
+            if fallback is not None:
+                return fallback
         if assessment.status != "matched":
             return GatewayResult(
                 status=assessment.status,
@@ -339,6 +350,40 @@ class IntentInteractionGateway:
             message="已生成待确认提议，明确确认后才会执行。",
             assessment=assessment,
             proposal=confirmation.proposal,
+        )
+
+    def _prepare_general_chat_fallback(
+        self,
+        *,
+        command: GatewayRecognitionCommand,
+        assessment: IntentAssessment,
+        permissions: tuple[str, ...],
+    ) -> GatewayResult | None:
+        """只为未识别文本回退到目录复核后的通用 Chat。"""
+
+        fallback_assessment = IntentAssessment(
+            status="matched",
+            capability_code=_GENERAL_CHAT_CAPABILITY_CODE,
+            extracted_inputs={"message": command.user_input.strip()},
+            candidate_codes=list(assessment.candidate_codes),
+        )
+        direct_execution = self._prepare_unconfirmed_execution(
+            fallback_assessment,
+            permissions=permissions,
+        )
+        if isinstance(direct_execution, GatewayResult) or direct_execution is None:
+            return None
+        if (
+            direct_execution.capability_code != _GENERAL_CHAT_CAPABILITY_CODE
+            or direct_execution.dispatch_key != _GENERAL_CHAT_DISPATCH_KEY
+        ):
+            return None
+
+        return GatewayResult(
+            status="authorized",
+            message="未识别文本已通过受控通用对话路径复核。",
+            assessment=fallback_assessment,
+            direct_execution=direct_execution,
         )
 
     def _resolve_attachments(

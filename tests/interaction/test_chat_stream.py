@@ -170,6 +170,50 @@ def test_chat_stream_emits_ordered_chat_events_after_server_authorization() -> N
     assert chat.commands[0].conversation_id is None
 
 
+def test_chat_stream_emits_conversation_events_for_general_chat_fallback_authorization() -> None:
+    conversation_id = UUID("00000000-0000-0000-0000-000000000123")
+    gateway = RecordingGateway(
+        GatewayResult(
+            status="authorized",
+            message="未识别文本已通过受控通用对话路径复核。",
+            direct_execution=DirectCapabilityExecution(
+                capability_code="chat.general",
+                dispatch_key="llm.chat",
+                inputs={"message": "刚才要求你回复什么？请只回复那句话。"},
+            ),
+        )
+    )
+    chat = FakeStreamingConversation(
+        [ChatLlmStreamChunk(content="首轮已收到", model="glm-test")],
+    )
+    application = InteractionChatStreamApplication(gateway, chat)  # type: ignore[arg-type]
+    command = InteractionChatStreamCommand(
+        user_input="刚才要求你回复什么？请只回复那句话。",
+        principal=RequestPrincipal.anonymous(),
+        provided_inputs={},
+        conversation_id=conversation_id,
+    )
+
+    async def scenario() -> list[object]:
+        preparation = application.prepare(command)
+        assert preparation.kind == "chat"
+        return [
+            event
+            async for event in application.stream(
+                preparation,
+                is_disconnected=_connected,
+            )
+        ]
+
+    events = asyncio.run(scenario())
+
+    assert [event.name for event in events] == ["meta", "delta", "complete"]
+    assert events[0].data["conversation_id"] == str(conversation_id)
+    assert events[1].data["content"] == "首轮已收到"
+    assert chat.commands[0].message == "刚才要求你回复什么？请只回复那句话。"
+    assert chat.commands[0].conversation_id == conversation_id
+
+
 def test_chat_stream_treats_reasoning_as_activity_without_emitting_it() -> None:
     gateway = RecordingGateway(
         GatewayResult(
