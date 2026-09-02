@@ -10,7 +10,7 @@
 
 ## 2. 当前状态
 
-当前项目处于平台能力整合与稳定性验证阶段。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；最近一组普通流式对话 Change 已完成实现、验证和归档。
+当前项目已完成上下文管理，正在进入 Task Management 第二阶段。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；最近一组交互稳定性 Change 已完成实现和验证，待归档。
 
 | 领域 | 状态 | 当前进度 |
 |---|---|---|
@@ -19,8 +19,10 @@
 | LLM 与流式交互 | 已完成基础链路 | 支持 Chat、结构化输出、Embedding、Provider 适配、SSE、重试、限流和并发治理。 |
 | Interaction 与 Agent | 已完成基础链路 | 支持能力目录、候选识别、确认、受控分发和 Tender Agent 调用。 |
 | 附件与产物 | 已完成基础链路 | 支持上传、主体/会话访问绑定、Tender 输入解析和受控下载。 |
-| Conversation 与 Dialogue | 已完成当前交付 | 支持会话持久化、历史读取、列表管理、话题概括、主体隔离、轮次串行、Agent 异步执行、上下文窗口和异步持久化。 |
-| 真实身份认证与多 Agent 编排 | 当前未实施 | 不作为当前验收项，具体边界以 `ARCHITECTURE.md` 的当前边界为准。 |
+| Conversation 与 Dialogue | 已完成当前交付 | 支持会话持久化、历史读取、列表管理、话题概括、主体隔离、轮次串行、Agent 异步执行、上下文管理和异步持久化。 |
+| Task Management | 当前阶段 | 进入第二阶段，规划任务模型、状态机、执行生命周期、取消/重试/恢复和任务查询；具体范围由独立 OpenSpec Change 定义。 |
+| Workflow / Agent 平台 | 后续阶段 | 第三阶段，位于 Task Management 之后；当前前端仅有 Workflow mock，真实编排能力尚未实施。 |
+| 真实身份认证与用户模块 | 待规划 | 不作为当前验收项，具体边界以 `ARCHITECTURE.md` 的当前边界为准。 |
 
 ## 3. 已完成 Change
 
@@ -44,14 +46,19 @@
 | `serialize-agent-continuation-turns` | `a3240f7` | 已完成并归档 |
 | `stabilize-conversation-context-window` | `6d07003` | 已完成并归档 |
 | `make-conversation-persistence-asynchronous` | `a61715c` | 已完成并归档 |
+| `fix-interaction-stream-resource-lifecycle` | `eff266f` | 已实现，待归档 |
+| `fix-interaction-sync-boundaries-and-cancellation` | `21ae687` | 已实现，待归档 |
 
-当前没有活动中的 Change；完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
+当前有 2 个已实现、待归档的 Change：
+`fix-interaction-stream-resource-lifecycle` 和
+`fix-interaction-sync-boundaries-and-cancellation`。新的 Task Management Change 尚未创建。
+已归档 Change 的完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
 
 ## 5. 当前验证
 
 最近一组 Change 的后端验收结果：
 
-`python -m pytest -q`：`650 passed`；PostgreSQL 交界测试：`1 passed`；`ruff check app tests`、`python -m compileall -q app tests`、`git diff --check` 和相关 OpenSpec strict validate 均通过。
+`python -m pytest -q`：`680 passed`；PostgreSQL 集成测试：`1 passed`；`ruff check app tests`、`python -m compileall -q app tests`、`git diff --check` 和 `openspec validate --all --strict` 均通过。
 
 外部 LLM、Embedding、OCR、MCP 和浏览器链路还需要使用项目现有的诊断脚本或人工验收记录结果；不能只凭单元测试宣称外部服务验收完成。
 
@@ -61,15 +68,15 @@
 
 | 优先级 | 能力 | 状态 |
 |---|---|---|
-| 1 | 上下文压缩与摘要 | 当前优先项；现有 `streaming-chat-multiturn-context` 提供历史上下文基础，但尚未包含摘要、压缩或 Compaction。 |
-| 2 | Task Management | 待规划；尚未创建 Change。 |
-| 3 | 多 Agent / Workflow | 待规划；尚未创建 Change。 |
+| 1 | 上下文管理 | 已完成；会话历史、上下文窗口和多轮上下文链路已交付。 |
+| 2 | Task Management | 当前阶段；开始规划任务模型、状态机、执行生命周期和管理接口，尚未创建 Change。 |
+| 3 | Workflow / Agent 平台 | 后续阶段；依赖 Task Management，尚未实施真实编排引擎。 |
 | 4 | 真实认证与用户模块 | 待规划；尚未创建 Change。 |
 
 ## 7. 当前待办
 
-1. 为上下文压缩与摘要创建独立 OpenSpec Change，并在范围明确后实施。
-2. 评估 Task Management 的实际需求和异步任务生命周期。
+1. 为 Task Management 进行需求梳理，并创建独立 OpenSpec Change。
+2. 明确任务模型、状态机、执行生命周期、取消/重试/恢复和查询范围。
 3. 根据实际代码和验证结果持续同步 OpenSpec 正式规格并归档已完成 Change。
 4. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。
 
