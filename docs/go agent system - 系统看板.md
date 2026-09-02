@@ -10,7 +10,7 @@
 
 ## 2. 当前状态
 
-当前项目已完成上下文管理，正在进入 Task Management 第二阶段。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；最近一组交互稳定性 Change 已完成实现和验证，待归档。
+当前项目已完成上下文管理，正在进入 Task Management 第二阶段。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；最近一组交互稳定性 Change 已完成实现、验证和归档。
 
 | 领域 | 状态 | 当前进度 |
 |---|---|---|
@@ -46,13 +46,11 @@
 | `serialize-agent-continuation-turns` | `a3240f7` | 已完成并归档 |
 | `stabilize-conversation-context-window` | `6d07003` | 已完成并归档 |
 | `make-conversation-persistence-asynchronous` | `a61715c` | 已完成并归档 |
-| `fix-interaction-stream-resource-lifecycle` | `eff266f` | 已实现，待归档 |
-| `fix-interaction-sync-boundaries-and-cancellation` | `21ae687` | 已实现，待归档 |
+| `fix-interaction-stream-resource-lifecycle` | `eff266f` | 已完成并归档 |
+| `fix-interaction-sync-boundaries-and-cancellation` | `21ae687` | 已完成并归档 |
 
-当前有 2 个已实现、待归档的 Change：
-`fix-interaction-stream-resource-lifecycle` 和
-`fix-interaction-sync-boundaries-and-cancellation`。新的 Task Management Change 尚未创建。
-已归档 Change 的完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
+当前没有活动中的 Change；新的 Task Management Change 尚未创建。
+已完成 Change 的完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
 
 ## 5. 当前验证
 
