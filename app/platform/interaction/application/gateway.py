@@ -582,6 +582,23 @@ class IntentInteractionGateway:
                 error_code="NOT_AGENT_PROPOSAL",
             )
 
+        # Cancellation is a safe terminal operation and must remain available even
+        # when the capability catalog is temporarily unavailable or has changed.
+        if command.action == "cancel":
+            confirmation = self._confirmation.respond(proposal, command.action)
+            if confirmation.status == "cancelled":
+                return DialogueAgentConfirmationResult(
+                    status="cancelled",
+                    message=confirmation.message,
+                    proposal=confirmation.proposal,
+                )
+            return DialogueAgentConfirmationResult(
+                status="rejected",
+                message=confirmation.message,
+                proposal=confirmation.proposal,
+                error_code=confirmation.error_code,
+            )
+
         permissions = command.principal.permission_tuple()
         try:
             capability = self._confirmation.capability_catalog.get_available(

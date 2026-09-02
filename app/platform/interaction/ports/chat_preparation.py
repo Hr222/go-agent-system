@@ -14,6 +14,12 @@ class InteractionChatPreparationWorkerPort(Protocol):
 
     def prepare(self, command: InteractionChatStreamCommand) -> InteractionStreamPreparation: ...
 
+    def cancel_preparation(
+        self,
+        command: InteractionChatStreamCommand,
+        preparation: InteractionStreamPreparation,
+    ) -> None: ...
+
     def close(self) -> None: ...
 
 

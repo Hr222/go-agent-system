@@ -915,6 +915,19 @@ class _SessionScopedInteractionChatPreparationWorker:
             self._rollback_required = True
         return preparation
 
+    def cancel_preparation(
+        self,
+        command: InteractionChatStreamCommand,
+        preparation: InteractionStreamPreparation,
+    ) -> None:
+        if self._closed:
+            raise RuntimeError("交互准备 Worker 已关闭。")
+        try:
+            self._application.cancel_preparation(command, preparation)
+        except BaseException:
+            self._rollback_required = True
+            raise
+
     def close(self) -> None:
         if self._closed:
             return

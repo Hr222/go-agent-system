@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
-from threading import Lock
+from threading import RLock
 from time import monotonic
 
 from app.platform.dialogue.application.agent_invocation import DialogueAgentInvocationCommand
@@ -20,7 +22,14 @@ class InMemoryPendingAgentInvocationStore:
     def __init__(self, *, ttl_seconds: float = 300.0) -> None:
         self._ttl_seconds = ttl_seconds
         self._entries: dict[str, PendingAgentInvocation] = {}
-        self._lock = Lock()
+        self._lock = RLock()
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Serialize proposal confirmation and cancellation control operations."""
+
+        with self._lock:
+            yield
 
     def save(
         self,

@@ -110,6 +110,19 @@ class BlockingBatchEmbedding(FakeEmbedding):
         return super().embed_texts(texts)
 
 
+class ScopeBlockingBatchEmbedding(FakeEmbedding):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = {"public": threading.Event(), "private": threading.Event()}
+        self.release = {"public": threading.Event(), "private": threading.Event()}
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        scope = "private" if any("private" in text for text in texts) else "public"
+        self.started[scope].set()
+        assert self.release[scope].wait(timeout=2)
+        return super().embed_texts(texts)
+
+
 def test_refresh_builds_index_and_returns_sorted_candidates() -> None:
     service = CapabilityCandidateRetrieval(
         FakeCatalog(
@@ -308,6 +321,40 @@ def test_concurrent_first_ensure_ready_builds_one_index() -> None:
     assert [result.status for result in results] == ["ready", "ready"]
     assert catalog.list_calls == 1
     assert embedding.batch_calls == 1
+
+
+def test_permission_scoped_index_refreshes_do_not_block_each_other() -> None:
+    catalog = FakeCatalog(
+        (
+            _capability("cap.public", "public"),
+            _capability("cap.private", "private", permission=("cap:private",)),
+        )
+    )
+    embedding = ScopeBlockingBatchEmbedding()
+    service = CapabilityCandidateRetrieval(catalog, embedding)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        public = executor.submit(service.ensure_ready)
+        assert embedding.started["public"].wait(timeout=1)
+        private = executor.submit(service.ensure_ready, permissions=("cap:private",))
+        assert embedding.started["private"].wait(timeout=1)
+        same_scope = executor.submit(service.ensure_ready)
+        assert not same_scope.done()
+
+        embedding.release["private"].set()
+        assert private.result(timeout=1).status == "ready"
+        assert not same_scope.done()
+        embedding.release["public"].set()
+        assert public.result(timeout=1).status == "ready"
+        assert same_scope.result(timeout=1).status == "ready"
+
+    assert [item.capability_code for item in service.search("query-high").candidates] == [
+        "cap.public"
+    ]
+    assert [
+        item.capability_code
+        for item in service.search("query-high", permissions=("cap:private",)).candidates
+    ] == ["cap.private", "cap.public"]
 
 
 def test_candidate_retrieval_does_not_import_policy_retrieval_components() -> None:

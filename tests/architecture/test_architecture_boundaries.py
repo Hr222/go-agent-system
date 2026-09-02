@@ -364,6 +364,17 @@ def test_streaming_interaction_route_uses_process_application_and_async_preparat
     assert "ThreadedInteractionChatPreparation(" in root_source
 
 
+def test_async_interaction_routes_do_not_run_sync_gateway_calls_on_event_loop() -> None:
+    route_source = (
+        APP_ROOT / "interfaces" / "http" / "routes" / "interaction.py"
+    ).read_text(encoding="utf-8")
+
+    assert "await run_sync_protected(lambda: gateway.recognize(command))" in route_source
+    assert "await run_sync_protected(lambda: gateway.confirm(command))" in route_source
+    assert "return gateway_response(gateway.recognize(" not in route_source
+    assert "gateway_response(\n            gateway.confirm(" not in route_source
+
+
 def test_streaming_interaction_runtime_does_not_import_request_persistence_resources() -> None:
     source = (
         APP_ROOT / "platform" / "interaction" / "application" / "chat_stream.py"

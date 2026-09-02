@@ -606,3 +606,68 @@ def test_chat_agent_cancellation_records_terminal_event_without_invocation() -> 
     assert result.status == "cancelled"
     assert len(dialogue.cancel_calls) == 1
     assert dialogue.invoke_commands == []
+
+
+def test_cancelled_agent_preparation_consumes_pending_state_without_invocation() -> None:
+    gateway = PendingAgentGateway()
+    dialogue = RecordingDialogueInvocation()
+    pending = InMemoryPendingAgentInvocationStore()
+    application = InteractionChatStreamApplication(
+        gateway,  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        dialogue_agent_invocation=dialogue,  # type: ignore[arg-type]
+        pending_agent_invocations=pending,
+        dialogue_agent_turn_executor=_turn_executor(dialogue),
+    )
+    principal = _principal()
+    command = InteractionChatStreamCommand(
+        user_input="请生成投标骨架",
+        principal=principal,
+        provided_inputs={},
+    )
+    preparation = application.prepare(command)
+
+    application.cancel_preparation(command, preparation)
+
+    assert pending.read(proposal_id="proposal-agent-1", subject=principal.subject) is None
+    assert len(dialogue.cancel_calls) == 1
+    assert dialogue.invoke_commands == []
+
+
+def test_agent_preparation_cancellation_and_confirmation_consume_state_once() -> None:
+    gateway = PendingAgentGateway()
+    dialogue = RecordingDialogueInvocation()
+    pending = InMemoryPendingAgentInvocationStore()
+    application = InteractionChatStreamApplication(
+        gateway,  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        dialogue_agent_invocation=dialogue,  # type: ignore[arg-type]
+        pending_agent_invocations=pending,
+        dialogue_agent_turn_executor=_turn_executor(dialogue),
+    )
+    principal = _principal()
+    command = InteractionChatStreamCommand(
+        user_input="请生成投标骨架",
+        principal=principal,
+        provided_inputs={},
+    )
+    preparation = application.prepare(command)
+
+    async def scenario() -> tuple[GatewayResult | None, None]:
+        confirmation = asyncio.create_task(
+            application.confirm_agent(
+                GatewayConfirmationCommand("proposal-agent-1", "confirm", principal)
+            )
+        )
+        cancellation = asyncio.create_task(
+            asyncio.to_thread(application.cancel_preparation, command, preparation)
+        )
+        return await confirmation, await cancellation
+
+    confirmation_result, _ = asyncio.run(scenario())
+
+    assert confirmation_result is not None
+    assert confirmation_result.status in {"completed", "rejected"}
+    assert len(dialogue.invoke_commands) <= 1
+    assert len(dialogue.cancel_calls) <= 1
+    assert pending.read(proposal_id="proposal-agent-1", subject=principal.subject) is None

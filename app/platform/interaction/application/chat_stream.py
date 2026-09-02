@@ -17,6 +17,7 @@ from app.platform.interaction.application.gateway import (
 )
 from app.platform.interaction.ports.chat_preparation import InteractionChatPreparationPort
 from app.platform.security.domain.principal import RequestPrincipal
+from app.shared.async_task import run_sync_protected
 from app.shared.config import settings
 
 if TYPE_CHECKING:
@@ -144,6 +145,29 @@ class InteractionChatStreamApplication:
             return await self._preparation.prepare(command)
         return self.prepare(command)
 
+    def cancel_preparation(
+        self,
+        command: InteractionChatStreamCommand,
+        preparation: InteractionStreamPreparation,
+    ) -> None:
+        """收口尚未发出批准事件的 Agent 准备结果。"""
+
+        if preparation.event is None or preparation.event.name != "approval_required":
+            return
+        proposal_id = preparation.event.data.get("proposal_id")
+        if not isinstance(proposal_id, str) or not proposal_id:
+            raise ValueError("Agent 批准提议标识无效。")
+        pending = self._pending_agent_invocations
+        if pending is None or self._dialogue_agent_invocation is None:
+            return
+        self._cancel_agent_confirmation(
+            GatewayConfirmationCommand(
+                proposal_id=proposal_id,
+                action="cancel",
+                principal=command.principal,
+            )
+        )
+
     async def confirm_agent(
         self,
         command: GatewayConfirmationCommand,
@@ -160,7 +184,7 @@ class InteractionChatStreamApplication:
             return None
 
         if command.action == "cancel":
-            return self._cancel_agent_confirmation(command, pending)
+            return await run_sync_protected(lambda: self._cancel_agent_confirmation(command))
         if self._dialogue_agent_turn_executor is None:
             return GatewayResult(
                 status="failed",
@@ -199,121 +223,132 @@ class InteractionChatStreamApplication:
             DialogueAgentTurnResult,
         )
 
-        try:
-            confirmation = self._gateway.confirm_dialogue_agent(command)
-        except BaseException:
-            # Gateway 可能已经消费 proposal；此时 pending 不能遗留到 TTL。
-            self._pending_agent_invocations.consume(
+        with self._pending_agent_invocations.transaction():
+            try:
+                confirmation = self._gateway.confirm_dialogue_agent(command)
+            except BaseException:
+                # Gateway 可能已经消费 proposal；此时 pending 不能遗留到 TTL。
+                self._pending_agent_invocations.consume(
+                    proposal_id=command.proposal_id,
+                    subject=command.principal.subject,
+                )
+                raise
+
+            # proposal 一旦进入终态，matching pending invocation 必须同步收口。
+            consumed = self._pending_agent_invocations.consume(
                 proposal_id=command.proposal_id,
                 subject=command.principal.subject,
             )
-            raise
+            if confirmation.status == "rejected":
+                return DialogueAgentTurnPreparation(
+                    result=DialogueAgentTurnResult(
+                        status="rejected",
+                        message=confirmation.message,
+                        error_code=confirmation.error_code,
+                        conversation_id=pending.command.conversation_id,
+                    )
+                )
+            if (
+                consumed is None
+                or consumed.command.conversation_id is None
+                or consumed.command.call is None
+            ):
+                return DialogueAgentTurnPreparation(
+                    result=DialogueAgentTurnResult(
+                        status="rejected",
+                        message="对话 Agent 调用上下文不可用。",
+                        error_code="DIALOGUE_AGENT_CONTEXT_UNAVAILABLE",
+                    )
+                )
+            if confirmation.approved_dispatch is None:
+                return DialogueAgentTurnPreparation(
+                    result=DialogueAgentTurnResult(
+                        status="rejected",
+                        message="确认提议未生成有效批准信息。",
+                        error_code="APPROVED_DISPATCH_UNAVAILABLE",
+                        conversation_id=consumed.command.conversation_id,
+                    )
+                )
 
-        # proposal 一旦进入终态，matching pending invocation 必须同步收口。
-        consumed = self._pending_agent_invocations.consume(
-            proposal_id=command.proposal_id,
-            subject=command.principal.subject,
-        )
-        if confirmation.status == "rejected":
             return DialogueAgentTurnPreparation(
-                result=DialogueAgentTurnResult(
-                    status="rejected",
-                    message=confirmation.message,
-                    error_code=confirmation.error_code,
-                    conversation_id=pending.command.conversation_id,
-                )
-            )
-        if (
-            consumed is None
-            or consumed.command.conversation_id is None
-            or consumed.command.call is None
-        ):
-            return DialogueAgentTurnPreparation(
-                result=DialogueAgentTurnResult(
-                    status="rejected",
-                    message="对话 Agent 调用上下文不可用。",
-                    error_code="DIALOGUE_AGENT_CONTEXT_UNAVAILABLE",
-                )
-            )
-        if confirmation.approved_dispatch is None:
-            return DialogueAgentTurnPreparation(
-                result=DialogueAgentTurnResult(
-                    status="rejected",
-                    message="确认提议未生成有效批准信息。",
-                    error_code="APPROVED_DISPATCH_UNAVAILABLE",
+                command=DialogueAgentTurnCommand(
                     conversation_id=consumed.command.conversation_id,
+                    capability_code=consumed.command.capability_code,
+                    inputs=dict(consumed.command.inputs),
+                    principal=command.principal,
+                    approved_dispatch=confirmation.approved_dispatch,
+                    call=consumed.command.call,
                 )
             )
-
-        return DialogueAgentTurnPreparation(
-            command=DialogueAgentTurnCommand(
-                conversation_id=consumed.command.conversation_id,
-                capability_code=consumed.command.capability_code,
-                inputs=dict(consumed.command.inputs),
-                principal=command.principal,
-                approved_dispatch=confirmation.approved_dispatch,
-                call=consumed.command.call,
-            )
-        )
 
     def _cancel_agent_confirmation(
         self,
         command: GatewayConfirmationCommand,
-        pending: PendingAgentInvocation,
     ) -> GatewayResult:
         """取消不执行 Agent，沿用既有短路径但始终清理一次性状态。"""
 
-        try:
-            confirmation = self._gateway.confirm_dialogue_agent(command)
-        except BaseException:
-            self._pending_agent_invocations.consume(
+        with self._pending_agent_invocations.transaction():
+            current = self._pending_agent_invocations.read(
                 proposal_id=command.proposal_id,
                 subject=command.principal.subject,
             )
-            raise
+            if current is None:
+                return GatewayResult(
+                    status="rejected",
+                    message="确认提议不存在、已过期、已处理或不属于当前主体。",
+                    error_code="PROPOSAL_UNAVAILABLE",
+                )
+            try:
+                confirmation = self._gateway.confirm_dialogue_agent(command)
+            except BaseException:
+                self._pending_agent_invocations.consume(
+                    proposal_id=command.proposal_id,
+                    subject=command.principal.subject,
+                )
+                raise
 
-        consumed = self._pending_agent_invocations.consume(
-            proposal_id=command.proposal_id,
-            subject=command.principal.subject,
-        )
-        if confirmation.status == "rejected":
+            consumed = self._pending_agent_invocations.consume(
+                proposal_id=command.proposal_id,
+                subject=command.principal.subject,
+            )
+            if confirmation.status == "rejected":
+                return GatewayResult(
+                    status="rejected",
+                    message=confirmation.message,
+                    error_code=confirmation.error_code,
+                    conversation_id=current.command.conversation_id,
+                )
+            if (
+                consumed is None
+                or consumed.command.conversation_id is None
+                or consumed.command.call is None
+            ):
+                return GatewayResult(
+                    status="rejected",
+                    message="对话 Agent 调用上下文不可用。",
+                    error_code="DIALOGUE_AGENT_CONTEXT_UNAVAILABLE",
+                )
+            if confirmation.status != "cancelled":
+                return GatewayResult(
+                    status="rejected",
+                    message="确认提议未生成有效取消信息。",
+                    error_code="CANCELLATION_UNAVAILABLE",
+                    conversation_id=consumed.command.conversation_id,
+                )
+            try:
+                result = self._dialogue_agent_invocation.cancel_confirmation(
+                    conversation_id=consumed.command.conversation_id,
+                    call=consumed.command.call,
+                    principal=command.principal,
+                )
+            except ConversationAccessDeniedError:
+                return _conversation_access_denied_result()
             return GatewayResult(
-                status="rejected",
-                message=confirmation.message,
-                error_code=confirmation.error_code,
-                conversation_id=pending.command.conversation_id,
+                status=result.status,
+                message=result.message,
+                error_code=result.error_code,
+                conversation_id=result.conversation_id,
             )
-        if (
-            consumed is None
-            or consumed.command.conversation_id is None
-            or consumed.command.call is None
-        ):
-            return GatewayResult(
-                status="rejected",
-                message="对话 Agent 调用上下文不可用。",
-                error_code="DIALOGUE_AGENT_CONTEXT_UNAVAILABLE",
-            )
-        if confirmation.status != "cancelled":
-            return GatewayResult(
-                status="rejected",
-                message="确认提议未生成有效取消信息。",
-                error_code="CANCELLATION_UNAVAILABLE",
-                conversation_id=consumed.command.conversation_id,
-            )
-        try:
-            result = self._dialogue_agent_invocation.cancel_confirmation(
-                conversation_id=consumed.command.conversation_id,
-                call=consumed.command.call,
-                principal=command.principal,
-            )
-        except ConversationAccessDeniedError:
-            return _conversation_access_denied_result()
-        return GatewayResult(
-            status=result.status,
-            message=result.message,
-            error_code=result.error_code,
-            conversation_id=result.conversation_id,
-        )
 
     def _can_prepare_agent_confirmation(self) -> bool:
         return (

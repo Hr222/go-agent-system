@@ -173,6 +173,7 @@ class BlockingFactWorker:
         self.release = Event()
         self.events: list[str] = []
         self.closed = False
+        self.finished = Event()
 
     def execute(self, command: DialogueAgentTurnCommand) -> DialogueAgentTurnResult:
         self.started.set()
@@ -193,6 +194,7 @@ class BlockingFactWorker:
 
     def close(self) -> None:
         self.closed = True
+        self.finished.set()
 
 
 class BlockingFactWorkerFactory:
@@ -366,6 +368,100 @@ def test_cancelling_started_agent_turn_keeps_lease_until_worker_finishes() -> No
         worker.release.set()
         next_lease = await asyncio.wait_for(waiting_lease, timeout=1)
         next_lease.release()
+
+    asyncio.run(scenario())
+
+    assert worker.events == ["agent_result"]
+    assert worker.closed is True
+    assert coordinator.tracked_conversation_count == 0
+
+
+def test_agent_confirmation_revalidation_runs_off_event_loop() -> None:
+    coordinator = ConversationTurnCoordinator()
+    conversation_id = uuid4()
+    _runtime, writer, _reader, _llm = _conversation_runtime(
+        conversation_id=conversation_id,
+        coordinator=coordinator,
+        answer="不使用。",
+    )
+    worker = BlockingFactWorker(writer)
+    confirm_started = Event()
+    confirm_release = Event()
+
+    def confirm() -> DialogueAgentTurnPreparation:
+        confirm_started.set()
+        assert confirm_release.wait(timeout=2)
+        return _agent_turn_request(conversation_id).confirm()
+
+    request = DialogueAgentTurnRequest(
+        conversation_id=conversation_id,
+        confirm=confirm,
+    )
+    executor = DialogueAgentTurnExecutor(
+        coordinator=coordinator,
+        worker_factory=BlockingFactWorkerFactory(worker),
+    )
+
+    async def scenario() -> DialogueAgentTurnResult:
+        operation = asyncio.create_task(executor.execute(request))
+        assert await asyncio.to_thread(confirm_started.wait, 1)
+        heartbeat = asyncio.Event()
+        asyncio.get_running_loop().call_soon(heartbeat.set)
+        await asyncio.wait_for(heartbeat.wait(), timeout=0.2)
+        confirm_release.set()
+        assert await asyncio.to_thread(worker.started.wait, 1)
+        worker.release.set()
+        return await operation
+
+    result = asyncio.run(scenario())
+
+    assert result.status == "completed"
+    assert worker.closed is True
+    assert coordinator.tracked_conversation_count == 0
+
+
+def test_cancelling_during_agent_confirmation_finishes_consumed_turn_in_background() -> None:
+    coordinator = ConversationTurnCoordinator()
+    conversation_id = uuid4()
+    _runtime, writer, _reader, _llm = _conversation_runtime(
+        conversation_id=conversation_id,
+        coordinator=coordinator,
+        answer="不使用。",
+    )
+    worker = BlockingFactWorker(writer)
+    confirm_started = Event()
+    confirm_release = Event()
+
+    def confirm() -> DialogueAgentTurnPreparation:
+        confirm_started.set()
+        assert confirm_release.wait(timeout=2)
+        return _agent_turn_request(conversation_id).confirm()
+
+    executor = DialogueAgentTurnExecutor(
+        coordinator=coordinator,
+        worker_factory=BlockingFactWorkerFactory(worker),
+    )
+    operation = None
+
+    async def scenario() -> None:
+        nonlocal operation
+        operation = asyncio.create_task(
+            executor.execute(
+                DialogueAgentTurnRequest(
+                    conversation_id=conversation_id,
+                    confirm=confirm,
+                )
+            )
+        )
+        assert await asyncio.to_thread(confirm_started.wait, 1)
+        operation.cancel()
+        await asyncio.sleep(0)
+        confirm_release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await operation
+        assert await asyncio.to_thread(worker.started.wait, 1)
+        worker.release.set()
+        assert await asyncio.to_thread(worker.finished.wait, 1)
 
     asyncio.run(scenario())
 

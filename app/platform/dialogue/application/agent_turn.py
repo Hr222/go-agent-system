@@ -22,6 +22,7 @@ from app.platform.dialogue.application.conversation_turn_coordinator import (
 from app.platform.interaction.domain.agent_call import StructuredAgentCall
 from app.platform.interaction.domain.confirmation import ApprovedCapabilityDispatch
 from app.platform.security.domain.principal import RequestPrincipal
+from app.shared.async_task import await_shielded_task
 
 DialogueAgentTurnStatus = Literal["completed", "cancelled", "rejected", "failed"]
 
@@ -198,8 +199,33 @@ class DialogueAgentTurnExecutor:
 
         self._validate_request(request)
         lease = await self._coordinator.acquire(request.conversation_id)
+        confirmation_task = asyncio.create_task(asyncio.to_thread(request.confirm))
         try:
-            preparation = request.confirm()
+            preparation = await await_shielded_task(confirmation_task)
+        except asyncio.CancelledError as cancellation_error:
+            # If confirmation already consumed the one-shot state, finish the
+            # approved turn in the background instead of abandoning a half-turn.
+            try:
+                preparation = confirmation_task.result()
+            except BaseException:
+                lease.release()
+                raise cancellation_error
+            if preparation.result is not None:
+                lease.release()
+                raise cancellation_error
+            agent_command = preparation.command
+            if agent_command is None:
+                lease.release()
+                raise cancellation_error
+            try:
+                supervisor = asyncio.create_task(
+                    self._supervise_started_turn(lease, agent_command)
+                )
+            except BaseException:
+                lease.release()
+                raise cancellation_error
+            supervisor.add_done_callback(_consume_background_exception)
+            raise cancellation_error
         except BaseException:
             lease.release()
             raise

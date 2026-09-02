@@ -349,6 +349,88 @@ def test_interaction_preparation_worker_rolls_back_controlled_failure() -> None:
     assert events == ["rollback", "container.close", "session.close"]
 
 
+def test_interaction_preparation_cancellation_commits_before_closing_resources() -> None:
+    events: list[str] = []
+
+    class TrackingSession:
+        def commit(self) -> None:
+            events.append("commit")
+
+        def rollback(self) -> None:
+            events.append("rollback")
+
+        def close(self) -> None:
+            events.append("session.close")
+
+    class TrackingContainer:
+        def close(self) -> None:
+            events.append("container.close")
+
+    class Application:
+        def prepare(self, command):  # noqa: ANN001
+            del command
+            return InteractionStreamPreparation(
+                kind="single_event",
+                event=InteractionStreamEvent(
+                    "approval_required", {"proposal_id": "proposal-1"}
+                ),
+            )
+
+        def cancel_preparation(self, command, preparation):  # noqa: ANN001
+            del command, preparation
+            events.append("cancel")
+
+    worker = composition_root._SessionScopedInteractionChatPreparationWorker(
+        session=TrackingSession(),  # type: ignore[arg-type]
+        container=TrackingContainer(),  # type: ignore[arg-type]
+        application=Application(),  # type: ignore[arg-type]
+    )
+    preparation = worker.prepare(object())  # type: ignore[arg-type]
+    worker.cancel_preparation(object(), preparation)  # type: ignore[arg-type]
+    worker.close()
+
+    assert events == ["cancel", "commit", "container.close", "session.close"]
+
+
+def test_interaction_preparation_cancellation_failure_rolls_back_before_closing() -> None:
+    events: list[str] = []
+
+    class TrackingSession:
+        def commit(self) -> None:
+            events.append("commit")
+
+        def rollback(self) -> None:
+            events.append("rollback")
+
+        def close(self) -> None:
+            events.append("session.close")
+
+    class TrackingContainer:
+        def close(self) -> None:
+            events.append("container.close")
+
+    class Application:
+        def cancel_preparation(self, command, preparation):  # noqa: ANN001
+            del command, preparation
+            raise RuntimeError("cancel persistence failed")
+
+    worker = composition_root._SessionScopedInteractionChatPreparationWorker(
+        session=TrackingSession(),  # type: ignore[arg-type]
+        container=TrackingContainer(),  # type: ignore[arg-type]
+        application=Application(),  # type: ignore[arg-type]
+    )
+    preparation = InteractionStreamPreparation(
+        kind="single_event",
+        event=InteractionStreamEvent("approval_required", {"proposal_id": "proposal-1"}),
+    )
+
+    with pytest.raises(RuntimeError, match="cancel persistence failed"):
+        worker.cancel_preparation(object(), preparation)  # type: ignore[arg-type]
+    worker.close()
+
+    assert events == ["rollback", "container.close", "session.close"]
+
+
 def test_application_container_aclose_releases_openai_client_factory() -> None:
     factory = AsyncMock()
     container = ApplicationContainer(openai_client_factory=factory)

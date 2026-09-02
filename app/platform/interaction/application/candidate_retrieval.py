@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from threading import RLock
+from threading import Lock, RLock
 
 from app.platform.interaction.domain.candidate import (
     CandidateIndexError,
@@ -89,21 +89,24 @@ class CapabilityCandidateRetrieval:
         self.capability_catalog = capability_catalog
         self.embedding = embedding
         self._indexes: dict[PermissionScope, InMemoryCapabilityCandidateIndex] = {}
-        self._refresh_lock = RLock()
+        self._indexes_lock = Lock()
+        self._refresh_locks: dict[PermissionScope, RLock] = {}
+        self._refresh_locks_lock = Lock()
         if index is not None:
-            self._indexes[()] = index
+            with self._indexes_lock:
+                self._indexes[()] = index
         self.default_min_score = default_min_score
 
     def is_ready(self, *, permissions: Iterable[str] = ()) -> bool:
-        index = self._indexes.get(_permission_scope(permissions))
+        index = self._index_for(_permission_scope(permissions))
         return index is not None and index.is_ready
 
     def ensure_ready(self, *, permissions: Iterable[str] = ()) -> CapabilityIndexBuildResult:
         """在首次请求时构建当前权限范围，避免并发请求重复构建索引。"""
 
         scope = _permission_scope(permissions)
-        with self._refresh_lock:
-            existing = self._indexes.get(scope)
+        with self._refresh_lock_for(scope):
+            existing = self._index_for(scope)
             if existing is not None and existing.is_ready:
                 return CapabilityIndexBuildResult(
                     status="ready" if existing.entry_count else "empty",
@@ -115,17 +118,30 @@ class CapabilityCandidateRetrieval:
         """为当前权限范围重建索引；失败时保留同范围的旧索引。"""
 
         scope = _permission_scope(permissions)
-        with self._refresh_lock:
+        with self._refresh_lock_for(scope):
             return self._refresh_locked(scope)
 
     def invalidate(self, *, permissions: Iterable[str] = ()) -> None:
         """丢弃一个权限范围的快照，使下一次请求重新构建。"""
 
-        with self._refresh_lock:
-            self._indexes.pop(_permission_scope(permissions), None)
+        scope = _permission_scope(permissions)
+        with self._refresh_lock_for(scope), self._indexes_lock:
+            self._indexes.pop(scope, None)
+
+    def _refresh_lock_for(self, scope: PermissionScope) -> RLock:
+        with self._refresh_locks_lock:
+            lock = self._refresh_locks.get(scope)
+            if lock is None:
+                lock = RLock()
+                self._refresh_locks[scope] = lock
+            return lock
+
+    def _index_for(self, scope: PermissionScope) -> InMemoryCapabilityCandidateIndex | None:
+        with self._indexes_lock:
+            return self._indexes.get(scope)
 
     def _refresh_locked(self, scope: PermissionScope) -> CapabilityIndexBuildResult:
-        previous_index = self._indexes.get(scope)
+        previous_index = self._index_for(scope)
         replacement_index = InMemoryCapabilityCandidateIndex()
         try:
             capabilities = self.capability_catalog.list_available(permissions=scope)
@@ -155,7 +171,8 @@ class CapabilityCandidateRetrieval:
                 error_message=str(exc),
             )
 
-        self._indexes[scope] = replacement_index
+        with self._indexes_lock:
+            self._indexes[scope] = replacement_index
         status: IndexBuildStatus = "ready" if capabilities else "empty"
         return CapabilityIndexBuildResult(
             status=status,
@@ -178,7 +195,7 @@ class CapabilityCandidateRetrieval:
         threshold = self.default_min_score if min_score is None else min_score
         if not -1.0 <= threshold <= 1.0:
             raise ValueError("候选相似度阈值必须在 -1 到 1 之间。")
-        index = self._indexes.get(_permission_scope(permissions))
+        index = self._index_for(_permission_scope(permissions))
         if index is None or not index.is_ready:
             return CapabilityCandidateRetrievalResult(
                 query=normalized_query,

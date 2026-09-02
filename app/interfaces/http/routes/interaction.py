@@ -27,6 +27,7 @@ from app.interfaces.http.streaming import serialize_sse_event
 from app.platform.interaction.application.chat_stream import InteractionChatStreamApplication
 from app.platform.interaction.application.gateway import IntentInteractionGateway
 from app.platform.security.domain.principal import RequestPrincipal
+from app.shared.async_task import run_sync_protected
 
 router = APIRouter()
 
@@ -40,7 +41,9 @@ async def recognize_intent(
     """识别能力并生成待确认提议，不执行任何业务目标。"""
 
     try:
-        return gateway_response(gateway.recognize(recognition_command(request, principal)))
+        command = recognition_command(request, principal)
+        result = await run_sync_protected(lambda: gateway.recognize(command))
+        return gateway_response(result)
     except Exception as exc:  # noqa: BLE001 - HTTP boundary must not expose internals
         raise HTTPException(status_code=500, detail="统一交互入口暂时不可用。") from exc
 
@@ -94,8 +97,7 @@ async def confirm_intent_proposal(
         dialogue_result = await application.confirm_agent(command)
         if dialogue_result is not None:
             return gateway_response(dialogue_result)
-        return gateway_response(
-            gateway.confirm(command)
-        )
+        result = await run_sync_protected(lambda: gateway.confirm(command))
+        return gateway_response(result)
     except Exception as exc:  # noqa: BLE001 - HTTP boundary must not expose internals
         raise HTTPException(status_code=500, detail="统一交互入口暂时不可用。") from exc
