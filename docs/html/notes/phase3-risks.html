@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Go Agent System 学习资料：Phase3业务扩展风险与技术债参考" />
+    <title>Phase3业务扩展风险与技术债参考 · 学习中心</title>
+    <link rel="stylesheet" href="../reader.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__inner">
+        <a class="back-link" href="../index.html">返回学习中心</a>
+        <span class="article-name">Phase3业务扩展风险与技术债参考</span>
+      </div>
+    </header>
+    <main class="page">
+      <article class="article" id="article">
+<h1 id="phase-3">Phase 3 业务扩展风险与技术债参考</h1>
+<p>本文档记录 Agent Phase 3 在扩展业务能力时需要持续关注的风险和技术债。</p>
+<p>它不是当前阶段的实施计划，也不是架构基准或验收文档。它的作用是：当 Phase 3 从首个应用样例扩展到更多场景、数据源和规则类型时，提供回看依据，避免把 Phase 2 的 PoC 实现误认为已经完成通用化。</p>
+<h2 id="section">1. 当前基线</h2>
+<p>当前项目已经完成：</p>
+<ul>
+<li>Agent Phase 1：资料解析、清洗、OCR、入库和知识底座建设</li>
+<li>Agent Phase 2：混合检索、rerank、HNSW 准备、规则/数据/结果 PoC 和知识库收尾</li>
+<li>架构边界治理：HTTP、Application、Ports、Infrastructure 和 Composition Root 的依赖方向已通过测试验证</li>
+<li>首个规则场景：委托评估机构申请材料核验</li>
+</ul>
+<p>当前实现已经满足 Phase 2 的验证目标，但规则场景、数据 Provider 和决策输出仍以首个 PoC 为主要样本。以下内容属于业务能力扩展风险，不阻塞 Phase 2，也不代表当前代码存在故障。</p>
+<h2 id="section-1">2. 已识别的扩展风险</h2>
+<h3 id="r1">R1：规则内容与执行框架仍有耦合</h3>
+<p>Checklist 执行骨架已经抽象，但当前规则定义仍主要位于具体场景的 Python 代码中。</p>
+<p>风险：</p>
+<ul>
+<li>新增场景或调整规则时需要修改 Python 代码</li>
+<li>规则内容无法独立于执行框架进行版本管理</li>
+<li>规则变更的审核、发布和回滚能力不足</li>
+</ul>
+<p>触发条件：开始维护第二个以上规则场景，或规则需要由业务人员频繁调整时，应优先考虑规则外置化。</p>
+<h3 id="r2">R2：多场景注册与治理仍处于首版</h3>
+<p>当前已有统一的 <code>scenario registry</code>，但生产配置仍以首个 PoC 场景为主。</p>
+<p>风险：</p>
+<ul>
+<li>场景增多后可能出现调用方直接依赖具体场景常量</li>
+<li>路由、Service 和 Schema 可能按场景复制扩散</li>
+<li>场景的默认值、版本和可用状态缺少统一治理</li>
+</ul>
+<p>触发条件：新增第二个决策场景，或需要按场景启停、版本切换和权限管理时，应补强多场景注册治理。</p>
+<h3 id="r3-provider-poc">R3：数据 Provider 仍是 PoC 级输入形态</h3>
+<p>当前数据获取层已有统一 Service 和 <code>DataPack</code>，但主要仍依赖 inline 输入。</p>
+<p>风险：</p>
+<ul>
+<li>真实表单、数据库或外部业务系统接入时需要重新明确边界</li>
+<li>数据来源、权限、更新时间和失败重试尚未形成完整协议</li>
+<li>PoC Provider 不应直接被视为稳定生产数据入口</li>
+</ul>
+<p>触发条件：接入真实数据源、跨多个输入来源合并数据，或需要数据新鲜度和权限控制时，应优先补强 Provider 抽象。</p>
+<h3 id="r4decision-contract">R4：Decision Contract 仍偏向单场景</h3>
+<p>当前结构化结果已经覆盖 <code>decision</code>、<code>reasoning</code>、<code>missing_fields</code>、<code>requirement_statuses</code>、<code>citations</code> 和 <code>debug</code>，但字段形态仍主要服务于材料核验。</p>
+<p>风险：</p>
+<ul>
+<li>不同业务问题可能各自增加一套 Response Schema</li>
+<li>规则判断、资料建议和待确认结果的边界可能混在一起</li>
+<li>前端或 Agent 消费方难以依赖稳定的公共契约</li>
+</ul>
+<p>触发条件：出现第二类决策问题，或同一结果需要同时被 HTTP、前端和 Agent 消费时，应抽象通用 Decision Contract。</p>
+<h3 id="r5">R5：规则匹配算法仍偏轻量</h3>
+<p>当前匹配主要依赖文本归一化、别名和子串包含判断，适合首个固定材料清单场景。</p>
+<p>风险：</p>
+<ul>
+<li>短别名可能造成误命中</li>
+<li>相似词、包含词和上下文条件可能造成误判</li>
+<li>复杂制度条款、组合条件和否定表达的适配能力有限</li>
+</ul>
+<p>触发条件：出现明显误判或漏判，且无法通过补充别名和固定规则解决时，应升级匹配策略并增加对照评测集。</p>
+<h3 id="r6">R6：规则表达能力尚未覆盖复杂必填语义</h3>
+<p>规则结构中已经预留 <code>required</code> 等字段，但可选项、条件项、替代项和组合项尚未形成完整执行语义。</p>
+<p>风险：</p>
+<ul>
+<li>当前规则容易默认所有要求都是同等必填</li>
+<li>无法稳定表达“满足任一项”“满足条件后才需要”“附件可替代正文”等规则</li>
+<li>复杂规则可能被错误简化为普通字符串匹配</li>
+</ul>
+<p>触发条件：业务规则出现非全量必填、条件分支或替代材料时，应先补齐领域表达和判定语义，再扩展场景。</p>
+<h3 id="r7">R7：跨场景回归资产仍需扩充</h3>
+<p>当前已有首个场景的固定样例、应用层回归和 HTTP Smoke，但跨场景、跨数据源和复杂规则的样本还不够丰富。</p>
+<p>风险：</p>
+<ul>
+<li>扩展时容易只验证“当前案例能跑通”</li>
+<li>规则、数据和结果契约的回归覆盖不足</li>
+<li>检索证据变化可能影响最终决策，但缺少稳定对照样本</li>
+</ul>
+<p>触发条件：新增第二个场景或接入真实 Provider 时，应同步增加正常、缺失、证据不足、误命中和失败分支的固定回归样例。</p>
+<h2 id="section-2">3. 优先级建议</h2>
+<table>
+<thead>
+<tr>
+<th>优先级</th>
+<th>风险</th>
+<th>建议处理时机</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P1</td>
+<td>规则外置化、多场景 Registry、Provider 多来源、Decision Contract</td>
+<td>对应扩展条件出现时优先处理</td>
+</tr>
+<tr>
+<td>P2</td>
+<td>匹配算法、规则充分性、<code>required / optional / conditional</code> 语义</td>
+<td>第二类规则问题接入时处理</td>
+</tr>
+<tr>
+<td>P3</td>
+<td>跨场景评测集、Debug/Trace 和回归资产扩充</td>
+<td>每次扩展场景或数据源时持续补强</td>
+</tr>
+</tbody>
+</table>
+<h2 id="section-3">4. 什么时候应暂停主线处理风险</h2>
+<p>出现以下任一情况时，不建议继续叠加场景代码，应先处理对应技术债：</p>
+<ul>
+<li>新增第二个规则审核场景后出现明显复制粘贴</li>
+<li>路由、Service 或 Schema 开始按场景重复实现</li>
+<li>需要接入真实数据源而不是 inline 输入</li>
+<li>出现无法通过规则配置或别名修正的明显误判</li>
+<li>同一结果需要被多个外部消费者使用，但字段语义不一致</li>
+<li>规则出现条件项、替代项或组合项，而当前模型无法准确表达</li>
+</ul>
+<h2 id="section-4">5. 扩展时必须保持的边界</h2>
+<ul>
+<li>继续遵守 <code>agent.md</code> 和 <code>ARCHITECTURE.md</code> 的依赖方向</li>
+<li>具体数据库、LLM、文件和外部系统实现仍由 Infrastructure 提供</li>
+<li>具体适配器仍由 Composition Root 组装</li>
+<li>事实性结果必须保留文档、版本、章节、页码和原文来源</li>
+<li>没有充分证据时返回资料不足，不用模型常识补齐企业事实</li>
+<li>招标书适用性、资料适用性和最终内容仍需人工确认</li>
+<li>不因为扩展风险而提前建设通用银行模板或完整多场景 Agent</li>
+</ul>
+<h2 id="section-5">6. 当前结论</h2>
+<p>这些问题是 Phase 3 的扩展风险和后续技术债，不是当前架构故障，也不阻塞 Phase 2 的完成。</p>
+<p>后续采用“触发条件驱动治理”：没有出现对应扩展条件时保持当前 PoC 简洁；一旦出现多场景、多数据源、复杂规则或跨消费者复用需求，就先处理相应风险，再继续扩大业务范围。</p>
+
+      </article>
+      <aside class="toc" aria-label="本文目录">
+        <p class="toc__title">本文目录</p>
+        <nav class="toc__links" id="toc-links"></nav>
+      </aside>
+    </main>
+    <script>
+      (() => {
+        const article = document.getElementById('article');
+        const toc = document.getElementById('toc-links');
+        const headings = Array.from(article.querySelectorAll('h2, h3'));
+        const usedIds = new Set();
+        const slugify = (text) => {
+          const raw = text
+            .trim()
+            .toLowerCase()
+            .replace(/[.,，、:：;；!?！？()[\]{}'"“”‘’`~@#$%^&*+=|\\/<>]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
+          return raw || 'section';
+        };
+        headings.forEach((heading) => {
+          const base = slugify(heading.textContent);
+          let id = base;
+          let index = 2;
+          while (usedIds.has(id)) {
+            id = `${base}-${index++}`;
+          }
+          usedIds.add(id);
+          heading.id = id;
+          const link = document.createElement('a');
+          link.href = `#${id}`;
+          link.dataset.level = heading.tagName.slice(1);
+          link.textContent = heading.textContent;
+          toc.appendChild(link);
+        });
+        if (!headings.length) {
+          toc.innerHTML = '<span class="empty-toc">当前文档没有二级或三级标题。</span>';
+          return;
+        }
+        const links = Array.from(toc.querySelectorAll('a'));
+        const updateActiveLink = () => {
+          let active = headings[0];
+          for (const heading of headings) {
+            if (heading.getBoundingClientRect().top <= 112) active = heading;
+          }
+          links.forEach((link) => link.classList.toggle('is-active', link.hash === `#${active.id}`));
+        };
+        updateActiveLink();
+        document.addEventListener('scroll', updateActiveLink, { passive: true });
+      })();
+    </script>
+  </body>
+</html>

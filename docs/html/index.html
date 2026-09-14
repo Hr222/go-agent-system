@@ -1,0 +1,1062 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Go Agent System 的学习路线与学习笔记导航页。"
+    />
+    <title>Go Agent System · 学习中心</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f8fc;
+        --surface: #ffffff;
+        --surface-soft: #f0f4ff;
+        --text: #172033;
+        --muted: #5d6b82;
+        --line: #dbe2ef;
+        --primary: #3f5fd7;
+        --primary-strong: #2745b5;
+        --primary-soft: #e8edff;
+        --green: #167a56;
+        --orange: #a75708;
+        --purple: #7142ac;
+        --shadow: 0 14px 38px rgba(35, 55, 104, 0.09);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #101522;
+          --surface: #191f2f;
+          --surface-soft: #202a42;
+          --text: #edf1fc;
+          --muted: #acb7cf;
+          --line: #303b54;
+          --primary: #9db0ff;
+          --primary-strong: #c7d1ff;
+          --primary-soft: #252f52;
+          --green: #6bd6aa;
+          --orange: #ffb66d;
+          --purple: #d4b3ff;
+          --shadow: 0 14px 38px rgba(0, 0, 0, 0.2);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        background:
+          radial-gradient(circle at 8% 0%, rgba(99, 127, 237, 0.14), transparent 28rem),
+          radial-gradient(circle at 92% 14%, rgba(119, 191, 163, 0.11), transparent 25rem),
+          var(--bg);
+        color: var(--text);
+        font-family: "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+        line-height: 1.7;
+      }
+
+      a {
+        color: var(--primary-strong);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 3px;
+      }
+
+      a:hover {
+        color: var(--primary);
+      }
+
+      .shell {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+        background: color-mix(in srgb, var(--bg) 86%, transparent);
+        backdrop-filter: blur(14px);
+      }
+
+      .header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        min-height: 64px;
+      }
+
+      .brand {
+        color: var(--text);
+        font-size: 1.02rem;
+        font-weight: 700;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 4px 16px;
+      }
+
+      .nav a {
+        color: var(--muted);
+        font-size: 0.9rem;
+        text-decoration: none;
+      }
+
+      .nav a:hover {
+        color: var(--primary);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.75fr);
+        gap: 32px;
+        padding: 72px 0 42px;
+      }
+
+      .eyebrow,
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: var(--primary-soft);
+        color: var(--primary-strong);
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 760px;
+        margin: 14px 0 18px;
+        font-size: clamp(2rem, 4.8vw, 3.8rem);
+        line-height: 1.18;
+        letter-spacing: -0.045em;
+      }
+
+      h2 {
+        margin-bottom: 10px;
+        font-size: clamp(1.45rem, 2.2vw, 2rem);
+        letter-spacing: -0.025em;
+      }
+
+      h3 {
+        margin-bottom: 8px;
+        font-size: 1.05rem;
+      }
+
+      .lede {
+        max-width: 700px;
+        color: var(--muted);
+        font-size: 1.08rem;
+      }
+
+      .hero-note,
+      .card,
+      details {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .hero-note {
+        align-self: end;
+        padding: 24px;
+      }
+
+      .hero-note strong {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--primary-strong);
+        font-size: 1.15rem;
+      }
+
+      .hero-note p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+
+      section {
+        padding: 50px 0;
+        scroll-margin-top: 80px;
+      }
+
+      .section-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      .section-head p {
+        max-width: 670px;
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+
+      .route {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(138px, 1fr));
+        gap: 12px;
+      }
+
+      .route-step {
+        position: relative;
+        min-height: 170px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--surface);
+      }
+
+      .route-step::after {
+        position: absolute;
+        top: 50%;
+        right: -9px;
+        z-index: 1;
+        width: 16px;
+        height: 16px;
+        border-top: 1px solid var(--line);
+        border-right: 1px solid var(--line);
+        background: var(--bg);
+        content: "";
+        transform: translateY(-50%) rotate(45deg);
+      }
+
+      .route-step:last-child::after {
+        display: none;
+      }
+
+      .route-number {
+        display: block;
+        margin-bottom: 10px;
+        color: var(--primary);
+        font-size: 0.82rem;
+        font-weight: 800;
+      }
+
+      .route-step p {
+        margin-bottom: 0;
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.55;
+      }
+
+      .route-step.current {
+        border-color: color-mix(in srgb, var(--primary) 55%, var(--line));
+        background: var(--primary-soft);
+      }
+
+      .route-step.current .route-number {
+        color: var(--purple);
+      }
+
+      .diagram {
+        margin: 26px 0 0;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .diagram figcaption {
+        margin-bottom: 14px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .diagram svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .diagram .box {
+        fill: var(--surface-soft);
+        stroke: var(--line);
+        stroke-width: 1.5;
+      }
+
+      .diagram .box-active {
+        fill: var(--primary-soft);
+        stroke: var(--primary);
+        stroke-width: 1.8;
+      }
+
+      .diagram .box-success {
+        fill: color-mix(in srgb, var(--green) 14%, var(--surface));
+        stroke: var(--green);
+        stroke-width: 1.5;
+      }
+
+      .diagram .box-warn {
+        fill: color-mix(in srgb, var(--orange) 15%, var(--surface));
+        stroke: var(--orange);
+        stroke-width: 1.5;
+      }
+
+      .diagram .label {
+        fill: var(--text);
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .diagram .sub-label {
+        fill: var(--muted);
+        font-size: 12px;
+      }
+
+      .diagram .arrow {
+        fill: none;
+        stroke: var(--primary);
+        stroke-linecap: round;
+        stroke-width: 2;
+      }
+
+      .diagram .arrow-muted {
+        fill: none;
+        stroke: var(--muted);
+        stroke-dasharray: 5 5;
+        stroke-linecap: round;
+        stroke-width: 1.6;
+      }
+
+      .diagram .state-label {
+        fill: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .note-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .card {
+        display: flex;
+        min-height: 224px;
+        flex-direction: column;
+        padding: 22px;
+      }
+
+      .card p {
+        color: var(--muted);
+      }
+
+      .card .tag {
+        align-self: flex-start;
+        margin-bottom: 14px;
+      }
+
+      .tag.foundation {
+        background: color-mix(in srgb, var(--green) 15%, var(--surface));
+        color: var(--green);
+      }
+
+      .tag.runtime {
+        background: color-mix(in srgb, var(--orange) 16%, var(--surface));
+        color: var(--orange);
+      }
+
+      .tag.current {
+        background: color-mix(in srgb, var(--purple) 16%, var(--surface));
+        color: var(--purple);
+      }
+
+      .card-footer {
+        margin-top: auto;
+        padding-top: 12px;
+        font-size: 0.9rem;
+      }
+
+      .task-layout {
+        display: grid;
+        grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.4fr);
+        gap: 24px;
+      }
+
+      .task-map {
+        padding: 24px;
+      }
+
+      .task-map h3 {
+        margin-top: 12px;
+      }
+
+      .task-map p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+
+      .definition-list {
+        display: grid;
+        gap: 9px;
+        margin: 20px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .definition-list li {
+        padding: 10px 12px;
+        border-left: 3px solid var(--primary);
+        background: var(--surface-soft);
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .definition-list strong {
+        color: var(--text);
+      }
+
+      .study-steps {
+        display: grid;
+        gap: 12px;
+      }
+
+      details {
+        padding: 0;
+        overflow: hidden;
+      }
+
+      summary {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 17px 19px;
+        cursor: pointer;
+        font-weight: 700;
+        list-style: none;
+      }
+
+      summary::-webkit-details-marker {
+        display: none;
+      }
+
+      summary::before {
+        display: grid;
+        width: 26px;
+        height: 26px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--primary-soft);
+        color: var(--primary-strong);
+        content: attr(data-step);
+        font-size: 0.8rem;
+      }
+
+      details[open] summary {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .detail-body {
+        padding: 18px 20px 20px 57px;
+        color: var(--muted);
+      }
+
+      .detail-body p:last-child,
+      .detail-body ul:last-child {
+        margin-bottom: 0;
+      }
+
+      .detail-body strong {
+        color: var(--text);
+      }
+
+      .detail-body ul {
+        padding-left: 1.2em;
+      }
+
+      .focus-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .focus {
+        padding: 22px;
+        border-top: 3px solid var(--primary);
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .focus:nth-child(2) {
+        border-top-color: var(--green);
+      }
+
+      .focus:nth-child(3) {
+        border-top-color: var(--purple);
+      }
+
+      .focus p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+
+      .questions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        padding: 0;
+        list-style: none;
+      }
+
+      .questions li {
+        position: relative;
+        padding: 17px 18px 17px 46px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--surface);
+        color: var(--muted);
+      }
+
+      .questions li::before {
+        position: absolute;
+        top: 17px;
+        left: 18px;
+        color: var(--primary);
+        content: "?";
+        font-weight: 800;
+      }
+
+      .library {
+        padding-bottom: 72px;
+      }
+
+      .library-row {
+        display: grid;
+        grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.7fr) minmax(120px, 0.45fr);
+        gap: 18px;
+        align-items: center;
+        padding: 18px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .library-row:first-of-type {
+        border-top: 1px solid var(--line);
+      }
+
+      .library-row p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+
+      .library-row a {
+        font-weight: 700;
+      }
+
+      .site-footer {
+        padding: 28px 0 40px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 980px) {
+        .route {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .route-step::after {
+          display: none;
+        }
+
+        .note-grid,
+        .focus-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 720px) {
+        .header-row,
+        .section-head {
+          align-items: flex-start;
+          flex-direction: column;
+          padding: 12px 0;
+        }
+
+        .header-row {
+          gap: 7px;
+        }
+
+        .nav {
+          justify-content: flex-start;
+        }
+
+        .hero,
+        .task-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          padding-top: 44px;
+        }
+
+        .route,
+        .note-grid,
+        .focus-grid,
+        .questions {
+          grid-template-columns: 1fr;
+        }
+
+        .library-row {
+          grid-template-columns: 1fr;
+          gap: 6px;
+        }
+
+        .detail-body {
+          padding-left: 20px;
+        }
+
+        .diagram {
+          margin-top: 18px;
+          padding: 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="shell header-row">
+        <a class="brand" href="#top">Go Agent System · 学习中心</a>
+        <nav class="nav" aria-label="页面导航">
+          <a href="#route">学习地图</a>
+          <a href="#notes">已有笔记</a>
+          <a href="#task">Task 专题</a>
+          <a href="#review">自查问题</a>
+          <a href="#library">资料库</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top" class="shell">
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <span class="eyebrow">学习导航 · 持续更新</span>
+          <h1 id="page-title">把零散知识，连成一条能走通的学习路线。</h1>
+          <p class="lede">
+            这里收录现有的学习笔记，并把它们放回同一张地图：先掌握数据、检索、交互与对话基础，
+            再系统学习 Task Management，最后才进入 Workflow 与更复杂的 Agent 编排。
+          </p>
+        </div>
+        <aside class="hero-note" aria-label="当前学习焦点">
+          <strong>当前学习焦点</strong>
+          <p>
+            Task Management：理解一项后台工作怎样被创建、追踪、取消、重试和恢复。
+          </p>
+        </aside>
+      </section>
+
+      <section id="route" aria-labelledby="route-title">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">全局地图</span>
+            <h2 id="route-title">从平台基础到任务管理</h2>
+          </div>
+          <p>每一步都为下一步提供必要的判断能力；不需要跳过基础，也不需要提前学习尚未使用的复杂框架。</p>
+        </div>
+        <div class="route" aria-label="学习路线阶段">
+          <article class="route-step">
+            <span class="route-number">01 · 输入与数据</span>
+            <h3>数据清洗</h3>
+            <p>理解外部数据如何变成稳定、可追溯、可复用的内部输入。</p>
+          </article>
+          <article class="route-step">
+            <span class="route-number">02 · 知识与检索</span>
+            <h3>RAG</h3>
+            <p>理解切分、召回、重排、引用、评测与质量验证。</p>
+          </article>
+          <article class="route-step">
+            <span class="route-number">03 · 受控交互</span>
+            <h3>意图识别</h3>
+            <p>理解能力边界、确认、权限与服务端受控执行。</p>
+          </article>
+          <article class="route-step">
+            <span class="route-number">04 · 对话运行时</span>
+            <h3>会话与上下文</h3>
+            <p>理解轮次、并发、取消、失败事实和多轮上下文。</p>
+          </article>
+          <article class="route-step current">
+            <span class="route-number">05 · 当前阶段</span>
+            <h3>Task Management</h3>
+            <p>理解持久化任务的生命周期、可靠执行和可运营管理。</p>
+          </article>
+          <article class="route-step">
+            <span class="route-number">06 · 后续阶段</span>
+            <h3>Workflow</h3>
+            <p>在单个 Task 稳定后，再学习多步骤依赖、分支与编排。</p>
+          </article>
+        </div>
+        <figure class="diagram" aria-labelledby="map-caption">
+          <figcaption id="map-caption">知识如何逐步汇聚到当前的 Task Management 学习专题</figcaption>
+          <svg viewBox="0 0 1060 220" role="img" aria-labelledby="map-svg-title map-svg-desc">
+            <title id="map-svg-title">学习知识地图</title>
+            <desc id="map-svg-desc">数据清洗、RAG、意图识别和对话运行时知识，共同构成 Task Management 的学习基础，并在之后通向 Workflow。</desc>
+            <defs>
+              <marker id="map-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+                <path d="M 0 0 L 9 4.5 L 0 9 z" fill="var(--primary)"></path>
+              </marker>
+            </defs>
+            <rect class="box" x="24" y="34" width="185" height="64" rx="12"></rect>
+            <text class="label" x="116" y="62" text-anchor="middle">数据清洗</text>
+            <text class="sub-label" x="116" y="82" text-anchor="middle">可靠输入与失败留痕</text>
+            <rect class="box" x="24" y="122" width="185" height="64" rx="12"></rect>
+            <text class="label" x="116" y="150" text-anchor="middle">RAG 工程化</text>
+            <text class="sub-label" x="116" y="170" text-anchor="middle">流程、评测与调试</text>
+
+            <rect class="box" x="295" y="34" width="185" height="64" rx="12"></rect>
+            <text class="label" x="387" y="62" text-anchor="middle">意图识别</text>
+            <text class="sub-label" x="387" y="82" text-anchor="middle">确认、权限与控制面</text>
+            <rect class="box" x="295" y="122" width="185" height="64" rx="12"></rect>
+            <text class="label" x="387" y="150" text-anchor="middle">对话运行时</text>
+            <text class="sub-label" x="387" y="170" text-anchor="middle">并发、取消与恢复</text>
+
+            <path class="arrow" d="M 209 66 H 280" marker-end="url(#map-arrow)"></path>
+            <path class="arrow" d="M 209 154 H 280" marker-end="url(#map-arrow)"></path>
+            <path class="arrow" d="M 480 66 H 567 Q 590 66 590 88 V 99" marker-end="url(#map-arrow)"></path>
+            <path class="arrow" d="M 480 154 H 567 Q 590 154 590 132 V 121" marker-end="url(#map-arrow)"></path>
+
+            <rect class="box-active" x="610" y="67" width="225" height="86" rx="14"></rect>
+            <text class="label" x="722" y="105" text-anchor="middle">Task Management</text>
+            <text class="sub-label" x="722" y="127" text-anchor="middle">生命周期、可靠执行与运营</text>
+
+            <path class="arrow" d="M 835 110 H 916" marker-end="url(#map-arrow)"></path>
+            <rect class="box" x="932" y="77" width="105" height="66" rx="12"></rect>
+            <text class="label" x="984" y="106" text-anchor="middle">Workflow</text>
+            <text class="sub-label" x="984" y="126" text-anchor="middle">后续学习</text>
+          </svg>
+        </figure>
+      </section>
+
+      <section id="notes" aria-labelledby="notes-title">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">已有积累</span>
+            <h2 id="notes-title">已学习内容不是孤岛</h2>
+          </div>
+          <p>以下笔记已经提供了 Task Management 所需的重要前置知识。阅读时关注“它如何支持下一阶段”。</p>
+        </div>
+        <div class="note-grid">
+          <article class="card">
+            <span class="tag foundation">基础</span>
+            <h3>数据清洗</h3>
+            <p>学习输入校验、保守清洗、异步处理、失败可见、重试和中间结果保留。</p>
+            <div class="card-footer"><a href="notes/data-cleaning.html">打开阅读页</a></div>
+          </article>
+          <article class="card">
+            <span class="tag foundation">基础</span>
+            <h3>RAG 构建与工程化</h3>
+            <p>学习检索流程、混合召回、重排、调试信息、评测集和 Baseline。</p>
+            <div class="card-footer"><a href="notes/rag.html">打开阅读页</a></div>
+          </article>
+          <article class="card">
+            <span class="tag foundation">基础</span>
+            <h3>意图识别工程实践</h3>
+            <p>学习能力目录、结构化识别、确认机制、权限复核和安全执行边界。</p>
+            <div class="card-footer"><a href="notes/intent-recognition.html">打开阅读页</a></div>
+          </article>
+          <article class="card">
+            <span class="tag runtime">运行时</span>
+            <h3>会话级串行与 FIFO</h3>
+            <p>学习执行边界、并发控制、异常收口、取消语义与持久化队列的升级信号。</p>
+            <div class="card-footer"><a href="notes/conversation-serialization.html">打开阅读页</a></div>
+          </article>
+          <article class="card">
+            <span class="tag runtime">运行时</span>
+            <h3>上下文管理与多轮对话</h3>
+            <p>学习事实与派生数据、失败轮次、恢复、并发与可追溯的上下文压缩。</p>
+            <div class="card-footer"><a href="notes/context-management.html">打开阅读页</a></div>
+          </article>
+          <article class="card">
+            <span class="tag runtime">工程方法</span>
+            <h3>OpenSpec 使用手册</h3>
+            <p>学习如何把明确需求收束为可评审、可验证、可追溯的变更过程。</p>
+            <div class="card-footer"><a href="notes/openspec-guide.html">打开阅读页</a></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="task" aria-labelledby="task-title">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">当前专题</span>
+            <h2 id="task-title">Task Management 学习路线</h2>
+          </div>
+          <p>先理解业务语义与可靠性原则，再讨论任何数据库、消息队列或任务框架的技术选型。</p>
+        </div>
+        <div class="task-layout">
+          <aside class="task-map card" aria-label="Task 概念对照">
+            <span class="tag current">先分清对象</span>
+            <h3>Task 不是“后台跑一段代码”</h3>
+            <p>Task 是一项可持久化、可查询、可取消、可重试、可恢复的后台工作。</p>
+            <ul class="definition-list">
+              <li><strong>Request：</strong>一次网络通信，应尽量短。</li>
+              <li><strong>进程内异步任务：</strong>当前进程的执行细节，重启会消失。</li>
+              <li><strong>Task：</strong>有身份、状态、历史与管理能力的工作单元。</li>
+              <li><strong>Workflow：</strong>多个 Task 的依赖、分支与编排。</li>
+            </ul>
+          </aside>
+          <div class="study-steps">
+            <details open>
+              <summary data-step="1">Task 边界与生命周期</summary>
+              <div class="detail-body">
+                <p><strong>要理解：</strong>哪些工作需要 Task，哪些只是一次普通请求或内部短步骤。</p>
+                <p><strong>学习成果：</strong>能解释 Task 为什么需要身份、归属、输入、状态、结果与历史。</p>
+              </div>
+            </details>
+            <details>
+              <summary data-step="2">状态机与执行事实</summary>
+              <div class="detail-body">
+                <p><strong>要理解：</strong>排队、运行、成功、失败、等待重试、取消请求和已取消的不同含义。</p>
+                <p><strong>学习成果：</strong>能画出状态图，并说明哪些状态转换合法、哪些状态是终态。</p>
+              </div>
+            </details>
+            <details>
+              <summary data-step="3">Worker、领取与租约</summary>
+              <div class="detail-body">
+                <p><strong>要理解：</strong>多个 Worker 怎样避免重复执行，崩溃后怎样让遗留工作重新被处理。</p>
+                <p><strong>学习成果：</strong>能解释原子领取、短事务、租约、续租和过期 Worker 保护。</p>
+              </div>
+            </details>
+            <details>
+              <summary data-step="4">幂等、重试、取消与恢复</summary>
+              <div class="detail-body">
+                <p><strong>要理解：</strong>重复提交、网络超时、临时失败、运行中取消和服务重启时的真实语义。</p>
+                <p><strong>学习成果：</strong>理解为什么多数系统追求“至少一次执行”，业务副作用必须幂等。</p>
+              </div>
+            </details>
+            <details>
+              <summary data-step="5">结果、权限、审计与观测</summary>
+              <div class="detail-body">
+                <p><strong>要理解：</strong>用户应该看到什么、哪些信息不能暴露、怎样判断任务系统是否健康。</p>
+                <p><strong>学习成果：</strong>能列出状态查询、进度、结果引用、权限边界、审计事件和关键指标。</p>
+              </div>
+            </details>
+            <details>
+              <summary data-step="6">Task 与 Workflow 的边界</summary>
+              <div class="detail-body">
+                <p><strong>要理解：</strong>多步骤不等于 Workflow；只有步骤需独立等待、重试、审批或复用时，才需要上升为编排。</p>
+                <p><strong>学习成果：</strong>能说明何时保持一个 Task，何时才值得设计多个 Task 或 Workflow。</p>
+              </div>
+            </details>
+          </div>
+        </div>
+        <figure class="diagram" aria-labelledby="lifecycle-caption">
+          <figcaption id="lifecycle-caption">一项业务工作从请求到可管理 Task 的基本生命周期</figcaption>
+          <svg viewBox="0 0 1060 242" role="img" aria-labelledby="lifecycle-svg-title lifecycle-svg-desc">
+            <title id="lifecycle-svg-title">Task 生命周期示意图</title>
+            <desc id="lifecycle-svg-desc">用户请求创建任务，任务进入排队状态，被 Worker 领取并执行，最终变为成功、失败、等待重试或已取消。</desc>
+            <defs>
+              <marker id="life-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+                <path d="M 0 0 L 9 4.5 L 0 9 z" fill="var(--primary)"></path>
+              </marker>
+              <marker id="life-arrow-muted" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+                <path d="M 0 0 L 9 4.5 L 0 9 z" fill="var(--muted)"></path>
+              </marker>
+            </defs>
+            <rect class="box" x="20" y="86" width="132" height="70" rx="12"></rect>
+            <text class="label" x="86" y="115" text-anchor="middle">业务请求</text>
+            <text class="sub-label" x="86" y="136" text-anchor="middle">登记一项工作</text>
+
+            <path class="arrow" d="M 152 121 H 211" marker-end="url(#life-arrow)"></path>
+            <rect class="box-active" x="227" y="86" width="132" height="70" rx="12"></rect>
+            <text class="state-label" x="293" y="115" text-anchor="middle">QUEUED</text>
+            <text class="sub-label" x="293" y="136" text-anchor="middle">等待领取</text>
+
+            <path class="arrow" d="M 359 121 H 418" marker-end="url(#life-arrow)"></path>
+            <rect class="box-active" x="434" y="86" width="132" height="70" rx="12"></rect>
+            <text class="state-label" x="500" y="115" text-anchor="middle">RUNNING</text>
+            <text class="sub-label" x="500" y="136" text-anchor="middle">Worker 执行</text>
+
+            <path class="arrow" d="M 566 121 H 620 V 53 H 677" marker-end="url(#life-arrow)"></path>
+            <path class="arrow" d="M 566 121 H 677" marker-end="url(#life-arrow)"></path>
+            <path class="arrow" d="M 566 121 H 620 V 189 H 677" marker-end="url(#life-arrow)"></path>
+
+            <rect class="box-success" x="693" y="20" width="150" height="66" rx="12"></rect>
+            <text class="state-label" x="768" y="48" text-anchor="middle">SUCCEEDED</text>
+            <text class="sub-label" x="768" y="68" text-anchor="middle">结果可被引用</text>
+
+            <rect class="box-warn" x="693" y="88" width="150" height="66" rx="12"></rect>
+            <text class="state-label" x="768" y="116" text-anchor="middle">FAILED</text>
+            <text class="sub-label" x="768" y="136" text-anchor="middle">明确失败原因</text>
+
+            <rect class="box" x="693" y="156" width="150" height="66" rx="12"></rect>
+            <text class="state-label" x="768" y="184" text-anchor="middle">CANCELLED</text>
+            <text class="sub-label" x="768" y="204" text-anchor="middle">确认停止执行</text>
+
+            <rect class="box" x="895" y="88" width="145" height="66" rx="12"></rect>
+            <text class="state-label" x="967" y="116" text-anchor="middle">RETRY_WAIT</text>
+            <text class="sub-label" x="967" y="136" text-anchor="middle">退避后可再执行</text>
+            <path class="arrow-muted" d="M 843 121 H 895" marker-end="url(#life-arrow-muted)"></path>
+            <path class="arrow-muted" d="M 967 88 V 48 H 293 V 86" marker-end="url(#life-arrow-muted)"></path>
+          </svg>
+        </figure>
+        <figure class="diagram" aria-labelledby="reliability-caption">
+          <figcaption id="reliability-caption">可靠执行不是单一技术，而是多种机制的共同约束</figcaption>
+          <svg viewBox="0 0 1060 210" role="img" aria-labelledby="reliability-svg-title reliability-svg-desc">
+            <title id="reliability-svg-title">Task 可靠性机制图</title>
+            <desc id="reliability-svg-desc">幂等防止重复创建，原子领取防止多 Worker 重复执行，租约和恢复处理崩溃，错误分类和退避控制重试，审计与观测帮助发现问题。</desc>
+            <defs>
+              <marker id="reliability-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+                <path d="M 0 0 L 9 4.5 L 0 9 z" fill="var(--primary)"></path>
+              </marker>
+            </defs>
+            <circle cx="530" cy="105" r="58" fill="var(--primary-soft)" stroke="var(--primary)" stroke-width="2"></circle>
+            <text class="label" x="530" y="101" text-anchor="middle">可靠的</text>
+            <text class="label" x="530" y="122" text-anchor="middle">Task 生命周期</text>
+
+            <rect class="box" x="32" y="23" width="184" height="58" rx="12"></rect>
+            <text class="label" x="124" y="48" text-anchor="middle">幂等</text>
+            <text class="sub-label" x="124" y="67" text-anchor="middle">重复提交不重复做事</text>
+
+            <rect class="box" x="32" y="129" width="184" height="58" rx="12"></rect>
+            <text class="label" x="124" y="154" text-anchor="middle">原子领取</text>
+            <text class="sub-label" x="124" y="173" text-anchor="middle">同一任务只有一个执行者</text>
+
+            <rect class="box" x="844" y="23" width="184" height="58" rx="12"></rect>
+            <text class="label" x="936" y="48" text-anchor="middle">租约与恢复</text>
+            <text class="sub-label" x="936" y="67" text-anchor="middle">崩溃后不遗忘任务</text>
+
+            <rect class="box" x="844" y="129" width="184" height="58" rx="12"></rect>
+            <text class="label" x="936" y="154" text-anchor="middle">重试与审计</text>
+            <text class="sub-label" x="936" y="173" text-anchor="middle">控制失败并保留证据</text>
+
+            <path class="arrow" d="M 216 52 H 368 Q 402 52 462 87" marker-end="url(#reliability-arrow)"></path>
+            <path class="arrow" d="M 216 158 H 368 Q 402 158 462 123" marker-end="url(#reliability-arrow)"></path>
+            <path class="arrow" d="M 844 52 H 692 Q 658 52 598 87" marker-end="url(#reliability-arrow)"></path>
+            <path class="arrow" d="M 844 158 H 692 Q 658 158 598 123" marker-end="url(#reliability-arrow)"></path>
+          </svg>
+        </figure>
+        <p style="margin: 22px 0 0"><a href="notes/task-management.html">阅读完整的 Task Management 学习笔记</a></p>
+      </section>
+
+      <section aria-labelledby="principles-title">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">核心判断</span>
+            <h2 id="principles-title">学习 Task 时，始终守住三件事</h2>
+          </div>
+        </div>
+        <div class="focus-grid">
+          <article class="focus">
+            <h3>先定语义，再选技术</h3>
+            <p>先定义状态、失败、重试和取消的真实含义；不要先从某个框架、队列或数据库语法开始。</p>
+          </article>
+          <article class="focus">
+            <h3>状态是事实，不是展示文字</h3>
+            <p>任务状态会影响能否领取、取消、重试和查询结果，因此必须有明确规则和可追溯历史。</p>
+          </article>
+          <article class="focus">
+            <h3>可靠性来自组合</h3>
+            <p>幂等、短事务、原子领取、租约、错误分类、退避和审计共同构成可靠性，没有单一万能机制。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="review" aria-labelledby="review-title">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">学习自查</span>
+            <h2 id="review-title">学完一节后，用这些问题检查理解</h2>
+          </div>
+          <p>能够清楚回答这些问题，比记住某个框架命令更重要。</p>
+        </div>
+        <ul class="questions">
+          <li>为什么一个进程内协程不等于可管理的业务 Task？</li>
+          <li>为什么运行中的任务不能直接标记为“已取消”？</li>
+          <li>两个 Worker 同时看到同一条待处理任务时，会发生什么？</li>
+          <li>为什么 Worker 崩溃后不能让任务永久停在运行中？</li>
+          <li>为什么“消息已经被消费”不等于“业务已经成功完成”？</li>
+          <li>相同幂等键但不同输入，系统为什么应拒绝而不是复用？</li>
+          <li>哪些失败应自动重试，哪些失败应直接结束？</li>
+          <li>什么时候多步骤工作仍应保持为一个 Task，而不是 Workflow？</li>
+        </ul>
+      </section>
+
+      <section id="library" class="library" aria-labelledby="library-title">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">资料库</span>
+            <h2 id="library-title">全部相关学习资料</h2>
+          </div>
+          <p>先按学习路线阅读；遇到具体问题时，再回到对应主题深入查阅。</p>
+        </div>
+        <div class="library-row">
+          <a href="notes/data-cleaning.html">数据清洗学习笔记</a>
+          <p>外部数据准入、保守清洗、异步处理、错误与质量控制。</p>
+          <span>输入基础</span>
+        </div>
+        <div class="library-row">
+          <a href="notes/rag.html">RAG 学习笔记</a>
+          <p>向量化、检索、混合召回、重排、评测和检索工程化。</p>
+          <span>知识基础</span>
+        </div>
+        <div class="library-row">
+          <a href="notes/intent-recognition.html">意图识别工程实践学习笔记</a>
+          <p>意图目录、结构化识别、确认、权限、安全边界与评测。</p>
+          <span>交互基础</span>
+        </div>
+        <div class="library-row">
+          <a href="notes/conversation-serialization.html">会话级串行与 FIFO 队列学习笔记</a>
+          <p>共享资源、执行边界、并发、取消、错误收口与持久化队列升级。</p>
+          <span>运行时基础</span>
+        </div>
+        <div class="library-row">
+          <a href="notes/context-management.html">上下文管理与多轮对话学习笔记</a>
+          <p>会话、消息、Turn、上下文窗口、失败轮次和可恢复压缩。</p>
+          <span>运行时基础</span>
+        </div>
+        <div class="library-row">
+          <a href="notes/task-management.html">Task Management 学习笔记</a>
+          <p>Task 生命周期、状态机、Worker、租约、可靠性、观测与 Workflow 边界。</p>
+          <span>当前专题</span>
+        </div>
+        <div class="library-row">
+          <a href="notes/checklist-rag.html">Checklist 场景与 RAG 检索扩展说明</a>
+          <p>了解规则场景如何使用检索能力，以及何时应停止横向扩展。</p>
+          <span>扩展参考</span>
+        </div>
+        <div class="library-row">
+          <a href="notes/phase3-risks.html">Phase 3 业务扩展风险与技术债参考</a>
+          <p>理解多场景、数据源、规则语义和回归资产的后续风险。</p>
+          <span>扩展参考</span>
+        </div>
+        <div class="library-row">
+          <a href="notes/openspec-guide.html">OpenSpec 使用手册</a>
+          <p>学习如何把未来明确的功能变更写成范围受控、可验证的交付。</p>
+          <span>工程方法</span>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell">学习顺序：先理解问题与语义，再学习实现模式；先完成单个 Task 的可靠生命周期，再进入 Workflow。</div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Go Agent System 学习资料：Checklist场景与RAG检索扩展说明" />
+    <title>Checklist场景与RAG检索扩展说明 · 学习中心</title>
+    <link rel="stylesheet" href="../reader.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__inner">
+        <a class="back-link" href="../index.html">返回学习中心</a>
+        <span class="article-name">Checklist场景与RAG检索扩展说明</span>
+      </div>
+    </header>
+    <main class="page">
+      <article class="article" id="article">
+<h1 id="checklist-rag">Checklist 场景与 RAG 检索扩展说明</h1>
+<p>本文档说明 Checklist 场景在当前架构中的位置，以及它如何使用知识库 RAG 检索能力。新增 Checklist 场景或排查场景问题时，先按本文档确定代码应该属于哪一层。</p>
+<h2 id="section">1. 先看架构位置</h2>
+<p>Checklist 不是独立的基础设施，也不是 RAG Pipeline 本身。它是 Online 应用中的一种领域决策模型。</p>
+<p>在 <code>ARCHITECTURE.md</code> 的分层中，对应关系如下：</p>
+<table>
+<thead>
+<tr>
+<th>当前能力</th>
+<th>架构层级</th>
+<th>代码位置</th>
+<th>主要职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTTP 请求和响应</td>
+<td>Interfaces / HTTP</td>
+<td><code>app/interfaces/http</code></td>
+<td>接收请求、Schema 转换、依赖注入、异常映射</td>
+</tr>
+<tr>
+<td>决策流程编排</td>
+<td>Applications / Online</td>
+<td><code>app/modules/online/application</code></td>
+<td>串联规则获取、数据获取和结果生成</td>
+</tr>
+<tr>
+<td>Checklist 场景和领域规则</td>
+<td>Applications / Online / Domain</td>
+<td><code>app/modules/online/domain/checklist</code></td>
+<td>定义场景、清单要求、证据匹配和材料核验</td>
+</tr>
+<tr>
+<td>规则证据获取</td>
+<td>Applications / Online / Rule Retrieval</td>
+<td><code>app/modules/online/application/rule_retrieval</code></td>
+<td>使用知识查询能力，将检索结果整理为 <code>RulePack</code></td>
+</tr>
+<tr>
+<td>知识查询能力</td>
+<td>Knowledge / Query Capability</td>
+<td><code>app/modules/knowledge/application/query_capability.py</code></td>
+<td>对 Online 提供稳定的查询和检索入口</td>
+</tr>
+<tr>
+<td>RAG 检索流程</td>
+<td>Knowledge / Retrieval</td>
+<td><code>app/modules/knowledge/retrieval</code></td>
+<td>向量召回、关键词召回、融合、rerank、过滤和调试追踪</td>
+</tr>
+<tr>
+<td>知识查询端口</td>
+<td>Knowledge / Ports</td>
+<td><code>app/modules/knowledge/ports</code></td>
+<td>定义应用层访问知识库的能力契约</td>
+</tr>
+<tr>
+<td>数据库、Embedding 等具体实现</td>
+<td>Infrastructure</td>
+<td><code>app/infrastructure</code></td>
+<td>Repository、数据库、Embedding 和其他技术适配器</td>
+</tr>
+<tr>
+<td>具体依赖组装</td>
+<td>Composition Root</td>
+<td><code>app/composition</code></td>
+<td>注册场景并组装检索、数据和决策服务</td>
+</tr>
+</tbody>
+</table>
+<h2 id="checklist-rag-1">2. Checklist 如何调用 RAG</h2>
+<p>调用链路是：</p>
+<pre><code class="language-text">HTTP Route
+  -&gt; PolicyDecisionApplicationService
+  -&gt; RuleDrivenChecklistDecisionService
+  -&gt; PolicyRuleRetrievalService
+  -&gt; KnowledgeBaseQueryCapability
+  -&gt; Knowledge Read Port / Repository
+  -&gt; Knowledge Retrieval Pipeline
+  -&gt; RulePack
+  -&gt; ChecklistScenarioDefinition + RuleDrivenChecklistPolicy
+  -&gt; DecisionResult
+  -&gt; HTTP Response
+</code></pre>
+<p>Checklist 只消费经过规则获取层整理后的规则证据，不直接调用数据库、向量索引、Embedding 客户端或具体 Repository。</p>
+<p>RAG 层负责回答：</p>
+<ul>
+<li>哪些知识片段与场景问题相关</li>
+<li>命中片段来自哪个文档、版本、章节和页码</li>
+<li>召回、融合和 rerank 的过程信息是什么</li>
+<li>当前是否有足够的规则证据支撑后续判断</li>
+</ul>
+<p>Checklist 层负责回答：</p>
+<ul>
+<li>当前场景要求哪些材料或业务字段</li>
+<li>规则片段命中了哪些要求</li>
+<li>用户提交的数据是否覆盖已命中的要求</li>
+<li>当前结果是通过、失败还是证据不足</li>
+</ul>
+<h2 id="checklist">3. 新增 Checklist 场景</h2>
+<p>新增一个仍然属于“规则清单核验”的场景时，按以下步骤执行。</p>
+<h3 id="section-1">3.1 新建场景定义</h3>
+<p>在以下目录新增独立文件：</p>
+<pre><code class="language-text">app/modules/online/domain/checklist/scenarios/
+</code></pre>
+<p>场景定义使用通用的 <code>ChecklistScenarioDefinition</code>，通常需要提供：</p>
+<ul>
+<li><code>scenario_code</code>：稳定的场景编码</li>
+<li><code>scenario_name</code>：展示名称</li>
+<li><code>retrieval_query</code>：用于获取规则证据的查询问题</li>
+<li><code>policy_category</code>：知识库检索分类，可为空</li>
+<li><code>requirements</code>：当前场景的要求清单</li>
+<li><code>min_rule_match_count</code>：规则证据最低充分性阈值</li>
+<li><code>input_field_key</code> 和 <code>input_field_label</code>：业务输入字段定义</li>
+</ul>
+<p>每个 <code>ChecklistRequirementDefinition</code> 再定义：</p>
+<ul>
+<li><code>field_key</code></li>
+<li><code>label</code></li>
+<li><code>components</code></li>
+<li><code>evidence_keywords</code></li>
+<li><code>required</code></li>
+</ul>
+<p>具体场景内容应放在场景文件中，不要写回通用的 <code>definitions.py</code> 或 <code>registry.py</code>。</p>
+<h3 id="composition-root">3.2 在 Composition Root 注册</h3>
+<p>在 <code>app/composition/root.py</code> 中将场景定义注册到 <code>ChecklistScenarioRegistry</code>：</p>
+<pre><code class="language-python">ChecklistScenarioRegistry(
+    definitions=(场景定义一, 场景定义二),
+    default_scenario_code=&quot;默认场景编码&quot;,
+)
+</code></pre>
+<p>注册表只负责保存和查找场景，不负责导入或创建具体业务场景。</p>
+<h3 id="data-provider">3.3 判断是否需要新的 Data Provider</h3>
+<p>如果新场景仍然使用当前的 inline 材料输入，可以复用现有 Provider。</p>
+<p>如果新场景需要表单、数据库或外部业务系统数据，应在 <code>app/modules/online/application/data_acquisition</code> 中增加对应 Provider，并在 Composition Root 注册，不能把数据读取逻辑写进 Checklist Domain。</p>
+<h3 id="section-2">3.4 补充测试</h3>
+<p>至少补充：</p>
+<ul>
+<li>场景注册和查询测试</li>
+<li>规则证据充分与不足测试</li>
+<li>业务输入缺失测试</li>
+<li>材料完整与不完整测试</li>
+<li>引用和调试追踪测试</li>
+<li>HTTP 入口测试（如果新增或修改接口契约）</li>
+</ul>
+<h2 id="checklist-1">4. 哪些情况不能继续扩展 Checklist</h2>
+<p>以下能力不应为了复用代码而强行套入 <code>ChecklistScenarioDefinition</code>：</p>
+<ul>
+<li>评分或排序模型</li>
+<li>长文本结构化提取</li>
+<li>投标书章节生成</li>
+<li>多轮问答或复杂 Agent 编排</li>
+<li>不以“规则要求与输入覆盖关系”为核心的业务流程</li>
+</ul>
+<p>这类需求应先定义新的领域契约和 Application Service，再决定是否复用 Knowledge Query Capability 或 RAG Pipeline。</p>
+<h2 id="section-3">5. 分层边界</h2>
+<ul>
+<li><code>domain/checklist</code> 不得依赖 HTTP、数据库、Repository、Embedding 或 LLM 框架。</li>
+<li>Checklist 场景定义不负责执行 RAG 检索。</li>
+<li><code>knowledge/retrieval</code> 不得写入具体 Checklist 场景规则。</li>
+<li><code>application/rule_retrieval</code> 负责连接 RAG 证据与 Checklist 规则包。</li>
+<li>具体 Repository、Embedding 和外部服务只在 Infrastructure / Composition Root 出现。</li>
+<li>新增场景不得修改通用决策流程来添加单场景分支。</li>
+</ul>
+<h2 id="section-4">6. 一句话判断</h2>
+<pre><code class="language-text">场景定义属于 Online Domain，
+规则获取属于 Online Application，
+RAG 检索属于 Knowledge，
+具体数据库和模型实现属于 Infrastructure，
+所有具体场景和适配器由 Composition Root 组装。
+</code></pre>
+
+      </article>
+      <aside class="toc" aria-label="本文目录">
+        <p class="toc__title">本文目录</p>
+        <nav class="toc__links" id="toc-links"></nav>
+      </aside>
+    </main>
+    <script>
+      (() => {
+        const article = document.getElementById('article');
+        const toc = document.getElementById('toc-links');
+        const headings = Array.from(article.querySelectorAll('h2, h3'));
+        const usedIds = new Set();
+        const slugify = (text) => {
+          const raw = text
+            .trim()
+            .toLowerCase()
+            .replace(/[.,，、:：;；!?！？()[\]{}'"“”‘’`~@#$%^&*+=|\\/<>]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
+          return raw || 'section';
+        };
+        headings.forEach((heading) => {
+          const base = slugify(heading.textContent);
+          let id = base;
+          let index = 2;
+          while (usedIds.has(id)) {
+            id = `${base}-${index++}`;
+          }
+          usedIds.add(id);
+          heading.id = id;
+          const link = document.createElement('a');
+          link.href = `#${id}`;
+          link.dataset.level = heading.tagName.slice(1);
+          link.textContent = heading.textContent;
+          toc.appendChild(link);
+        });
+        if (!headings.length) {
+          toc.innerHTML = '<span class="empty-toc">当前文档没有二级或三级标题。</span>';
+          return;
+        }
+        const links = Array.from(toc.querySelectorAll('a'));
+        const updateActiveLink = () => {
+          let active = headings[0];
+          for (const heading of headings) {
+            if (heading.getBoundingClientRect().top <= 112) active = heading;
+          }
+          links.forEach((link) => link.classList.toggle('is-active', link.hash === `#${active.id}`));
+        };
+        updateActiveLink();
+        document.addEventListener('scroll', updateActiveLink, { passive: true });
+      })();
+    </script>
+  </body>
+</html>

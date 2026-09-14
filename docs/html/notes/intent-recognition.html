@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Go Agent System 学习资料：意图识别工程实践学习笔记" />
+    <title>意图识别工程实践学习笔记 · 学习中心</title>
+    <link rel="stylesheet" href="../reader.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__inner">
+        <a class="back-link" href="../index.html">返回学习中心</a>
+        <span class="article-name">意图识别工程实践学习笔记</span>
+      </div>
+    </header>
+    <main class="page">
+      <article class="article" id="article">
+<h1 id="section">意图识别工程实践学习笔记</h1>
+<p>本文用于在 Go Agent System 落实意图识别前，整理本次讨论中的核心概念、工程方案和当前项目的推荐路线。</p>
+<h2 id="section-1">目录</h2>
+<ul>
+<li><a href="#1-%E6%84%8F%E5%9B%BE%E8%AF%86%E5%88%AB%E5%9C%A8%E8%A7%A3%E5%86%B3%E4%BB%80%E4%B9%88">1. 意图识别在解决什么</a></li>
+<li><a href="#2-%E5%A4%9A-agent-%E5%B9%B3%E5%8F%B0%E4%B8%AD%E7%9A%84%E4%BD%8D%E7%BD%AE">2. 多 Agent 平台中的位置</a></li>
+<li><a href="#3-%E4%BA%94%E7%B1%BB%E5%B7%A5%E7%A8%8B%E6%96%B9%E6%A1%88">3. 五类工程方案</a></li>
+<li><a href="#4-%E4%BC%A0%E7%BB%9F%E5%88%86%E7%B1%BB%E4%B8%8E%E5%90%91%E9%87%8F%E5%8F%AC%E5%9B%9E">4. 传统分类与向量召回</a></li>
+<li><a href="#5-llm-promptfine-tune-%E4%B8%8E-pytorch">5. LLM Prompt、Fine-tune 与 PyTorch</a></li>
+<li><a href="#6-%E5%BD%93%E5%89%8D%E9%A1%B9%E7%9B%AE%E7%9A%84%E6%8E%A8%E8%8D%90%E8%B7%AF%E7%BA%BF">6. 当前项目的推荐路线</a></li>
+<li><a href="#7-%E9%9C%80%E8%A6%81%E8%AE%B0%E4%BD%8F%E7%9A%84%E7%BB%93%E8%AE%BA">7. 需要记住的结论</a></li>
+<li><a href="#8-%E6%84%8F%E5%9B%BE%E7%9B%AE%E5%BD%95%E7%9C%9F%E6%AD%A3%E7%9A%84%E5%B7%A5%E7%A8%8B%E8%B5%B7%E7%82%B9">8. 意图目录：真正的工程起点</a></li>
+<li><a href="#9-%E8%A7%84%E5%88%99%E5%8C%B9%E9%85%8D%E8%AF%A6%E8%A7%A3">9. 规则匹配详解</a></li>
+<li><a href="#10-%E4%BC%A0%E7%BB%9F-ml-%E5%88%86%E7%B1%BB%E8%AF%A6%E8%A7%A3">10. 传统 ML 分类详解</a></li>
+<li><a href="#11-%E5%90%91%E9%87%8F%E5%8F%AC%E5%9B%9E%E8%AF%A6%E8%A7%A3">11. 向量召回详解</a></li>
+<li><a href="#12-llm-prompt-%E5%88%86%E7%B1%BB%E8%AF%A6%E8%A7%A3">12. LLM Prompt 分类详解</a></li>
+<li><a href="#13-%E5%A4%9A-agent-%E7%9A%84%E6%84%8F%E5%9B%BE%E7%BD%91%E5%85%B3">13. 多 Agent 的意图网关</a></li>
+<li><a href="#14-%E7%94%A8%E6%88%B7%E7%A1%AE%E8%AE%A4%E5%92%8C%E6%89%A7%E8%A1%8C%E8%BE%B9%E7%95%8C">14. 用户确认和执行边界</a></li>
+<li><a href="#15-%E5%A6%82%E4%BD%95%E8%AF%84%E4%BC%B0%E8%AF%86%E5%88%AB%E6%95%88%E6%9E%9C">15. 如何评估识别效果</a></li>
+<li><a href="#16-%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E8%80%83%E8%99%91-fine-tune">16. 什么时候考虑 Fine-tune</a></li>
+<li><a href="#17-%E5%BD%93%E5%89%8D%E9%A1%B9%E7%9B%AE%E7%9A%84%E5%AD%A6%E4%B9%A0%E5%92%8C%E8%90%BD%E5%9C%B0%E9%A1%BA%E5%BA%8F">17. 当前项目的学习和落地顺序</a></li>
+</ul>
+<h2 id="section-2">1. 意图识别在解决什么</h2>
+<p>意图识别不是直接回答用户问题，而是先判断：<strong>用户希望系统替他做什么、当前缺什么资料、下一步应该是什么。</strong></p>
+<p>例如：</p>
+<pre><code class="language-text">用户：帮我根据招标文件生成投标书骨架。
+
+系统：我理解你希望生成投标书骨架。
+      请先上传招标 DOCX 文件；确认后才开始分析。
+</code></pre>
+<p>完整流程应当是：</p>
+<pre><code class="language-text">用户输入
+  -&gt; 意图识别
+  -&gt; 展示系统理解、缺失资料和下一步建议
+  -&gt; 用户确认、修改或取消
+  -&gt; 调用具体业务能力
+  -&gt; Agent 执行自己的 workflow
+</code></pre>
+<p>LLM 可以判断“用户可能需要 Tender Agent”，但不能自行启动 Tender Agent。用户确认和系统白名单决定是否真的执行。</p>
+<h2 id="agent">2. 多 Agent 平台中的位置</h2>
+<p>平台未来有多个 Agent 时，不应该让每个 Agent 自己抢用户请求，也不应该把所有 Agent 名称硬写进一个 Prompt。</p>
+<p>应当有一个平台级的能力目录和意图网关：</p>
+<pre><code class="language-text">用户输入
+  -&gt; 意图网关
+  -&gt; 从能力目录中找候选意图
+  -&gt; 判断用户真正需要的能力和缺失资料
+  -&gt; 用户确认
+  -&gt; 受控分发
+  -&gt; 对应 Agent / 知识库能力
+</code></pre>
+<p>每个 Agent 在能力目录中登记自己能办什么事。例如：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>Tender Agent 示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>意图代码</td>
+<td><code>tender.generate_skeleton</code></td>
+</tr>
+<tr>
+<td>业务说明</td>
+<td>根据文件生成文件目录</td>
+</tr>
+<tr>
+<td>正面示例</td>
+<td>“生成文件目录”, “按文件罗列材料”</td>
+</tr>
+<tr>
+<td>反面示例</td>
+<td>“文件下一般有哪些索引”</td>
+</tr>
+<tr>
+<td>必填资料</td>
+<td>DOCX 文件</td>
+</tr>
+<tr>
+<td>确认提示</td>
+<td>“将分析文件并生成文件目录，是否开始？”</td>
+</tr>
+<tr>
+<td>执行目标</td>
+<td>Tender Agent 的骨架生成 workflow</td>
+</tr>
+</tbody>
+</table>
+<p>意图网关是“语义网关”：负责理解、澄清、确认和分发。它不执行具体业务。</p>
+<h2 id="section-3">3. 五类工程方案</h2>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>本质</th>
+<th>最适合的场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>规则匹配</td>
+<td>用关键词、正则或固定命令判断</td>
+<td>指令固定、结果必须确定</td>
+</tr>
+<tr>
+<td>传统 ML 分类</td>
+<td>用已标注文本训练分类器</td>
+<td>意图稳定、请求量大、样本充足</td>
+</tr>
+<tr>
+<td>向量召回</td>
+<td>按语义相似度找最像的意图候选</td>
+<td>意图较多、表达多样、需要冷启动</td>
+</tr>
+<tr>
+<td>LLM Prompt</td>
+<td>让大模型按意图目录返回结构化判断</td>
+<td>需要理解语义、抽取参数和追问澄清</td>
+</tr>
+<tr>
+<td>Fine-tune</td>
+<td>用业务标注数据继续训练已有模型</td>
+<td>高并发、业务稳定、数据和评测成熟</td>
+</tr>
+</tbody>
+</table>
+<p>这些方案不是五选一。真实项目常常组合使用。</p>
+<h3 id="section-4">3.1 规则匹配</h3>
+<p>规则适合确定性操作：</p>
+<pre><code class="language-text">输入包含“取消” -&gt; cancel
+输入是 /help -&gt; help
+文件不是 DOCX -&gt; 拒绝上传
+</code></pre>
+<p>优点是快、便宜、可预测。缺点是用户换一种说法就可能失效，因此规则适合第一层保护，不适合独立承担所有自然语言理解。</p>
+<h3 id="llm-prompt">3.2 LLM Prompt</h3>
+<p>Prompt Engineering 是每次调用时告诉模型：有哪些意图、每个意图是什么意思、哪些资料是必填、哪些情况必须澄清，以及要求模型返回固定 JSON。</p>
+<p>它不改变模型本身，适合当前项目这种 Agent 数量还少、业务仍在扩展、需要理解口语化表达的阶段。</p>
+<h2 id="section-5">4. 传统分类与向量召回</h2>
+<h3 id="ml">4.1 传统 ML 分类</h3>
+<p>ML 是 Machine Learning，机器学习的总称。传统意图分类需要先准备大量人工标注数据：</p>
+<table>
+<thead>
+<tr>
+<th>用户表达</th>
+<th>正确意图</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>帮我生成投标书框架</td>
+<td><code>tender_skeleton</code></td>
+</tr>
+<tr>
+<td>制度里需要哪些材料</td>
+<td><code>knowledge_ask</code></td>
+</tr>
+<tr>
+<td>取消刚才操作</td>
+<td><code>cancel</code></td>
+</tr>
+</tbody>
+</table>
+<p>再使用逻辑回归、SVM、随机森林，或“文本向量 + 小分类器”等方式训练模型：</p>
+<pre><code class="language-text">一句用户输入 -&gt; 一个固定意图类别
+</code></pre>
+<p>它适合客服工单、售后分流、固定审批类型等长期稳定的场景。当前项目还会持续新增 Agent 和意图，且缺少大量人工标注样本，因此不宜作为首选方案。</p>
+<h3 id="section-6">4.2 向量召回</h3>
+<p>向量召回不是直接训练分类器，而是为每个意图保存说明和典型表达：</p>
+<pre><code class="language-text">tender_skeleton:
+  - 生成投标书骨架
+  - 按招标文件整理投标材料
+  - 给我一份投标文件框架
+</code></pre>
+<p>系统把用户输入和这些典型表达转换为向量，再计算语义相似度：</p>
+<pre><code class="language-text">用户：帮我按招标文件做一个投标框架
+
+候选 1：tender_skeleton
+候选 2：knowledge_ask
+候选 3：general_chat
+</code></pre>
+<p>它特别适合能力目录扩大后的平台。比如有 100 个 Agent 能力时，先召回最像的 3 到 5 个候选，再让 LLM 在候选范围内判断，比一次把所有能力都交给 LLM 更快、更便宜、更稳定。</p>
+<p>向量召回只回答“像哪个”，不负责判断资料是否齐全，也不能单独决定高风险操作。因此它通常是候选层，而不是最终执行决策层。</p>
+<h2 id="llm-promptfine-tune-pytorch">5. LLM Prompt、Fine-tune 与 PyTorch</h2>
+<h3 id="prompt-fine-tune">5.1 Prompt 与 Fine-tune 的区别</h3>
+<pre><code class="language-text">Prompt Engineering：
+不改变模型本身；每次请求时告诉模型该如何识别和返回。
+
+Fine-tune：
+使用企业自己的“输入 -&gt; 正确意图”样本继续训练已有模型，改变模型参数。
+</code></pre>
+<p>Fine-tune 不是 Prompt 效果一般时的默认下一步。先检查意图边界、正反样例、结构化输出约束和评测集是否完善。</p>
+<p>Fine-tune 适合以下条件同时满足时：</p>
+<ul>
+<li>意图类别已经稳定；</li>
+<li>已积累大量真实且人工确认过的样本；</li>
+<li>有独立评测集，能证明 Prompt 存在持续瓶颈；</li>
+<li>调用量较大，需要降低成本、延迟或提高一致性。</li>
+</ul>
+<h3 id="loraqlora-pytorch">5.2 LoRA、QLoRA 与 PyTorch</h3>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>全量微调</td>
+<td>修改模型全部参数，成本和显存要求最高</td>
+</tr>
+<tr>
+<td>LoRA</td>
+<td>冻结原模型，只训练少量附加参数</td>
+</tr>
+<tr>
+<td>QLoRA</td>
+<td>将原模型低比特量化后再训练 LoRA，更节省显存</td>
+</tr>
+</tbody>
+</table>
+<p>PyTorch 是训练框架，不是微调方法。自己使用开源模型进行 LoRA 或 QLoRA 时，常见组合是：</p>
+<pre><code class="language-text">PyTorch + Transformers + PEFT + bitsandbytes
+</code></pre>
+<p>没有 GPU 时，不适合自己对大模型做 LoRA/QLoRA 微调。可以使用模型厂商的托管 Fine-tune，或租用云 GPU；小型传统分类模型通常可在 CPU 上训练。</p>
+<h2 id="section-7">6. 当前项目的推荐路线</h2>
+<pre><code class="language-text">第一阶段：规则 + LLM Prompt + 结构化输出 + 用户确认
+  适合当前少量 Agent、快速验证业务边界的阶段。
+
+第二阶段：规则 + 向量召回候选 + LLM 最终判断 + 用户确认
+  适合能力目录扩大到几十或上百个意图的阶段。
+
+第三阶段：规则 + 传统分类或 Fine-tune + LLM 兜底
+  适合意图稳定、标注数据充分、调用量很大的阶段。
+</code></pre>
+<p>当前最重要的不是训练模型，而是定义意图目录：每个 Agent 能做什么、不能做什么、需要哪些资料、如何提示确认，以及哪些真实表达容易被误判。</p>
+<h2 id="section-8">7. 需要记住的结论</h2>
+<ol>
+<li>规则适合确定性指令，LLM 适合理解自然语言，向量适合从大量能力中找候选。</li>
+<li>传统分类和 Fine-tune 都依赖高质量标注数据；业务变化频繁时不宜过早投入。</li>
+<li>向量召回通常是候选层，不是最终执行决策层。</li>
+<li>无论采用哪种识别方案，用户确认和代码白名单都必须保留；LLM 没有自主启动 Agent 的权限。</li>
+</ol>
+<h2 id="section-9">8. 意图目录：真正的工程起点</h2>
+<p>很多人一开始会先写 Prompt，实际上工程第一步应该是先定义“系统有哪些可以办理的业务事项”。这些事项组成意图目录。</p>
+<p>如果没有意图目录，模型没有明确的候选范围，工程代码也不知道识别结果应该交给谁。意图目录不是模型配置，而是平台的业务能力清单。</p>
+<h3 id="section-10">8.1 一个意图需要定义什么</h3>
+<p>每个意图至少应包含：</p>
+<table>
+<thead>
+<tr>
+<th>内容</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>intent_code</code></td>
+<td>稳定、唯一的代码，例如 <code>tender.generate_skeleton</code></td>
+</tr>
+<tr>
+<td>业务名称</td>
+<td>给用户和运营人员看的名称</td>
+</tr>
+<tr>
+<td>业务说明</td>
+<td>明确这个意图负责什么</td>
+</tr>
+<tr>
+<td>正面示例</td>
+<td>哪些用户表达属于它</td>
+</tr>
+<tr>
+<td>反面示例</td>
+<td>哪些相似表达不属于它</td>
+</tr>
+<tr>
+<td>必填输入</td>
+<td>文件、问题、项目数据等</td>
+</tr>
+<tr>
+<td>可选输入</td>
+<td>用户关注点、过滤条件等</td>
+</tr>
+<tr>
+<td>确认提示</td>
+<td>用户确认时看到的说明</td>
+</tr>
+<tr>
+<td>执行目标</td>
+<td>确认后交给哪个 Agent 或业务能力</td>
+</tr>
+<tr>
+<td>风险级别</td>
+<td>是否涉及耗时、外部调用或敏感操作</td>
+</tr>
+<tr>
+<td>生命周期</td>
+<td>启用、停用、实验中或已废弃</td>
+</tr>
+</tbody>
+</table>
+<p>例如：</p>
+<pre><code class="language-text">intent_code: tender.generate_skeleton
+业务说明: 根据招标 DOCX 生成投标书骨架
+必填输入: tender_docx
+可选输入: user_focus
+确认提示: 将读取招标文件并生成骨架，是否开始？
+执行目标: Tender Agent / generate_skeleton workflow
+</code></pre>
+<h3 id="section-11">8.2 正面示例和反面示例</h3>
+<p>反面示例比正面示例更重要，因为真实业务里最容易出错的是相近意图之间的边界。</p>
+<pre><code class="language-text">“根据招标文件生成投标书骨架”
+  -&gt; tender.generate_skeleton
+
+“投标书通常包括哪些章节”
+  -&gt; general_chat 或 knowledge_ask
+  -&gt; 不能直接启动 Tender Agent
+</code></pre>
+<p>前一句表达了执行目标，后一句只是咨询知识。两者都出现了“投标书”，但业务动作完全不同。</p>
+<h3 id="section-12">8.3 意图数量如何控制</h3>
+<p>首版不应该把所有可能的用户表达都变成独立意图。一个意图必须对应一个清晰、可验证、能落到具体能力的业务动作。</p>
+<p>如果两个意图最终调用同一个能力、需要的资料相同、确认方式也相同，可以先合并；如果只是语气不同，不要拆成两个意图。</p>
+<h2 id="section-13">9. 规则匹配详解</h2>
+<h3 id="section-14">9.1 规则匹配具体做什么</h3>
+<p>规则匹配是代码直接判断输入，不调用模型：</p>
+<pre><code class="language-text">输入包含“取消” -&gt; cancel
+输入是“/help” -&gt; help
+文件扩展名不是 .docx -&gt; 拒绝上传
+用户确认按钮的值不是 true -&gt; 不执行
+</code></pre>
+<p>它本质上是：</p>
+<pre><code class="language-text">条件成立 -&gt; 固定结果
+</code></pre>
+<h3 id="section-15">9.2 规则最适合放在哪里</h3>
+<p>规则适合处理三类事情：</p>
+<ol>
+<li><strong>固定指令</strong>：取消、返回、帮助、重试。</li>
+<li><strong>安全边界</strong>：文件类型、大小、必填字段、权限和确认状态。</li>
+<li><strong>明确的特殊词</strong>：例如用户明确说“不要执行”“只是咨询”。</li>
+</ol>
+<p>规则不适合承担所有自然语言理解。例如用户说“这个先别跑了”“我只是想了解一下”，表达方式很多，全部写规则会迅速变得复杂。</p>
+<h3 id="section-16">9.3 规则的优点和问题</h3>
+<p>优点：</p>
+<ul>
+<li>速度快；</li>
+<li>成本低；</li>
+<li>结果确定；</li>
+<li>容易测试和审计；</li>
+<li>适合高风险操作的最后一道保护。</li>
+</ul>
+<p>问题：</p>
+<ul>
+<li>同义表达需要不断补规则；</li>
+<li>规则之间可能冲突；</li>
+<li>业务增长后维护成本会上升；</li>
+<li>很难理解长句和上下文。</li>
+</ul>
+<p>因此实际系统通常是“规则做保护，模型做理解”，而不是二选一。</p>
+<h2 id="ml-1">10. 传统 ML 分类详解</h2>
+<h3 id="section-17">10.1 从数据到分类器</h3>
+<p>传统 ML 分类需要一批人工标注数据：</p>
+<pre><code class="language-text">用户表达                         正确标签
+------------------------------------------------
+帮我生成投标书框架                tender_skeleton
+按招标文件整理投标材料            tender_skeleton
+制度里要求提交哪些材料            knowledge_ask
+取消刚才的操作                    cancel
+</code></pre>
+<p>模型从这些样本中学习不同意图的语言特征。新请求进入后，分类器输出一个标签和可能的分数。</p>
+<p>常见的传统分类方法包括逻辑回归、SVM、随机森林，以及“文本向量 + 分类器”。这里的向量通常只是把文本转换成数字特征，分类器再学习类别边界。</p>
+<h3 id="section-18">10.2 它需要哪些工程准备</h3>
+<p>真正训练前需要：</p>
+<ol>
+<li>先定义稳定的意图类别；</li>
+<li>收集真实用户表达；</li>
+<li>人工确认每条样本的正确意图；</li>
+<li>拆分训练集、验证集和测试集；</li>
+<li>训练模型并调阈值；</li>
+<li>对新数据持续监控误判。</li>
+</ol>
+<p>如果标注数据本身不准确，模型会把业务人员的错误判断也学进去。</p>
+<h3 id="section-19">10.3 传统分类适合什么场景</h3>
+<p>例如客服工单分流：</p>
+<pre><code class="language-text">退款、物流、发票、投诉、账号、售后
+</code></pre>
+<p>这些类别稳定，用户量大，企业通常已经积累了很多历史工单。分类器可以快速完成分流，成本和延迟都低。</p>
+<p>它不适合当前的 Go Agent System 作为第一方案，因为当前 Agent 目录还在成长，意图边界还没有通过真实数据验证。</p>
+<h3 id="section-20">10.4 传统分类的限制</h3>
+<p>传统分类通常更擅长回答：</p>
+<pre><code class="language-text">这句话属于哪个类别？
+</code></pre>
+<p>但当前系统还需要回答：</p>
+<ul>
+<li>用户是否只是咨询而不是要执行？</li>
+<li>是否缺少招标文件？</li>
+<li>用户说的多个目标哪个优先？</li>
+<li>应该向用户追问什么？</li>
+</ul>
+<p>这些问题通常需要 LLM 或额外的业务规则配合。</p>
+<h2 id="section-21">11. 向量召回详解</h2>
+<h3 id="section-22">11.1 向量召回在做什么</h3>
+<p>向量召回的目标不是直接做最终决定，而是从大量意图中找到最相近的候选。</p>
+<p>系统会为每个意图准备说明和典型表达：</p>
+<pre><code class="language-text">tender.generate_skeleton:
+  根据招标文件生成投标书骨架
+  帮我整理投标文件框架
+  按招标要求列出投标材料
+</code></pre>
+<p>用户输入也会转换为向量。系统计算相似度后，得到候选列表：</p>
+<pre><code class="language-text">用户：帮我按招标文件做一个投标框架
+
+1. tender.generate_skeleton  0.91
+2. knowledge_ask             0.72
+3. general_chat              0.60
+</code></pre>
+<p>这里的分数只能表示相似程度，不等于真实概率，也不等于用户已经确认执行。</p>
+<h3 id="section-23">11.2 向量召回和传统分类的区别</h3>
+<table>
+<thead>
+<tr>
+<th>对比</th>
+<th>传统分类</th>
+<th>向量召回</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主要目标</td>
+<td>直接输出一个类别</td>
+<td>找出最相近的若干候选</td>
+</tr>
+<tr>
+<td>是否需要训练分类边界</td>
+<td>需要</td>
+<td>通常不需要额外训练分类器</td>
+</tr>
+<tr>
+<td>新增意图</td>
+<td>通常要重新训练</td>
+<td>增加意图说明和样例即可参与召回</td>
+</tr>
+<tr>
+<td>处理数量</td>
+<td>适合稳定类别</td>
+<td>适合大量能力目录</td>
+</tr>
+<tr>
+<td>处理复杂参数</td>
+<td>较弱</td>
+<td>较弱，通常交给 LLM</td>
+</tr>
+<tr>
+<td>最适合的位置</td>
+<td>最终分类层</td>
+<td>候选筛选层</td>
+</tr>
+</tbody>
+</table>
+<h3 id="agent-1">11.3 多 Agent 平台为什么需要它</h3>
+<p>当平台只有 5 个能力时，可以把全部意图说明放进 Prompt。以后如果有 100 个甚至更多能力，每次把全部目录传给 LLM 会带来：</p>
+<ul>
+<li>Prompt 变长；</li>
+<li>调用成本变高；</li>
+<li>相关能力容易被无关能力干扰；</li>
+<li>模型更难保持边界清晰。</li>
+</ul>
+<p>这时可以先向量召回 3 到 5 个候选，再让 LLM 做最终判断：</p>
+<pre><code class="language-text">全部能力目录
+  -&gt; 向量召回候选
+  -&gt; LLM 在候选中判断
+  -&gt; 代码检查资料和确认状态
+</code></pre>
+<h3 id="section-24">11.4 向量召回不能独立执行</h3>
+<p>向量召回只知道“这句话和哪个能力说明比较像”，它不知道：</p>
+<ul>
+<li>用户是否真的要开始执行；</li>
+<li>文件是否已经上传；</li>
+<li>用户是否有权限；</li>
+<li>这个能力是否需要二次确认。</li>
+</ul>
+<p>因此高风险系统不能采用：</p>
+<pre><code class="language-text">相似度最高 -&gt; 直接启动 Agent
+</code></pre>
+<p>正确方式是：</p>
+<pre><code class="language-text">相似度召回 -&gt; LLM 判断 -&gt; 业务规则校验 -&gt; 用户确认 -&gt; 执行
+</code></pre>
+<h2 id="llm-prompt-1">12. LLM Prompt 分类详解</h2>
+<h3 id="prompt">12.1 Prompt 中需要告诉模型什么</h3>
+<p>一个工程化意图 Prompt 通常要包含：</p>
+<ol>
+<li>角色：你负责识别用户意图，不负责执行。</li>
+<li>意图清单：可选的 <code>intent_code</code> 和业务说明。</li>
+<li>正面示例：哪些表达属于某个意图。</li>
+<li>反面示例：哪些相似表达不属于它。</li>
+<li>必填输入：某个意图需要什么资料。</li>
+<li>澄清规则：无法确定时必须提问。</li>
+<li>输出 Schema：只返回系统允许的字段和枚举值。</li>
+</ol>
+<h3 id="section-25">12.2 模型应该返回什么</h3>
+<p>示例：</p>
+<pre><code class="language-json">{
+  &quot;status&quot;: &quot;clarification_required&quot;,
+  &quot;intent_code&quot;: &quot;tender.generate_skeleton&quot;,
+  &quot;confidence&quot;: 0.86,
+  &quot;extracted_inputs&quot;: {
+    &quot;user_focus&quot;: &quot;重点确认技术标和商务标的分线&quot;
+  },
+  &quot;missing_inputs&quot;: [&quot;tender_docx&quot;],
+  &quot;next_step&quot;: &quot;请上传招标 DOCX 文件，准备好后确认开始分析。&quot;
+}
+</code></pre>
+<p>模型不能返回：</p>
+<ul>
+<li>任意 Python 类名；</li>
+<li>任意 URL；</li>
+<li>任意工具名称；</li>
+<li>可直接执行的代码；</li>
+<li>未登记的意图代码。</li>
+</ul>
+<h3 id="section-26">12.3 为什么必须使用结构化输出</h3>
+<p>如果让模型自由回答，前端很难判断应该展示什么：是确认按钮、上传按钮，还是澄清问题。</p>
+<p>结构化输出让代码可以进行明确校验：</p>
+<pre><code class="language-text">intent_code 是否在登记目录中？
+status 是否是允许的枚举？
+缺失输入是否符合该意图的定义？
+</code></pre>
+<p>当前项目已有结构化 LLM 能力，这正是意图识别可以复用的基础。</p>
+<h2 id="agent-2">13. 多 Agent 的意图网关</h2>
+<p>意图网关不是普通的 API Gateway。API Gateway 主要处理鉴权、限流和 HTTP 转发；意图网关处理用户语言和业务能力匹配。</p>
+<p>意图网关主要做四件事：</p>
+<ol>
+<li>接收用户自然语言；</li>
+<li>根据能力目录识别意图；</li>
+<li>判断缺失资料并向用户澄清；</li>
+<li>用户确认后按白名单分发到对应能力。</li>
+</ol>
+<p>它不负责：</p>
+<ul>
+<li>Tender Agent 内部的文档分析；</li>
+<li>知识库内部的向量检索；</li>
+<li>Agent 之间的复杂协作；</li>
+<li>长任务状态和会话历史；</li>
+<li>模型自主决定调用目标。</li>
+</ul>
+<p>每增加一个 Agent，平台应补充它的能力定义、样例、输入 Schema、确认文案和评测案例，而不是直接修改一个巨大的总 Prompt。</p>
+<h2 id="section-27">14. 用户确认和执行边界</h2>
+<h3 id="section-28">14.1 为什么确认不是多余步骤</h3>
+<p>用户说“投标文件怎么准备”，可能只是咨询；用户说“按这份文件生成投标书骨架”，才可能是执行请求。</p>
+<p>即使模型已经识别到后者，也应该先展示：</p>
+<pre><code class="language-text">我理解你要生成投标书骨架。
+将读取招标文件并调用 Tender Agent。
+请确认是否开始。
+</code></pre>
+<h3 id="section-29">14.2 三种状态</h3>
+<pre><code class="language-text">ready_for_confirmation
+  意图明确，资料基本齐全，可以展示确认按钮。
+
+clarification_required
+  意图不明确或缺少资料，只能展示追问和补充入口。
+
+unsupported
+  平台暂时没有对应能力，只能说明当前不支持。
+</code></pre>
+<p>只有第一种状态在用户点击确认后才允许进入业务调用。</p>
+<h3 id="section-30">14.3 为什么由代码控制</h3>
+<p>LLM 返回的是判断，代码负责校验：</p>
+<pre><code class="language-text">意图代码是否有效
+资料是否齐全
+用户是否确认
+能力是否启用
+用户是否有权限
+</code></pre>
+<p>这些条件全部通过后，代码才根据固定映射调用 Agent。这样即使模型判断错了，也不能直接造成业务执行。</p>
+<h2 id="section-31">15. 如何评估识别效果</h2>
+<p>不能只看模型自己返回的 <code>confidence</code>。工程上需要准备固定评测集：</p>
+<table>
+<thead>
+<tr>
+<th>样例类型</th>
+<th>目的</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>明确请求</td>
+<td>验证基本识别能力</td>
+</tr>
+<tr>
+<td>同义表达</td>
+<td>验证口语化表达</td>
+</tr>
+<tr>
+<td>反面样例</td>
+<td>验证相近意图边界</td>
+</tr>
+<tr>
+<td>缺少资料</td>
+<td>验证是否会澄清</td>
+</tr>
+<tr>
+<td>多意图输入</td>
+<td>验证是否会追问</td>
+</tr>
+<tr>
+<td>未支持请求</td>
+<td>验证是否会拒绝硬猜</td>
+</tr>
+<tr>
+<td>模型异常输出</td>
+<td>验证结构化校验和安全边界</td>
+</tr>
+</tbody>
+</table>
+<p>常见指标：</p>
+<ul>
+<li><strong>准确率</strong>：模型判断正确的比例；</li>
+<li><strong>精确率</strong>：模型说是某意图时，有多少真的属于它；</li>
+<li><strong>召回率</strong>：属于某意图的请求，有多少被识别出来；</li>
+<li><strong>F1</strong>：精确率和召回率的综合指标；</li>
+<li><strong>澄清率</strong>：多少请求被系统要求补充或确认；</li>
+<li><strong>误启动率</strong>：未确认时错误调用 Agent 的次数，目标必须为零。</li>
+</ul>
+<p>对于当前项目，误启动率比单纯的准确率更重要：宁可多问一次，也不能在用户未确认时启动耗时或有副作用的 Agent。</p>
+<h2 id="fine-tune">16. 什么时候考虑 Fine-tune</h2>
+<p>Fine-tune 是使用业务标注数据继续训练已有模型，不是 Prompt 的同义词。</p>
+<p>适合考虑 Fine-tune 的条件：</p>
+<ol>
+<li>意图类别已经稳定；</li>
+<li>已积累大量真实且人工确认过的样本；</li>
+<li>已有评测集证明 Prompt 在某些类型上持续失败；</li>
+<li>调用量大，成本、延迟或一致性成为实际问题；</li>
+<li>有模型训练和部署的资源。</li>
+</ol>
+<p>LoRA 和 QLoRA 是常见的参数高效微调方式，PyTorch 是训练框架。没有 GPU 时，自己对大模型做 QLoRA 会比较困难，但可以使用模型厂商的托管微调或租用云 GPU。</p>
+<p>Fine-tune 不能替代业务定义。如果意图边界本身混乱、样本标签不一致，微调只会更稳定地学习错误规则。</p>
+<h2 id="section-32">17. 当前项目的学习和落地顺序</h2>
+<pre><code class="language-text">第一步：定义意图目录和业务边界
+  先明确 Agent 能做什么、不能做什么、需要什么资料。
+
+第二步：用规则保护固定指令和安全边界
+  处理取消、确认、文件校验、权限等确定性问题。
+
+第三步：用 LLM Prompt 做首版结构化识别
+  识别意图、抽取参数、判断是否需要澄清。
+
+第四步：加入评测集和人工修正记录
+  记录真实表达、正确意图、误判原因和用户修改结果。
+
+第五步：Agent 数量扩大后加入向量召回
+  先找候选能力，再交给 LLM 最终判断。
+
+第六步：数据和调用量成熟后再评估传统分类或 Fine-tune
+  不因为“模型偶尔判断错”就立即微调。
+</code></pre>
+<p>当前项目最重要的基础不是先训练模型，而是把能力目录、意图边界、确认流程和评测样例做清楚。</p>
+
+      </article>
+      <aside class="toc" aria-label="本文目录">
+        <p class="toc__title">本文目录</p>
+        <nav class="toc__links" id="toc-links"></nav>
+      </aside>
+    </main>
+    <script>
+      (() => {
+        const article = document.getElementById('article');
+        const toc = document.getElementById('toc-links');
+        const headings = Array.from(article.querySelectorAll('h2, h3'));
+        const usedIds = new Set();
+        const slugify = (text) => {
+          const raw = text
+            .trim()
+            .toLowerCase()
+            .replace(/[.,，、:：;；!?！？()[\]{}'"“”‘’`~@#$%^&*+=|\\/<>]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
+          return raw || 'section';
+        };
+        headings.forEach((heading) => {
+          const base = slugify(heading.textContent);
+          let id = base;
+          let index = 2;
+          while (usedIds.has(id)) {
+            id = `${base}-${index++}`;
+          }
+          usedIds.add(id);
+          heading.id = id;
+          const link = document.createElement('a');
+          link.href = `#${id}`;
+          link.dataset.level = heading.tagName.slice(1);
+          link.textContent = heading.textContent;
+          toc.appendChild(link);
+        });
+        if (!headings.length) {
+          toc.innerHTML = '<span class="empty-toc">当前文档没有二级或三级标题。</span>';
+          return;
+        }
+        const links = Array.from(toc.querySelectorAll('a'));
+        const updateActiveLink = () => {
+          let active = headings[0];
+          for (const heading of headings) {
+            if (heading.getBoundingClientRect().top <= 112) active = heading;
+          }
+          links.forEach((link) => link.classList.toggle('is-active', link.hash === `#${active.id}`));
+        };
+        updateActiveLink();
+        document.addEventListener('scroll', updateActiveLink, { passive: true });
+      })();
+    </script>
+  </body>
+</html>

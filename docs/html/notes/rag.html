@@ -1,0 +1,1383 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Go Agent System 学习资料：RAG学习笔记" />
+    <title>RAG学习笔记 · 学习中心</title>
+    <link rel="stylesheet" href="../reader.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__inner">
+        <a class="back-link" href="../index.html">返回学习中心</a>
+        <span class="article-name">RAG学习笔记</span>
+      </div>
+    </header>
+    <main class="page">
+      <article class="article" id="article">
+<h1 id="rag">RAG 构建流程说明</h1>
+<p>文档用于沉淀我在过往到现在学习AI工程化和构建 RAG 落地方式的处理思路。</p>
+<h2 id="section">目录</h2>
+<ul>
+<li><a href="#%E4%B8%80%E6%88%91%E5%AF%B9rag%E7%9A%84%E7%90%86%E8%A7%A3">一、我对RAG的理解</a></li>
+<li><a href="#%E4%BA%8C%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93">二、向量数据库</a>
+<ul>
+<li><a href="#21-%E4%B8%80%E4%B8%AA%E5%85%B7%E4%BD%93%E5%9C%BA%E6%99%AF">2.1 一个具体场景</a></li>
+<li><a href="#22-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93">2.2 为什么需要向量数据库</a></li>
+<li><a href="#23-%E4%BB%8E%E6%A6%82%E5%BF%B5%E5%88%B0%E8%90%BD%E5%9C%B0">2.3 从概念到落地</a></li>
+<li><a href="#24-%E5%AF%B9%E5%88%87%E7%89%87%E9%80%9A%E7%94%A8%E5%A4%84%E7%90%86%E4%B8%AA%E4%BA%BA%E7%BB%8F%E9%AA%8C">2.4 对切片通用处理(个人经验)</a></li>
+<li><a href="#25-%E5%A6%82%E4%BD%95%E8%A7%A3%E5%BB%BA%E7%AB%8B%E5%90%91%E9%87%8F%E8%A1%A8">2.5 如何解建立向量表</a></li>
+<li><a href="#26-%E6%88%91%E7%8E%B0%E5%9C%A8%E6%80%8E%E4%B9%88%E7%90%86%E8%A7%A3%E5%90%91%E9%87%8F%E8%A1%A8%E5%AD%97%E6%AE%B5%E5%92%8C%E5%9C%BA%E6%99%AF">2.6 我现在怎么理解向量表字段和场景</a></li>
+<li><a href="#27-%E5%90%91%E9%87%8F%E7%B4%A2%E5%BC%95">2.7 向量索引</a></li>
+</ul>
+</li>
+<li><a href="#%E4%B8%89%E5%AE%9E%E8%B7%B5%E6%93%8D%E4%BD%9C">三、实践操作</a></li>
+<li><a href="#%E5%9B%9B%E6%96%87%E6%9C%AC%E6%B8%85%E6%B4%97%E5%8E%9F%E5%88%99">四、文本清洗原则</a></li>
+<li><a href="#%E4%BA%94-mvp-%E9%98%B6%E6%AE%B5%E9%AA%8C%E6%94%B6">五、MVP 阶段验收</a></li>
+<li><a href="#%E5%85%AD%E6%95%88%E6%9E%9C%E9%AA%8C%E8%AF%81">六、效果验证</a></li>
+<li><a href="#%E4%B8%83%E9%AA%8C%E6%94%B6%E9%98%B6%E6%AE%B5">七、验收阶段</a></li>
+<li><a href="#%E5%85%ABrag-%E6%A3%80%E7%B4%A2%E4%BC%98%E5%8C%96">八、RAG 检索优化</a>
+<ul>
+<li><a href="#81-%E4%BB%80%E4%B9%88%E6%98%AF%E5%8F%AC%E5%9B%9E">8.1 什么是召回</a></li>
+<li><a href="#82-%E4%BB%80%E4%B9%88%E6%98%AF%E5%90%91%E9%87%8F%E5%8F%AC%E5%9B%9E">8.2 什么是向量召回</a></li>
+<li><a href="#83-%E4%BB%80%E4%B9%88%E6%98%AF%E5%85%B3%E9%94%AE%E8%AF%8D%E5%8F%AC%E5%9B%9E">8.3 什么是关键词召回</a></li>
+<li><a href="#84-%E4%BB%80%E4%B9%88%E6%98%AF%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2">8.4 什么是混合检索</a></li>
+<li><a href="#85-%E4%BB%80%E4%B9%88%E6%98%AF-rerank">8.5 什么是 rerank</a></li>
+<li><a href="#86-%E5%B8%B8%E8%A7%81%E6%A3%80%E7%B4%A2%E7%AE%97%E6%B3%95%E7%B1%BB%E5%88%AB%E4%B8%8E%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF">8.6 常见检索算法类别与适用场景</a></li>
+</ul>
+</li>
+<li><a href="#%E4%B9%9Drag-%E5%B7%A5%E7%A8%8B%E5%8C%96">九、RAG 工程化</a>
+<ul>
+<li><a href="#91-%E4%BB%80%E4%B9%88%E6%98%AF-retrieval-pipeline">9.1 什么是 retrieval pipeline</a></li>
+<li><a href="#92-%E4%BB%80%E4%B9%88%E6%98%AF-retriever">9.2 什么是 retriever</a></li>
+<li><a href="#93-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E6%9A%B4%E9%9C%B2%E4%B8%AD%E9%97%B4%E8%B0%83%E8%AF%95%E4%BF%A1%E6%81%AF">9.3 为什么要暴露中间调试信息</a></li>
+<li><a href="#94-%E4%BB%80%E4%B9%88%E6%98%AF%E8%AF%84%E6%B5%8B%E9%9B%86">9.4 什么是评测集</a></li>
+<li><a href="#95-%E4%BB%80%E4%B9%88%E6%98%AF-baseline">9.5 什么是 baseline</a></li>
+<li><a href="#96-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%AF%84%E6%B5%8B%E8%A6%81%E5%89%8D%E7%BD%AE">9.6 为什么评测要前置</a></li>
+</ul>
+</li>
+</ul>
+<h2 id="section-1">阅读提示：这次新增知识和原有内容的关系</h2>
+<p>为了方便后续查阅，这里把当前阶段最常提到的 6 个关键词，和这份笔记里原本已有的内容做一个对应说明。</p>
+<h3 id="section-2">1. 召回</h3>
+<p>这份笔记原本已经有“先检索，再回答”的基本思想，只是之前没有把 <code>召回</code> 这个词单独提出来定义。</p>
+<p>可以优先回看：</p>
+<ul>
+<li><a href="#%E4%B8%80%E6%88%91%E5%AF%B9rag%E7%9A%84%E7%90%86%E8%A7%A3">一、我对RAG的理解</a></li>
+<li><a href="#%E4%B8%89%E5%AE%9E%E8%B7%B5%E6%93%8D%E4%BD%9C">三、实践操作</a></li>
+</ul>
+<p>这次新增补强的是：</p>
+<ul>
+<li>明确把“先找候选内容”这一步命名为 <code>召回</code></li>
+<li>把召回和“最终回答”区分开</li>
+</ul>
+<h3 id="section-3">2. 向量召回</h3>
+<p>这份笔记原本已经覆盖了向量召回的核心思想，只是之前更多是在讲“语义检索”。</p>
+<p>可以优先回看：</p>
+<ul>
+<li><a href="#21-%E4%B8%80%E4%B8%AA%E5%85%B7%E4%BD%93%E5%9C%BA%E6%99%AF">2.1 一个具体场景</a></li>
+<li><a href="#22-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93">2.2 为什么需要向量数据库</a></li>
+</ul>
+<p>这次新增补强的是：</p>
+<ul>
+<li>明确把“按语义相似度找 chunk”命名为 <code>向量召回</code></li>
+<li>把它和后面的关键词召回、混合检索区分开</li>
+</ul>
+<h3 id="section-4">3. 关键词召回</h3>
+<p>这份笔记原本已经有关键词检索和向量检索的对比，但还没有把它放到“召回策略”的语境里系统展开。</p>
+<p>可以优先回看：</p>
+<ul>
+<li><a href="#21-%E4%B8%80%E4%B8%AA%E5%85%B7%E4%BD%93%E5%9C%BA%E6%99%AF">2.1 一个具体场景</a></li>
+<li><a href="#22-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93">2.2 为什么需要向量数据库</a></li>
+</ul>
+<p>这次新增补强的是：</p>
+<ul>
+<li>明确说明关键词召回更适合制度名、编号、专有词、条款词</li>
+<li>把它作为和向量召回并列的一类检索方式来看待</li>
+</ul>
+<h3 id="section-5">4. 混合检索</h3>
+<p>这部分基本属于这次新增的内容。</p>
+<p>之前的笔记已经有一个很重要的铺垫：你已经意识到“结构化过滤”和“语义检索”是互相配合的，而不是互相替代的。</p>
+<p>可以优先回看：</p>
+<ul>
+<li><a href="#22-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93">2.2 为什么需要向量数据库</a></li>
+<li><a href="#27-%E5%90%91%E9%87%8F%E7%B4%A2%E5%BC%95">2.7 向量索引</a></li>
+</ul>
+<p>这次新增补强的是：</p>
+<ul>
+<li>明确提出 <code>混合检索 = 向量召回 + 关键词召回</code></li>
+<li>把它作为第二阶段重点演进方向之一</li>
+</ul>
+<h3 id="rerank">5. rerank</h3>
+<p>这部分基本也是这次新增的内容。</p>
+<p>因为前面的笔记更多在讲“怎么找到候选内容”，还没有进一步展开“找到了以后怎么重新排序”。</p>
+<p>这次新增补强的是：</p>
+<ul>
+<li>先召回，再重排的两段式思路</li>
+<li>为什么 rerank 解决的是“顺序”和“证据质量”问题，而不只是“有没有找到”</li>
+</ul>
+<h3 id="retrieval-pipeline">6. retrieval pipeline</h3>
+<p>这部分属于偏工程化的新内容。</p>
+<p>你原来的笔记已经有流水线意识了，比如：</p>
+<ul>
+<li><a href="#%E4%B8%89%E5%AE%9E%E8%B7%B5%E6%93%8D%E4%BD%9C">三、实践操作</a></li>
+</ul>
+<p>原来你写的是：</p>
+<ul>
+<li>文件登记</li>
+<li>文本解析</li>
+<li>清洗</li>
+<li>章节拆分</li>
+<li>chunk</li>
+<li>向量化</li>
+<li>入库</li>
+<li>检索问答</li>
+</ul>
+<p>这本身已经是一条很清楚的业务流水线。</p>
+<p>这次新增补强的是：</p>
+<ul>
+<li>把“检索这一步”单独抽出来，理解成一条 <code>retrieval pipeline</code></li>
+<li>明确检索内部也可以继续拆步骤，例如：
+<ul>
+<li>向量召回</li>
+<li>关键词召回</li>
+<li>融合</li>
+<li>rerank</li>
+<li>过滤</li>
+</ul>
+</li>
+</ul>
+<h3 id="section-6">小结</h3>
+<p>如果只看学习层次，可以把这些内容分成三层：</p>
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>包含什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAG 基础</td>
+<td>检索 + 回答、切片、向量化、向量表、最小验证</td>
+</tr>
+<tr>
+<td>RAG 检索优化</td>
+<td>召回、向量召回、关键词召回、混合检索、rerank</td>
+</tr>
+<tr>
+<td>RAG 工程化</td>
+<td>retrieval pipeline、retriever、调试信息、评测集、baseline、评测前置</td>
+</tr>
+</tbody>
+</table>
+<p>这样看就会更清楚：</p>
+<ul>
+<li>前面章节主要在讲 <code>RAG 基础</code></li>
+<li>第八章主要在讲 <code>RAG 检索优化</code></li>
+<li>第九章主要在讲 <code>RAG 工程化</code></li>
+</ul>
+<h2 id="rag-1">一、我对RAG的理解</h2>
+<p>RAG，全称是 <code>Retrieval-Augmented Generation</code>，用一个更容易理解的话来说，就是：</p>
+<p><strong>知识检索增强生成。</strong></p>
+<ol>
+<li>两个关键词:</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>定义</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Retrieval</code></td>
+<td>先去知识库里把和当前问题最相关的内容找出来</td>
+</tr>
+<tr>
+<td><code>Generation</code></td>
+<td>再让大模型基于这些找到的内容去组织回答</td>
+</tr>
+</tbody>
+</table>
+<ol start="2">
+<li>之所以需要RAG, 是因为LLM推出是有滞后性的, 对于推出以后的发生的事情是不知道, 同时许多公司并不会将敏感数据放上网络因此才需要RAG. 下面是我之前工作上遇到的问题清单:</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>存在风险点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>知识不是最新的</td>
+<td>模型参数里的知识不是实时更新的</td>
+</tr>
+<tr>
+<td>不了解企业私有资料</td>
+<td>公司制度、收费标准、内部规范并不在模型预训练语料里</td>
+</tr>
+<tr>
+<td>容易“说得像真的”的&quot;幻觉&quot;</td>
+<td>即使不知道，也可能生成一段看起来很像答案的话</td>
+</tr>
+<tr>
+<td>很难回溯依据</td>
+<td>只靠模型生成，很难说明答案是从哪份资料来的</td>
+</tr>
+</tbody>
+</table>
+<p>所以思路很清晰, RAG的出现就是解决下面这些场景的:</p>
+<table>
+<thead>
+<tr>
+<th>场景问题</th>
+<th>RAG 的作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>模型不知道企业内部信息</td>
+<td>先检索制度内容，再回答</td>
+</tr>
+<tr>
+<td>需要回答时给出出处</td>
+<td>让回答建立在命中的原文片段上</td>
+</tr>
+<tr>
+<td>需要减少幻觉</td>
+<td>用真实资料约束模型生成</td>
+</tr>
+<tr>
+<td>需要后期维护知识</td>
+<td>更新知识库，而不是重新训练模型</td>
+</tr>
+</tbody>
+</table>
+<p>RAG 其实不是“让模型更聪明”，而是“让模型更有依据”。</p>
+<p><strong>让大模型的回答，尽量建立在可检索、可引用、可回溯的知识基础上。</strong></p>
+<h2 id="section-7">二、向量数据库</h2>
+<h3 id="section-8">2.1 一个具体场景</h3>
+<p>抛出一个场景。</p>
+<p>比如在公司规章制度里写的是：</p>
+<blockquote>
+<p>员工离职后仍应承担保密义务</p>
+</blockquote>
+<p>但用户真正问的可能是：</p>
+<ul>
+<li>员工离职以后还要不要保密？</li>
+<li>离职后的保密责任怎么算？</li>
+<li>保密义务会不会因为离职而结束？</li>
+</ul>
+<p>这时候就会发现一个问题：</p>
+<p><strong>用户的问题和原文在字面上可能并不完全一致，但语义上其实是在问同一件事。</strong></p>
+<p>若是靠传统的精确匹配，不管是 <code>like</code>、<code>equal</code>，还是普通条件查询，它们更擅长解决的都是“这几个字有没有出现”“这个字段是不是等于某个值”。</p>
+<p>在agent真实问答场景里，很多时候用户不会按照原文来提问，而是会用更口语化、更模糊、甚至更接近自己理解的方式来表达问题。也正因为这样，仅仅把资料存起来是不够的，更关键的是系统能不能把“意思接近”的内容找出来。</p>
+<p>向量数据库并不是简单地把一段文字原样存进去，而是会先把文本转换成能够表达语义特征的向量，再基于向量之间的距离或相似度去做检索。</p>
+<p>换句话说：</p>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>更擅长解决什么问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>关系型数据库</td>
+<td>精确存储、结构化查询、条件过滤</td>
+</tr>
+<tr>
+<td>关键词检索</td>
+<td>查有没有出现某些词</td>
+</tr>
+<tr>
+<td>向量数据库</td>
+<td>查语义上是不是相近</td>
+</tr>
+</tbody>
+</table>
+<h3 id="section-9">2.2 为什么需要向量数据库</h3>
+<p>向量数据库的价值，不只是“存向量”这三个字，而是它让系统有机会去做一件传统精确匹配很难做好的事情：</p>
+<p><strong>按语义相似度去找内容，而不只是按关键词完全匹配去找内容。</strong></p>
+<p>基于上表可以知道传统数据库更适合做结构化管理、状态维护、条件筛选；向量数据库更适合做语义召回。</p>
+<p>这两者在 RAG 场景里并不是互相替代的关系，而更像是互相配合的关系。</p>
+<p>再往前理解一步，向量数据库是 RAG 检索层里一块非常关键的基础设施。它解决的核心问题不是“回答”，而是“先把最相关的内容找出来”。</p>
+<p>也就是说：</p>
+<ul>
+<li>向量数据库负责“找”</li>
+<li>大模型负责“答”</li>
+<li>RAG 负责把“找”和“答”接起来</li>
+</ul>
+<p>所以为什么很多 RAG 系统都会搭配向量数据库，本质上不是因为这是一种流行搭配，而是因为真实业务里的很多问题，本来就不是靠关键词精确匹配就能解决的。</p>
+<p>尤其在制度、规范、业务规则这类资料里，这种场景下感觉会更明显。用户往往不会按文档原句发问，而是会带着自己的理解、口语化表达甚至模糊印象来问。这时如果没有语义检索，只靠精确匹配，检索效果通常会比较僵硬。</p>
+<p>所以到现在为止，最核心的理解是：</p>
+<p><strong>向量数据库解决的是“怎么更好地找”，RAG 解决的是“怎么基于找到的内容去回答”。</strong></p>
+<h3 id="section-10">2.3 从概念到落地</h3>
+<p>明白了向量数据库定义后, 在落地前还有两个更实际的问题：</p>
+<ol>
+<li>资料到底应该怎么切片</li>
+<li>切完以后，这些内容要以什么结构存进向量表</li>
+</ol>
+<p>这两件事其实是连在一起的。</p>
+<p>如果前面没有先想清楚“怎么切”，后面就很容易变成只是把一堆文本做成向量存进去；但这些向量到底对应的是整篇文档、某一章、某一条，还是某一段，其实是模糊的。这样做出来的检索效果，往往也不会稳定。</p>
+<h3 id="section-11">2.4 对切片通用处理(个人经验)</h3>
+<p>对切片并不能是简单地把文档按固定字数拆开，而是把它看成一个围绕业务场景去设计检索单元的过程。切片的核心目的，不是单纯为了把长文拆短，而是为了让系统在检索时既能尽量找准内容，又不要丢掉必要的上下文。</p>
+<p>切片没有一个绝对统一的标准。切得太小，容易把原本完整的语义打碎；切得太大，又容易把多个主题混在一起，让相似度检索不够精准。切片本质上是在平衡两件事：</p>
+<table>
+<thead>
+<tr>
+<th>平衡点</th>
+<th>过小会怎样</th>
+<th>过大会怎样</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>语义完整性</td>
+<td>上下文不完整，容易断章取义</td>
+<td>相对完整</td>
+</tr>
+<tr>
+<td>检索精度</td>
+<td>精度可能高，但容易碎</td>
+<td>容易混入无关内容</td>
+</tr>
+</tbody>
+</table>
+<p>PS: 以前自己刚上手用过的一个土方法，按场景去切，先做一个大类的切片规则，然后交给程序去跑。虽然不够规范，但方向大致其实是对的。因为有一部分是人工参与但是不够智能就是了, 很不ai工程化</p>
+<p>因为切片本来就不是纯技术动作，它一定带着业务理解。更准确一点说，应该是：</p>
+<p><strong>人工负责定义切片策略，程序负责按策略批量执行。</strong></p>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>谁负责</th>
+<th>做什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>策略层</td>
+<td>人</td>
+<td>根据业务场景定义这类资料该怎么切</td>
+</tr>
+<tr>
+<td>执行层</td>
+<td>程序</td>
+<td>按规则批量解析、切块、清洗、入库</td>
+</tr>
+</tbody>
+</table>
+<p>根据之前踩过的坑, 就个人理解真正决定“怎么切”的，还是业务场景、文档结构和问答目标。</p>
+<p>比如：</p>
+<table>
+<thead>
+<tr>
+<th>文档类型</th>
+<th>更适合的切片思路</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>制度类</td>
+<td>优先按章、条、款切，必要时再按长度补切</td>
+</tr>
+<tr>
+<td>收费标准类</td>
+<td>按项目、子项、表格行切</td>
+</tr>
+<tr>
+<td>合同模板类</td>
+<td>按条款、责任、付款条件切</td>
+</tr>
+</tbody>
+</table>
+<p>拿制度类资料来说，应该把“条”款作为核心切片单位。因为“条”通常已经接近一个相对完整的规则表达，既比整篇文档更适合检索，也比一句一句切更不容易把语义打碎。</p>
+<p>所以到现在为止，我对切片最核心的理解是：</p>
+<p><strong>RAG 的切片策略是由业务场景、文档结构和问答目标共同决定的；人工负责定义规则，程序负责按规则执行。</strong></p>
+<h3 id="section-12">2.5 如何解建立向量表</h3>
+<p>对“建立向量表”并不是“建一张表存 embedding”这么简单。更准确地说，向量表是 RAG 检索层里的核心数据结构，它保存的并不是普通业务数据，而是<strong>经过切片之后、可以被语义检索的知识单元</strong>。</p>
+<p>在建立向量表之前至少要先想清楚三个问题：</p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>本质上在解决什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>我到底在检索什么</td>
+<td>检索单位是什么</td>
+</tr>
+<tr>
+<td>我靠什么判断两段内容语义接近</td>
+<td>相似度计算靠什么完成</td>
+</tr>
+<tr>
+<td>命中之后怎么回到原文</td>
+<td>内容如何定位和溯源</td>
+</tr>
+</tbody>
+</table>
+<p>也就是说，向量表里真正重要的信息，至少不是只有一列向量，而是至少要包含下面几类内容：</p>
+<table>
+<thead>
+<tr>
+<th>信息类型</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文本内容</td>
+<td>这是未来真正被检索、也会被送给模型的上下文</td>
+</tr>
+<tr>
+<td>向量表示</td>
+<td>这是用来做语义相似度匹配的核心</td>
+</tr>
+<tr>
+<td>来源信息</td>
+<td>这是命中后回到原文、章节、页码、制度名称的依据</td>
+</tr>
+<tr>
+<td>模型信息</td>
+<td>这是后续重建向量、切换 embedding 模型的重要基础</td>
+</tr>
+</tbody>
+</table>
+<p><code>document</code> 更像知识来源单位，它回答的是“这份资料是什么”；而 <code>chunk</code> 更像检索单位，它回答的是“系统实际拿哪一段内容去做召回”；<code>embedding</code> 则是 <code>chunk</code> 的语义表达方式，它负责让系统能够按“意思接近”而不只是“字面相同”去找内容。</p>
+<p>具体如下：</p>
+<table>
+<thead>
+<tr>
+<th>单位</th>
+<th>更像什么</th>
+<th>在 RAG 里主要承担什么作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>document</code></td>
+<td>知识来源单位</td>
+<td>表示这份资料本身是什么</td>
+</tr>
+<tr>
+<td><code>chunk</code></td>
+<td>检索单位</td>
+<td>表示系统实际拿什么内容去召回</td>
+</tr>
+<tr>
+<td><code>embedding</code></td>
+<td>语义表达单位</td>
+<td>表示这段内容如何参与相似度计算</td>
+</tr>
+</tbody>
+</table>
+<p>所以建立向量表，本质上不是简单存一列向量，而是在设计：<strong>一个切片后的知识单元，如何被表示、被检索、被定位、被维护。</strong></p>
+<h3 id="section-13">2.6 我现在怎么理解向量表字段和场景</h3>
+<p>如果只保留最小骨架，向量表至少应该围绕下面几类字段来设计：</p>
+<table>
+<thead>
+<tr>
+<th>字段类型</th>
+<th>作用</th>
+<th>为什么重要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>向量记录主键</td>
+<td>唯一标识一条检索记录</td>
+</tr>
+<tr>
+<td><code>document_id</code></td>
+<td>所属文档</td>
+<td>知道这段内容来自哪份资料</td>
+</tr>
+<tr>
+<td><code>chunk_id</code></td>
+<td>所属切片</td>
+<td>知道它对应哪个检索单元</td>
+</tr>
+<tr>
+<td><code>chunk_text</code></td>
+<td>切片文本</td>
+<td>检索命中后真正给模型看的内容</td>
+</tr>
+<tr>
+<td><code>embedding</code></td>
+<td>向量值</td>
+<td>用来做语义相似度计算</td>
+</tr>
+<tr>
+<td><code>model_name</code></td>
+<td>向量模型名</td>
+<td>方便后续模型切换和重建</td>
+</tr>
+</tbody>
+</table>
+<p>如果再往工程化一点走，下面这些字段是具有参考价值的：</p>
+<table>
+<thead>
+<tr>
+<th>字段类型</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>section_title</code></td>
+<td>记录它属于哪一章、哪一节</td>
+</tr>
+<tr>
+<td><code>article_no</code></td>
+<td>记录它对应第几条、第几款</td>
+</tr>
+<tr>
+<td><code>category</code></td>
+<td>区分制度、收费标准、合同等类型</td>
+</tr>
+<tr>
+<td><code>source_type</code></td>
+<td>区分 PDF、DOCX、人工录入</td>
+</tr>
+<tr>
+<td><code>page_no</code></td>
+<td>方便 PDF 场景回溯原页</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>支持文档更新和向量重建</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>控制是否参与检索</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td>记录生成时间</td>
+</tr>
+</tbody>
+</table>
+<p>这样再看，向量表里真正保存的，其实不只是向量，而是：</p>
+<table>
+<thead>
+<tr>
+<th>信息层</th>
+<th>保存的内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文本层</td>
+<td>切片后的文本内容</td>
+</tr>
+<tr>
+<td>向量层</td>
+<td>文本对应的 embedding</td>
+</tr>
+<tr>
+<td>来源层</td>
+<td>文档、章节、条款、页码等定位信息</td>
+</tr>
+<tr>
+<td>维护层</td>
+<td>模型、版本、状态、时间等管理信息</td>
+</tr>
+</tbody>
+</table>
+<p>PS: 需要什么元数据字段是需要场景支撑的。</p>
+<p>比如：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>为什么要有对应字段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>用户问制度里的某一条规定</td>
+<td>需要 <code>chunk_text</code>、<code>article_no</code>、<code>section_title</code></td>
+</tr>
+<tr>
+<td>用户问收费标准某个项目</td>
+<td>需要 <code>category</code> 区分制度和收费资料</td>
+</tr>
+<tr>
+<td>检索结果出来后要展示原文来源</td>
+<td>需要 <code>document_id</code>、<code>page_no</code>、<code>source_type</code></td>
+</tr>
+<tr>
+<td>后面更换 embedding 模型</td>
+<td>需要 <code>model_name</code>、<code>version</code></td>
+</tr>
+<tr>
+<td>文档更新后要重建向量</td>
+<td>需要版本和状态字段</td>
+</tr>
+<tr>
+<td>只想检索“当前有效”的资料</td>
+<td>需要 <code>status</code> 或有效性标记</td>
+</tr>
+</tbody>
+</table>
+<p>所以字段设计本质上不是孤立的技术动作，而是由后面的检索、展示、维护场景反推出来的。</p>
+<h3 id="section-14">2.7 向量索引</h3>
+<p>同关系型数据库一样, 向量数据库一样要面对数据越来越多的这个现实的问题：</p>
+<p><strong>这些向量到底怎么更快地被找出来。</strong></p>
+<p>切片决定检索单位，向量表决定这些单位怎么保存，而向量索引决定系统怎样在这些向量里更快地找到相近候选。</p>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>解决的问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>切片</td>
+<td>决定检索单元是什么</td>
+</tr>
+<tr>
+<td>向量</td>
+<td>决定语义怎么表达</td>
+</tr>
+<tr>
+<td>向量表</td>
+<td>决定这些内容怎么存储和管理</td>
+</tr>
+<tr>
+<td>向量索引</td>
+<td>决定怎么更快找到相近候选</td>
+</tr>
+<tr>
+<td>RAG</td>
+<td>决定怎么把候选内容交给大模型生成回答</td>
+</tr>
+</tbody>
+</table>
+<p>向量索引和传统关系型数据库里的索引的服务的目标, 适用场景:</p>
+<table>
+<thead>
+<tr>
+<th>对比维度</th>
+<th>传统关系型索引</th>
+<th>向量索引</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>核心目标</td>
+<td>加速精确查询、范围查询、排序过滤</td>
+<td>加速相似度检索、近邻搜索</td>
+</tr>
+<tr>
+<td>面向的数据</td>
+<td>结构化字段值</td>
+<td>向量化后的语义表示</td>
+</tr>
+<tr>
+<td>常见判断方式</td>
+<td>是否等于、是否在范围内、排序顺序</td>
+<td>距离是否更近、语义是否更相似</td>
+</tr>
+<tr>
+<td>更擅长解决的问题</td>
+<td><code>id = ?</code>、时间范围、状态过滤、唯一定位</td>
+<td>“这段话和用户问题意思是不是接近”</td>
+</tr>
+<tr>
+<td>检索特征</td>
+<td>更强调精确命中</td>
+<td>更强调相似候选召回</td>
+</tr>
+</tbody>
+</table>
+<p>两者的定位区分：</p>
+<table>
+<thead>
+<tr>
+<th>索引类型</th>
+<th>更像在负责什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>关系型索引</td>
+<td>负责结构化过滤和精确定位</td>
+</tr>
+<tr>
+<td>向量索引</td>
+<td>负责语义召回和相似度搜索</td>
+</tr>
+</tbody>
+</table>
+<p>比如在实际检索时，一个比较自然的流程往往是：</p>
+<ol>
+<li>先用结构化条件缩小范围</li>
+<li>再在这个范围里做向量相似度检索</li>
+</ol>
+<p>这时候前者靠的是传统数据库索引，后者靠的是向量索引。也就是说，关系型索引负责“筛”，向量索引负责“找近似”。</p>
+<p>所以到现在为止，我对向量索引最核心的理解是：</p>
+<p><strong>它并不是为了改变知识怎么存，而是为了在知识已经向量化之后，让系统能够更快地完成语义相似度召回。</strong></p>
+<p>PS: 索引我默认选择性能不错的HNSW, IVF并不怎么使用</p>
+<h2 id="section-15">三、实践操作</h2>
+<p>一般的操作顺序是采用一条通用流水线(个人经验之谈), 如下表：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>名称</th>
+<th>输入</th>
+<th>输出</th>
+<th>是否通用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>文件登记</td>
+<td>原始文件</td>
+<td>文件身份信息</td>
+<td>是</td>
+</tr>
+<tr>
+<td>2</td>
+<td>文本解析</td>
+<td>文件身份信息</td>
+<td><code>raw_text</code></td>
+<td>否，通常按文件类型适配不同的操作策略</td>
+</tr>
+<tr>
+<td>3</td>
+<td>文本清洗</td>
+<td><code>raw_text</code></td>
+<td><code>clean_text</code></td>
+<td>是</td>
+</tr>
+<tr>
+<td>4</td>
+<td>章节拆分</td>
+<td><code>clean_text</code></td>
+<td><code>sections</code></td>
+<td>是</td>
+</tr>
+<tr>
+<td>5</td>
+<td>切块</td>
+<td><code>sections</code></td>
+<td><code>chunks</code></td>
+<td>是</td>
+</tr>
+<tr>
+<td>6</td>
+<td>向量化</td>
+<td><code>chunks</code></td>
+<td><code>embeddings</code></td>
+<td>是</td>
+</tr>
+<tr>
+<td>7</td>
+<td>数据入库</td>
+<td>文件、章节、切块、向量</td>
+<td>数据库记录</td>
+<td>是</td>
+</tr>
+<tr>
+<td>8</td>
+<td>检索问答</td>
+<td>用户问题</td>
+<td>检索结果 + 回答</td>
+<td>是</td>
+</tr>
+<tr>
+<td>9</td>
+<td>效果验证</td>
+<td>问题集</td>
+<td>召回观察结果</td>
+<td>是</td>
+</tr>
+</tbody>
+</table>
+<p>项目落地分层处理如下:</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>作用</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文件接入层</td>
+<td>接收原始文件</td>
+<td>记录路径、类型、文件名、hash</td>
+</tr>
+<tr>
+<td>解析适配层</td>
+<td>提取文本</td>
+<td><code>docx</code>、<code>pdf</code> 在这里分流</td>
+</tr>
+<tr>
+<td>统一文档层</td>
+<td>标准化解析结果</td>
+<td>将不同解析器输出统一为同一种中间结果</td>
+</tr>
+<tr>
+<td>文本处理层</td>
+<td>清洗、拆分、切块</td>
+<td>这里开始不再关心文件类型</td>
+</tr>
+<tr>
+<td>检索层</td>
+<td>embedding 与召回</td>
+<td>面向 chunk 工作</td>
+</tr>
+<tr>
+<td>问答层</td>
+<td>LLM 回答与引用</td>
+<td>面向检索结果工作</td>
+</tr>
+</tbody>
+</table>
+<h2 id="section-16">四、文本清洗原则</h2>
+<p>遇到DOCX或者PDF文件, 都会遇到一些文档的空白或无意义的内容, 这些应当进行适当的内容清晰, 但清洗应该偏保守，不应该为了“看起来更整齐”而破坏制度原文结构。</p>
+<p>建议做的清洗：</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>是否建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>去多余空白</td>
+<td>是</td>
+</tr>
+<tr>
+<td>去重复页眉页脚</td>
+<td>是</td>
+</tr>
+<tr>
+<td>去页码噪音</td>
+<td>是</td>
+</tr>
+<tr>
+<td>统一换行</td>
+<td>是</td>
+</tr>
+<tr>
+<td>统一全半角</td>
+<td>是</td>
+</tr>
+<tr>
+<td>保留章、条、款编号</td>
+<td>必须</td>
+</tr>
+</tbody>
+</table>
+<p>不建议现在就做的处理：</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>是否建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>改写句子</td>
+<td>否</td>
+</tr>
+<tr>
+<td>删除看似重复内容</td>
+<td>否</td>
+</tr>
+<tr>
+<td>把列表强行压成一段</td>
+<td>否</td>
+</tr>
+<tr>
+<td>重新编排正文层级</td>
+<td>否</td>
+</tr>
+</tbody>
+</table>
+<h2 id="mvp">五、 MVP 阶段验收</h2>
+<p>在验证路径时候应当先跑通通路，尽可能收窄范围：</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>当前建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>首批样本数量</td>
+<td>10 到 20 份</td>
+</tr>
+<tr>
+<td>首批优先文件类型</td>
+<td><code>docx</code></td>
+</tr>
+<tr>
+<td>次优先文件类型</td>
+<td>原生文本 <code>pdf</code></td>
+</tr>
+<tr>
+<td>暂不处理</td>
+<td>扫描件、<code>.doc</code>、图片附件</td>
+</tr>
+<tr>
+<td>检索目标</td>
+<td>能稳定召回制度条款</td>
+</tr>
+<tr>
+<td>问答目标</td>
+<td>能基于召回结果回答并给出处</td>
+</tr>
+</tbody>
+</table>
+<h2 id="section-17">六、效果验证</h2>
+<p>RAG 不能只停留在“能跑”，第一阶段就应该同步准备验证方式。</p>
+<p>建议至少准备一小批问题集，用来观察：</p>
+<table>
+<thead>
+<tr>
+<th>验证项</th>
+<th>关注点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>是否能命中正确文档</td>
+<td>文档级召回是否靠谱</td>
+</tr>
+<tr>
+<td>是否能命中正确章节</td>
+<td>section 级定位是否靠谱</td>
+</tr>
+<tr>
+<td>命中 chunk 是否相关</td>
+<td>chunk 切分是否合理</td>
+</tr>
+<tr>
+<td>问答是否能回溯</td>
+<td>回答是否能找到原文依据</td>
+</tr>
+</tbody>
+</table>
+<h2 id="section-18">七、验收阶段</h2>
+<p>这一阶段最重要的不是做复杂的 Agent 或工作流编排，而是先把下面这件事做扎实：</p>
+<p><strong>任意样板文档 -&gt; 统一解析结果 -&gt; 清洗 -&gt; 章节拆分 -&gt; chunk -&gt; 向量化 -&gt; 入库 -&gt; 检索问答 -&gt; 召回验证</strong></p>
+<p>如果这条通路稳定下来，后续再接：</p>
+<ul>
+<li>前端知识库维护界面</li>
+<li>检索调试页</li>
+<li>LLM 问答页</li>
+<li>LangGraph / LangChain 流程编排</li>
+</ul>
+<p>都会顺很多。</p>
+<h2 id="rag-2">八、RAG 检索优化</h2>
+<p>当 RAG 最小闭环已经跑通后，后续学习重点通常会从“能不能检索”逐步转向“检索效果能不能更稳、更准、更可控”。这部分内容仍然属于 RAG 范畴，但已经开始进入检索优化阶段。</p>
+<h3 id="section-19">8.1 什么是召回</h3>
+<p>在检索语境里，<code>召回</code> 更像是在说：</p>
+<p><strong>先把“可能相关”的候选内容找出来。</strong></p>
+<p>它不要求第一步就一定找到“最终最完美答案”，而是先保证相关候选不要漏掉太多。</p>
+<p>可以简单理解为：</p>
+<ul>
+<li>回答阶段负责“组织答案”</li>
+<li>召回阶段负责“先找候选”</li>
+</ul>
+<p>在 RAG 里，召回做得不好，后面的 LLM 再强也很难补回来。因为模型回答所依赖的依据，本来就没有被找出来。</p>
+<h3 id="section-20">8.2 什么是向量召回</h3>
+<p><code>向量召回</code> 是当前 RAG 里最常见的一类召回方式。</p>
+<p>它的思路是：</p>
+<ol>
+<li>把用户问题转成 embedding</li>
+<li>把知识库里的 chunk 也保存成 embedding</li>
+<li>通过相似度比较，找出语义最接近的内容</li>
+</ol>
+<p>它更擅长解决的问题是：</p>
+<ul>
+<li>用户提问和原文不完全同字面</li>
+<li>用户表述更口语化</li>
+<li>问题和原文“意思接近”但措辞不同</li>
+</ul>
+<p>比如：</p>
+<ul>
+<li>原文：<code>员工离职后仍应承担保密义务</code></li>
+<li>用户提问：<code>离职以后还需要继续保密吗</code></li>
+</ul>
+<p>这种场景下，向量召回通常比纯关键词匹配更自然。</p>
+<h3 id="section-21">8.3 什么是关键词召回</h3>
+<p><code>关键词召回</code> 更接近传统检索思路，它关注的是：</p>
+<p><strong>原文里有没有出现这些词。</strong></p>
+<p>它更适合的场景通常包括：</p>
+<ul>
+<li>制度编号</li>
+<li>专有名词</li>
+<li>明确条款词</li>
+<li>特定字段值</li>
+</ul>
+<p>比如用户问：</p>
+<ul>
+<li><code>三级审批</code></li>
+<li><code>第八条</code></li>
+<li><code>采购管理制度</code></li>
+</ul>
+<p>这类内容如果只靠向量检索，有时不一定最稳定；而关键词召回在字面命中上通常会更直接。</p>
+<p>所以可以这样理解：</p>
+<table>
+<thead>
+<tr>
+<th>召回方式</th>
+<th>更擅长什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>向量召回</td>
+<td>找“意思相近”</td>
+</tr>
+<tr>
+<td>关键词召回</td>
+<td>找“字面命中”</td>
+</tr>
+</tbody>
+</table>
+<h3 id="section-22">8.4 什么是混合检索</h3>
+<p><code>混合检索</code> 指的是：</p>
+<p><strong>把向量召回和关键词召回结合起来使用。</strong></p>
+<p>它的目的不是为了让系统显得更复杂，而是为了同时兼顾：</p>
+<ul>
+<li>语义理解能力</li>
+<li>字面命中能力</li>
+</ul>
+<p>一个常见思路是：</p>
+<ol>
+<li>先做向量召回</li>
+<li>再做关键词召回</li>
+<li>把两边结果合并</li>
+<li>再进入后续排序或生成</li>
+</ol>
+<p>这类方式特别适合：</p>
+<ul>
+<li>制度类资料</li>
+<li>规则类资料</li>
+<li>条款类资料</li>
+<li>带编号、名称、专有词的资料</li>
+</ul>
+<p>因为这些资料既有“语义理解”需求，也有“精确字面命中”需求。</p>
+<h3 id="rerank-1">8.5 什么是 rerank</h3>
+<p><code>rerank</code> 可以理解成：</p>
+<p><strong>先粗找一批结果，再对这批结果重新排一次序。</strong></p>
+<p>它通常出现在召回之后，作用是把真正更相关的内容尽量排到前面。</p>
+<p>可以把它看成两段式：</p>
+<ol>
+<li>第一段：先尽量多找一些候选</li>
+<li>第二段：再从这些候选里重新判断谁更相关</li>
+</ol>
+<p>它要解决的问题往往不是“有没有找到”，而是：</p>
+<ul>
+<li>找到的结果顺序对不对</li>
+<li>最相关的内容是否排在前面</li>
+<li>后续给 LLM 的证据是否足够干净</li>
+</ul>
+<h3 id="section-23">8.6 常见检索算法类别与适用场景</h3>
+<p>当开始接触检索优化后，很容易先记住某一个具体名词，比如 <code>BM25</code>、<code>bge-reranker</code>、<code>embedding</code> 检索，但真正更重要的是先建立一层分类意识：</p>
+<p><strong>这些方法分别属于哪一类，它们各自主要解决什么问题。</strong></p>
+<p>如果没有这层分类意识，后面就容易出现一种情况：</p>
+<ul>
+<li>知道很多术语</li>
+<li>但一到项目里，不知道该选哪条路</li>
+</ul>
+<p>所以我现在更愿意先把常见方法压缩成几张表来看。</p>
+<h4 id="section-24">1. 主表：类别、解决问题、适用场景</h4>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>代表方法</th>
+<th>更主要解决什么问题</th>
+<th>更适合什么场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>关键词检索类</td>
+<td><code>BM25</code>、<code>TF-IDF</code>、布尔检索</td>
+<td>字面命中问题</td>
+<td>制度名、编号、专有词、条款号、明确字段值</td>
+</tr>
+<tr>
+<td>稀疏学习检索类</td>
+<td><code>SPLADE</code>、<code>uniCOIL</code></td>
+<td>更强的稀疏关键词检索问题</td>
+<td>希望保留关键词检索特征，但又想比传统 BM25 更灵活</td>
+</tr>
+<tr>
+<td>稠密向量检索类</td>
+<td><code>embedding</code> 检索、<code>DPR</code>、<code>BGE</code>、<code>E5</code></td>
+<td>语义相似问题</td>
+<td>口语化提问、意思相近表达、企业问答、FAQ</td>
+</tr>
+<tr>
+<td>混合检索类</td>
+<td>关键词检索 + 向量检索 + 融合</td>
+<td>多种召回方式互补问题</td>
+<td>制度条款问答、规则类文档、既要语义理解又要字面命中</td>
+</tr>
+<tr>
+<td>重排类</td>
+<td><code>Cross-Encoder reranker</code>、<code>BGE Reranker</code>、<code>Cohere Rerank</code></td>
+<td>候选排序准确性问题</td>
+<td>已经能召回，但顺序不稳，top3 有了但 top1 不准</td>
+</tr>
+</tbody>
+</table>
+<h4 id="section-25">2. 对比表：优点与短板</h4>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>主要优点</th>
+<th>主要短板</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>关键词检索类</td>
+<td>简单直接、可解释性强、对编号和专有词稳定</td>
+<td>对口语化问法不够自然，换一种说法就可能不稳</td>
+</tr>
+<tr>
+<td>稀疏学习检索类</td>
+<td>比传统关键词检索更灵活，仍保留一定可解释性</td>
+<td>工程复杂度更高，通常不适合最早期 MVP</td>
+</tr>
+<tr>
+<td>稠密向量检索类</td>
+<td>擅长理解语义相近表达，对口语化提问更自然</td>
+<td>编号、条款号、专有词命中不一定最稳，可能“意思接近但不是最想要那条”</td>
+</tr>
+<tr>
+<td>混合检索类</td>
+<td>能同时兼顾语义理解和字面命中，真实业务里更稳</td>
+<td>链路更复杂，需要处理融合、去重、调试和评测</td>
+</tr>
+<tr>
+<td>重排类</td>
+<td>能把更相关结果排到前面，提升 top1 质量</td>
+<td>不能凭空补召回，候选里没有正确结果时无能为力</td>
+</tr>
+</tbody>
+</table>
+<h4 id="section-26">3. 场景表：先按“遇到什么问题”来选</h4>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>更优先考虑哪类方法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>制度名、编号、专有词、条款号</td>
+<td>关键词检索类</td>
+</tr>
+<tr>
+<td>口语化问答、意思相近表达</td>
+<td>稠密向量检索类</td>
+</tr>
+<tr>
+<td>制度条款问答、规则类检索</td>
+<td>混合检索类</td>
+</tr>
+<tr>
+<td>已经能召回但排序总不稳</td>
+<td>重排类</td>
+</tr>
+<tr>
+<td>希望关键词检索更强，但又不想只靠传统统计规则</td>
+<td>稀疏学习检索类</td>
+</tr>
+</tbody>
+</table>
+<h4 id="section-27">4. 我现在对这层知识的理解</h4>
+<p>到这里，一个更稳的理解方式应该是：</p>
+<p><strong>先不要急着记所有算法名，而是先记住“每一类方法在解决什么问题、适合什么场景、优点和短板分别是什么”。</strong></p>
+<p>因为在真实项目里，真正决定选型的，通常不是“这个算法名字听起来高级不高级”，而是：</p>
+<ul>
+<li>当前问题到底是召回不足</li>
+<li>还是字面命中不足</li>
+<li>还是语义理解不足</li>
+<li>还是排序不准</li>
+</ul>
+<p>把这个问题先判断清楚，再去选算法，思路才会更稳。</p>
+<h2 id="rag-3">九、RAG 工程化</h2>
+<p>当 RAG 不再只是一个临时脚本，而是要持续调试、持续优化、持续扩展时，就会进入更偏工程化的阶段。</p>
+<p>这部分关注的重点不再只是“RAG 原理”，而是：</p>
+<ul>
+<li>系统结构怎么设计</li>
+<li>检索链路怎么抽象</li>
+<li>怎么验证改动有没有变好</li>
+<li>怎么给后续混合检索、rerank、LangChain 留接口</li>
+</ul>
+<h3 id="retrieval-pipeline-1">9.1 什么是 retrieval pipeline</h3>
+<p><code>retrieval pipeline</code> 可以理解成：</p>
+<p><strong>系统完成检索这件事的一条步骤化链路。</strong></p>
+<p>例如一条最简单的 pipeline 可能是：</p>
+<ol>
+<li>用户提问</li>
+<li>问题向量化</li>
+<li>向量召回</li>
+<li>分数过滤</li>
+<li>返回结果</li>
+</ol>
+<p>以后如果要扩展，也可能变成：</p>
+<ol>
+<li>用户提问</li>
+<li>向量召回</li>
+<li>关键词召回</li>
+<li>结果融合</li>
+<li>rerank</li>
+<li>返回结果</li>
+</ol>
+<p>所以 pipeline 的核心意义在于：</p>
+<p><strong>把检索流程组织成可观察、可插拔、可扩展的步骤。</strong></p>
+<h3 id="retriever">9.2 什么是 retriever</h3>
+<p><code>retriever</code> 可以简单理解为：</p>
+<p><strong>一个专门负责“帮系统找资料”的模块。</strong></p>
+<p>它不负责生成答案，它只负责根据问题去知识库里找候选内容。</p>
+<p>在工程化里把 retriever 单独看待的好处是：</p>
+<ul>
+<li>检索逻辑更清楚</li>
+<li>后续更容易替换策略</li>
+<li>更方便接入 LangChain 等框架</li>
+</ul>
+<h3 id="section-28">9.3 为什么要暴露中间调试信息</h3>
+<p>如果系统最后只返回“结果”，但看不到中间过程，就很难判断问题出在哪。</p>
+<p>所以在检索调试里，通常希望能看到一些中间信息，例如：</p>
+<ul>
+<li>用了哪种检索策略</li>
+<li>一共召回了多少条</li>
+<li>过滤前后各剩多少条</li>
+<li>每条结果来自哪一路召回</li>
+<li>每条结果的分数怎么来的</li>
+</ul>
+<p>这样做的价值是：</p>
+<ul>
+<li>方便定位问题</li>
+<li>方便比较不同检索策略</li>
+<li>方便后续做混合检索和 rerank 实验</li>
+</ul>
+<h3 id="section-29">9.4 什么是评测集</h3>
+<p><code>评测集</code> 可以理解成：</p>
+<p><strong>一组提前准备好的标准问题，用来稳定测试检索或问答效果。</strong></p>
+<p>比如可以准备一批问题：</p>
+<ul>
+<li>某个问题应该命中哪篇制度</li>
+<li>应该命中哪个章节</li>
+<li>理想情况下应该命中哪条 chunk</li>
+</ul>
+<p>它的作用是让验证不再只靠“临时试几个问题看看”，而是有一组可以重复使用的标准样本。</p>
+<h3 id="baseline">9.5 什么是 baseline</h3>
+<p><code>baseline</code> 是一个非常常见但很重要的工程化概念。</p>
+<p>它的意思是：</p>
+<p><strong>先记录当前版本的效果，作为以后对比的基准线。</strong></p>
+<p>比如当前系统在 20 个问题上的表现是：</p>
+<ul>
+<li>15 个能命中正确文档</li>
+<li>11 个能命中正确章节</li>
+<li>9 个能把最相关 chunk 放在前 3 条</li>
+</ul>
+<p>这就是一份 baseline。</p>
+<p>以后你改了检索逻辑，就拿新结果和 baseline 比。这样你才知道：</p>
+<ul>
+<li>是真的优化了</li>
+<li>还是只是代码更复杂了</li>
+</ul>
+<h3 id="section-30">9.6 为什么评测要前置</h3>
+<p>很多项目一开始容易先堆功能，等做完再回头看“效果怎么样”。但这样往往会有一个问题：</p>
+<p><strong>改了很多东西，却不知道到底有没有变好。</strong></p>
+<p>所以评测前置的意思是：</p>
+<ul>
+<li>先准备问题集</li>
+<li>先记录 baseline</li>
+<li>再开始改检索</li>
+</ul>
+<p>这样每做一次优化，都能更清楚地判断：</p>
+<ul>
+<li>召回率有没有提升</li>
+<li>排序有没有更合理</li>
+<li>新策略有没有带来副作用</li>
+</ul>
+<p>对 RAG 来说，这一步很关键。因为检索优化往往不是“看起来更高级”就算成功，而是必须能被验证。</p>
+
+      </article>
+      <aside class="toc" aria-label="本文目录">
+        <p class="toc__title">本文目录</p>
+        <nav class="toc__links" id="toc-links"></nav>
+      </aside>
+    </main>
+    <script>
+      (() => {
+        const article = document.getElementById('article');
+        const toc = document.getElementById('toc-links');
+        const headings = Array.from(article.querySelectorAll('h2, h3'));
+        const usedIds = new Set();
+        const slugify = (text) => {
+          const raw = text
+            .trim()
+            .toLowerCase()
+            .replace(/[.,，、:：;；!?！？()[\]{}'"“”‘’`~@#$%^&*+=|\\/<>]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
+          return raw || 'section';
+        };
+        headings.forEach((heading) => {
+          const base = slugify(heading.textContent);
+          let id = base;
+          let index = 2;
+          while (usedIds.has(id)) {
+            id = `${base}-${index++}`;
+          }
+          usedIds.add(id);
+          heading.id = id;
+          const link = document.createElement('a');
+          link.href = `#${id}`;
+          link.dataset.level = heading.tagName.slice(1);
+          link.textContent = heading.textContent;
+          toc.appendChild(link);
+        });
+        if (!headings.length) {
+          toc.innerHTML = '<span class="empty-toc">当前文档没有二级或三级标题。</span>';
+          return;
+        }
+        const links = Array.from(toc.querySelectorAll('a'));
+        const updateActiveLink = () => {
+          let active = headings[0];
+          for (const heading of headings) {
+            if (heading.getBoundingClientRect().top <= 112) active = heading;
+          }
+          links.forEach((link) => link.classList.toggle('is-active', link.hash === `#${active.id}`));
+        };
+        updateActiveLink();
+        document.addEventListener('scroll', updateActiveLink, { passive: true });
+      })();
+    </script>
+  </body>
+</html>

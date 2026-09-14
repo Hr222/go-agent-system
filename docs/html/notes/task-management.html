@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Go Agent System 学习资料：Task Management学习笔记" />
+    <title>Task Management学习笔记 · 学习中心</title>
+    <link rel="stylesheet" href="../reader.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__inner">
+        <a class="back-link" href="../index.html">返回学习中心</a>
+        <span class="article-name">Task Management学习笔记</span>
+      </div>
+    </header>
+    <main class="page">
+      <article class="article" id="article">
+<h1 id="task-management">Task Management 学习笔记</h1>
+<blockquote>
+<p>本文是一份学习材料，用来理解通用的 Task Management（任务管理）系统。</p>
+<p>它讨论概念、设计原则、常见实现模式和学习顺序；不定义任何具体项目的接口、目录、数据库表或实施计划。</p>
+</blockquote>
+<h2 id="section">目录</h2>
+<ol>
+<li><a href="#1-%E5%85%88%E5%BB%BA%E7%AB%8B%E6%AD%A3%E7%A1%AE%E7%9B%B4%E8%A7%89">先建立正确直觉</a></li>
+<li><a href="#2-%E5%AE%B9%E6%98%93%E6%B7%B7%E6%B7%86%E7%9A%84%E4%BA%94%E4%B8%AA%E6%A6%82%E5%BF%B5">容易混淆的五个概念</a></li>
+<li><a href="#3-task-%E7%9A%84%E5%AE%8C%E6%95%B4%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F">Task 的完整生命周期</a></li>
+<li><a href="#4-%E7%8A%B6%E6%80%81%E6%9C%BA%E4%B8%8E%E7%8A%B6%E6%80%81%E8%BF%81%E7%A7%BB">状态机与状态迁移</a></li>
+<li><a href="#5-%E4%B8%80%E4%B8%AA-task-%E5%BA%94%E4%BF%9D%E5%AD%98%E5%93%AA%E4%BA%9B%E4%BA%8B%E5%AE%9E">一个 Task 应保存哪些事实</a></li>
+<li><a href="#6-%E4%BB%BB%E5%8A%A1%E4%BB%8E%E5%88%9B%E5%BB%BA%E5%88%B0%E5%AE%8C%E6%88%90%E7%9A%84%E6%89%A7%E8%A1%8C%E9%93%BE%E8%B7%AF">任务从创建到完成的执行链路</a></li>
+<li><a href="#7-worker%E9%98%9F%E5%88%97%E9%A2%86%E5%8F%96%E4%B8%8E%E7%A7%9F%E7%BA%A6">Worker、队列、领取与租约</a></li>
+<li><a href="#8-%E5%8F%AF%E9%9D%A0%E6%80%A7%E5%9B%9B%E4%BB%B6%E5%A5%97%E5%B9%82%E7%AD%89%E9%87%8D%E8%AF%95%E5%8F%96%E6%B6%88%E6%81%A2%E5%A4%8D">可靠性四件套：幂等、重试、取消、恢复</a></li>
+<li><a href="#9-%E4%BB%BB%E5%8A%A1%E7%BB%93%E6%9E%9C%E8%BF%9B%E5%BA%A6%E6%9D%83%E9%99%90%E4%B8%8E%E5%AE%A1%E8%AE%A1">任务结果、进度、权限与审计</a></li>
+<li><a href="#10-%E5%B8%B8%E8%A7%81%E5%AE%9E%E7%8E%B0%E6%96%B9%E6%A1%88%E4%B8%8E%E9%80%82%E7%94%A8%E8%8C%83%E5%9B%B4">常见实现方案与适用范围</a></li>
+<li><a href="#11-%E6%B5%8B%E8%AF%95%E4%B8%8E%E8%A7%82%E6%B5%8B%E5%BA%94%E8%AF%A5%E8%AF%81%E6%98%8E%E4%BB%80%E4%B9%88">测试与观测应该证明什么</a></li>
+<li><a href="#12-task-%E4%B8%8E-workflow-%E7%9A%84%E8%BE%B9%E7%95%8C">Task 与 Workflow 的边界</a></li>
+<li><a href="#13-%E6%8E%A8%E8%8D%90%E5%AD%A6%E4%B9%A0%E9%A1%BA%E5%BA%8F">推荐学习顺序</a></li>
+<li><a href="#14-%E5%B8%B8%E8%A7%81%E8%AF%AF%E5%8C%BA">常见误区</a></li>
+<li><a href="#15-%E6%9C%AF%E8%AF%AD%E9%80%9F%E6%9F%A5">术语速查</a></li>
+</ol>
+<h2 id="section-1">1. 先建立正确直觉</h2>
+<p>Task Management 要解决的问题不是“怎样在后台跑一段代码”，而是：</p>
+<blockquote>
+<p>一项可能耗时、失败、需要重试、需要被用户查询或取消的工作，怎样在请求结束、进程重启或 Worker 异常后，仍然被可靠地管理。</p>
+</blockquote>
+<p>例如，一个用户发起“处理一份文件”的操作。处理可能要经过解析、OCR、清洗、模型调用和保存结果，持续几十秒甚至几分钟。</p>
+<p>如果系统只在 HTTP 请求里同步处理，会有几个问题：</p>
+<ul>
+<li>请求长时间不返回，浏览器、网关或客户端可能超时；</li>
+<li>用户不知道当前进行到哪里；</li>
+<li>失败后只能重新发起整个请求，无法区分是否已部分完成；</li>
+<li>服务进程重启时，运行中的工作可能直接消失；</li>
+<li>多个 Worker 可能意外执行同一份工作。</li>
+</ul>
+<p>Task Management 把这项工作从一次瞬时请求，变成一个有身份、状态、历史和管理能力的持久化对象。</p>
+<pre><code class="language-text">用户发起工作
+  -&gt; 创建 Task
+  -&gt; 返回 task_id
+  -&gt; 后台 Worker 执行
+  -&gt; Task 持续记录状态和事件
+  -&gt; 用户查询结果、取消或重试
+</code></pre>
+<p>Task 的价值不在于“异步”二字，而在于可管理的生命周期。</p>
+<h2 id="section-2">2. 容易混淆的五个概念</h2>
+<h3 id="http-request">2.1 HTTP Request</h3>
+<p>HTTP Request 是一次网络通信。它有开始和结束，通常应尽量短。</p>
+<p>它适合：</p>
+<ul>
+<li>参数校验；</li>
+<li>创建资源；</li>
+<li>查询状态；</li>
+<li>发起取消或重试命令。</li>
+</ul>
+<p>它不适合承载长时间、可恢复的业务执行。</p>
+<h3 id="section-3">2.2 进程内异步任务</h3>
+<p>例如协程、线程池任务或运行时的 <code>asyncio.Task</code>，本质上是当前进程中的执行单元。</p>
+<p>它们可以解决“不阻塞当前线程或事件循环”的问题，但通常不能天然解决：</p>
+<ul>
+<li>进程重启后的恢复；</li>
+<li>多进程或多机器的共享协调；</li>
+<li>用户查询历史状态；</li>
+<li>审计、重试与幂等；</li>
+<li>任务长期持久化。</li>
+</ul>
+<p>因此，进程内异步任务可以是 Worker 内部的实现细节，但不等于业务上的 Task。</p>
+<h3 id="platform-task">2.3 Platform Task</h3>
+<p>Platform Task 是面向业务和用户管理的、可持久化的工作单元。</p>
+<p>它至少应回答：</p>
+<ul>
+<li>这是什么任务？</li>
+<li>谁发起、谁可以查看和操作？</li>
+<li>它现在是什么状态？</li>
+<li>已尝试执行几次？</li>
+<li>最终结果在哪里？</li>
+<li>失败原因是什么？</li>
+<li>是否允许取消或重试？</li>
+</ul>
+<h3 id="conversation-turn">2.4 Conversation Turn</h3>
+<p>Turn 是一次对话中的执行和顺序边界，例如“用户输入 -&gt; 系统生成回复”。</p>
+<p>它可能触发一个长任务，但两者不是同一对象：</p>
+<ul>
+<li>Turn 关注同一会话的顺序、上下文和消息事实；</li>
+<li>Task 关注后台工作的生命周期、可恢复执行和运营管理。</li>
+</ul>
+<p>一个 Turn 可以创建一个 Task；一个 Task 也可能完全不属于任何对话。</p>
+<h3 id="workflow">2.5 Workflow</h3>
+<p>Workflow 是多个步骤、多个 Task 或多个条件分支的编排。</p>
+<pre><code class="language-text">Workflow
+  -&gt; Task A：下载资料
+  -&gt; Task B：解析内容
+  -&gt; Task C：人工审核
+  -&gt; Task D：发布结果
+</code></pre>
+<p>Task 是可执行的原子工作单元；Workflow 是组织多个工作单元的流程。先把单个 Task 的状态、失败、取消和恢复做清楚，才适合讨论 Workflow。</p>
+<h2 id="task">3. Task 的完整生命周期</h2>
+<p>从业务视角看，一个 Task 通常会经历：</p>
+<pre><code class="language-text">创建
+  -&gt; 排队等待
+  -&gt; 被 Worker 领取
+  -&gt; 执行
+  -&gt; 成功 / 失败 / 取消
+  -&gt; 必要时重试或恢复
+</code></pre>
+<p>从用户视角看，Task 应该有清晰的问题答案：</p>
+<table>
+<thead>
+<tr>
+<th>用户问题</th>
+<th>系统应能回答的内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>我的任务创建成功了吗？</td>
+<td>task_id、创建时间、初始状态</td>
+</tr>
+<tr>
+<td>为什么还没开始？</td>
+<td>正在排队、何时可运行、是否被限流</td>
+</tr>
+<tr>
+<td>正在做什么？</td>
+<td>当前状态、可选进度、开始时间</td>
+</tr>
+<tr>
+<td>为什么失败？</td>
+<td>安全的错误码、可读说明、是否可重试</td>
+</tr>
+<tr>
+<td>我能停止它吗？</td>
+<td>是否可取消、取消是否已经确认</td>
+</tr>
+<tr>
+<td>结果在哪里？</td>
+<td>结果摘要或结果资源引用</td>
+</tr>
+<tr>
+<td>服务重启后会怎样？</td>
+<td>任务会被恢复、重试或明确标记失败</td>
+</tr>
+</tbody>
+</table>
+<h2 id="section-4">4. 状态机与状态迁移</h2>
+<p>状态机是 Task Management 的核心。它规定每个状态的业务含义，以及哪些转换是合法的。</p>
+<h3 id="section-5">4.1 一个可学习的最小状态机</h3>
+<pre><code class="language-text">QUEUED
+  -&gt; RUNNING
+  -&gt; SUCCEEDED
+  -&gt; FAILED
+
+FAILED
+  -&gt; RETRY_WAIT
+  -&gt; QUEUED
+
+QUEUED
+  -&gt; CANCELLED
+
+RUNNING
+  -&gt; CANCEL_REQUESTED
+  -&gt; CANCELLED
+</code></pre>
+<p>常见状态含义：</p>
+<table>
+<thead>
+<tr>
+<th>状态</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>QUEUED</code></td>
+<td>已创建，等待可用 Worker 执行。</td>
+</tr>
+<tr>
+<td><code>RUNNING</code></td>
+<td>已被一个 Worker 领取，正在执行。</td>
+</tr>
+<tr>
+<td><code>SUCCEEDED</code></td>
+<td>已成功结束，结果已经可引用。</td>
+</tr>
+<tr>
+<td><code>FAILED</code></td>
+<td>已失败且当前不能继续自动重试。</td>
+</tr>
+<tr>
+<td><code>RETRY_WAIT</code></td>
+<td>本次尝试失败，但等待退避时间后可以再执行。</td>
+</tr>
+<tr>
+<td><code>CANCEL_REQUESTED</code></td>
+<td>已请求停止，执行器尚未确认停止。</td>
+</tr>
+<tr>
+<td><code>CANCELLED</code></td>
+<td>已确认不再执行。</td>
+</tr>
+</tbody>
+</table>
+<h3 id="section-6">4.2 为什么“请求取消”不等于“已取消”</h3>
+<p>排队中的 Task 尚未执行，通常可以直接变成 <code>CANCELLED</code>。</p>
+<p>运行中的 Task 可能正在调用外部服务、写入文件或处理大数据。此时系统通常无法安全地从外部强行杀死执行线程。</p>
+<p>更真实的语义是：</p>
+<pre><code class="language-text">用户点击取消
+  -&gt; 系统记录 CANCEL_REQUESTED
+  -&gt; 执行器在安全边界检查取消信号
+  -&gt; 清理临时资源
+  -&gt; 写入 CANCELLED
+</code></pre>
+<p>因此，Task Management 需要诚实表达“取消正在处理中”，不能把取消请求伪装成已经停止。</p>
+<h3 id="section-7">4.3 状态机的不变量</h3>
+<p>设计状态机时，应先写出不可被破坏的规则：</p>
+<ul>
+<li>一个 Task 在同一时刻最多只能有一个有效执行者；</li>
+<li>终态 Task 不应被普通执行流程重新领取；</li>
+<li><code>SUCCEEDED</code> 必须有可访问的结果或明确的结果引用；</li>
+<li>每次执行尝试都应可追溯；</li>
+<li>取消、重试和恢复必须有明确的合法起点；</li>
+<li>过期 Worker 不能覆盖新 Worker 的执行结果。</li>
+</ul>
+<p>状态名可以变化，但这些不变量不应含糊。</p>
+<h2 id="task-1">5. 一个 Task 应保存哪些事实</h2>
+<p>Task 数据模型不需要一开始就很复杂，但要区分“任务事实”“执行尝试”“审计事件”和“业务结果”。</p>
+<h3 id="task-2">5.1 Task 本身</h3>
+<p>Task 通常保存：</p>
+<pre><code class="language-text">身份：id、task_type
+归属：owner、创建来源
+状态：status、创建/开始/结束时间
+输入：可信的输入引用或输入快照
+结果：结果资源的引用或摘要
+执行：已尝试次数、最大次数、下次可执行时间
+协调：当前租约、持有 Worker、租约到期时间
+控制：幂等键、取消请求信息
+</code></pre>
+<h3 id="attempt">5.2 Attempt：一次执行尝试</h3>
+<p>同一个逻辑 Task 可能因瞬时错误执行多次。每一次尝试都应独立记录：</p>
+<ul>
+<li>第几次尝试；</li>
+<li>哪个 Worker 执行；</li>
+<li>开始和结束时间；</li>
+<li>失败类别和安全错误信息；</li>
+<li>是否因取消、超时或租约失效结束。</li>
+</ul>
+<p>这样用户看到的是一个稳定的 Task，运营和排障人员仍能看到完整的尝试历史。</p>
+<h3 id="event">5.3 Event：生命周期审计事实</h3>
+<p>Event 用来记录状态之外的重要动作，例如：</p>
+<pre><code class="language-text">TASK_CREATED
+TASK_CLAIMED
+TASK_STARTED
+TASK_CANCEL_REQUESTED
+TASK_RETRY_SCHEDULED
+TASK_SUCCEEDED
+TASK_FAILED
+TASK_RECOVERED
+</code></pre>
+<p>Task 当前状态告诉我们“现在怎样”；Event 告诉我们“它如何走到现在”。</p>
+<h3 id="task-3">5.4 业务结果不等于 Task</h3>
+<p>Task 的结果通常是一个引用：例如处理后的文件、生成的报告、创建的数据记录或下载地址。</p>
+<p>Task 不应该成为所有业务数据的替代品。它负责管理一次执行；业务实体仍然负责保存业务事实。</p>
+<h2 id="section-8">6. 任务从创建到完成的执行链路</h2>
+<p>一条健康的 Task 链路可以这样理解：</p>
+<pre><code class="language-text">1. 客户端发起业务请求
+2. 服务端校验身份、权限、输入和幂等键
+3. 服务端在事务中创建 Task 与创建事件
+4. 服务端快速返回 task_id
+5. Worker 领取可执行 Task
+6. Worker 执行业务逻辑
+7. Worker 写入成功、失败、取消或重试等待状态
+8. 客户端通过查询或推送得到最新状态
+</code></pre>
+<p>这里有两个重要边界：</p>
+<ol>
+<li><strong>创建 Task 与 HTTP 请求的边界</strong>：请求成功的含义通常是“任务已被可靠登记”，不是“业务处理已完成”。</li>
+<li><strong>领取 Task 与执行外部操作的边界</strong>：领取和状态变更应使用短事务；耗时的外部操作不应长期占用数据库事务或连接。</li>
+</ol>
+<h2 id="worker">7. Worker、队列、领取与租约</h2>
+<h3 id="worker-1">7.1 Worker 做什么</h3>
+<p>Worker 是持续寻找并执行待处理 Task 的后台执行者。</p>
+<p>它的职责一般包括：</p>
+<ul>
+<li>发现当前可执行的 Task；</li>
+<li>安全领取一个 Task；</li>
+<li>调用对应的业务执行器；</li>
+<li>写入终态或重试信息；</li>
+<li>定期处理过期租约；</li>
+<li>记录日志、指标和审计事件。</li>
+</ul>
+<p>Worker 不是业务规则本身。它更像调度和运行外壳；具体业务工作由对应的执行器完成。</p>
+<h3 id="section-9">7.2 为什么要“领取”</h3>
+<p>假设两个 Worker 同时看到同一条 <code>QUEUED</code> Task：</p>
+<pre><code class="language-text">Worker A：我看见它了，我来执行
+Worker B：我也看见它了，我也来执行
+</code></pre>
+<p>如果没有原子领取，就可能产生双重扣费、重复写入、重复发消息或重复生成文件。</p>
+<p>因此，领取必须是一个原子动作：只有一个 Worker 能成功把 Task 从“可执行”变成“我正在执行”。</p>
+<p>数据库队列常见做法是行锁加跳过锁定行，例如 PostgreSQL 中的 <code>FOR UPDATE SKIP LOCKED</code>。学习它时重点不是记 SQL，而是理解它保证的事实：并发 Worker 不会都拿到同一条工作。</p>
+<h3 id="section-10">7.3 为什么需要租约</h3>
+<p>只记录 <code>RUNNING</code> 还不够。</p>
+<p>如果 Worker 在运行中崩溃，Task 会永久停在 <code>RUNNING</code>，其他 Worker 不敢接手。租约为执行权设置过期时间：</p>
+<pre><code class="language-text">Worker 领取 Task
+  -&gt; 写入 lease_token 和 lease_expires_at
+  -&gt; 运行期间定期续租
+  -&gt; 崩溃后不再续租
+  -&gt; 到期后可被恢复机制处理
+</code></pre>
+<p>租约不是“保证永不重复执行”的魔法。网络分区、暂停或超时下，旧 Worker 与新 Worker 仍可能短暂重叠。因此业务执行仍需要幂等设计。</p>
+<h3 id="section-11">7.4 为什么完成时要校验租约</h3>
+<p>假设 Worker A 停顿太久，租约过期；系统把 Task 交给 Worker B。之后 Worker A 又恢复并试图写入“成功”。</p>
+<p>如果系统允许 A 直接覆盖结果，就会出现过期 Worker 污染新执行结果的问题。</p>
+<p>因此，完成状态更新通常要同时校验：</p>
+<pre><code class="language-text">task_id 一致
+且当前状态仍允许完成
+且 lease_token 仍属于当前 Worker
+</code></pre>
+<h2 id="section-12">8. 可靠性四件套：幂等、重试、取消、恢复</h2>
+<h3 id="section-13">8.1 幂等：重复请求不能重复做事</h3>
+<p>用户可能因为网络慢、按钮重复点击、浏览器重试或网关超时，多次发送同一个创建请求。</p>
+<p>幂等的目标是：</p>
+<blockquote>
+<p>同一个逻辑请求被重复提交，系统得到同一个逻辑结果，而不是重复产生副作用。</p>
+</blockquote>
+<p>常见方式是客户端携带幂等键，服务端按“主体 + 操作类型 + 幂等键”识别重复请求。</p>
+<p>需要特别处理：相同幂等键但不同业务输入不能静默复用，应明确报错，因为这通常代表客户端程序错误或用户操作混乱。</p>
+<h3 id="section-14">8.2 重试：不是所有失败都应该重试</h3>
+<p>先按失败性质分类：</p>
+<table>
+<thead>
+<tr>
+<th>失败类型</th>
+<th>例子</th>
+<th>一般处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>瞬时失败</td>
+<td>网络闪断、服务限流、临时超时</td>
+<td>延迟重试</td>
+</tr>
+<tr>
+<td>永久失败</td>
+<td>参数非法、权限不足、文件格式不支持</td>
+<td>直接失败</td>
+</tr>
+<tr>
+<td>不确定失败</td>
+<td>外部请求超时，但对方可能已执行</td>
+<td>先查状态或依赖幂等键，再决定是否重试</td>
+</tr>
+</tbody>
+</table>
+<p>重试还需要：</p>
+<ul>
+<li>最大尝试次数；</li>
+<li>指数退避或其他等待策略；</li>
+<li>随机抖动，避免大量任务同时再次冲击下游；</li>
+<li>明确记录每次尝试的错误；</li>
+<li>重试耗尽后的终态。</li>
+</ul>
+<h3 id="section-15">8.3 取消：应是协作式的</h3>
+<p>取消有三个层次：</p>
+<pre><code class="language-text">取消排队任务：直接阻止开始
+取消运行任务：请求执行器在安全点停止
+取消外部副作用：可能无法撤销，需要补偿或人工处理
+</code></pre>
+<p>例如一个外部系统已经接收请求，即使本地 Task 被取消，也不代表外部世界已经恢复原状。此时需要明确“取消的边界”，必要时使用补偿操作，而不能承诺不真实的完全回滚。</p>
+<h3 id="task-4">8.4 恢复：崩溃后不能遗忘 Task</h3>
+<p>恢复机制通常关注：</p>
+<ul>
+<li>长时间未续租的 <code>RUNNING</code> Task；</li>
+<li>进程重启前尚未结束的工作；</li>
+<li>重试时间已到的 <code>RETRY_WAIT</code> Task；</li>
+<li>已写出部分结果但未写入最终状态的 Task。</li>
+</ul>
+<p>恢复不是简单地“重新执行一遍”。需要结合任务类型、已完成步骤、幂等设计和外部副作用判断：重试、标记失败、人工介入，还是继续后续步骤。</p>
+<h2 id="section-16">9. 任务结果、进度、权限与审计</h2>
+<h3 id="section-17">9.1 结果</h3>
+<p>任务成功时，应提供用户真正需要的结果：</p>
+<ul>
+<li>结果资源引用；</li>
+<li>下载入口；</li>
+<li>创建后的业务对象标识；</li>
+<li>简洁摘要。</li>
+</ul>
+<p>不要把执行过程中的全部内部数据、文件路径、堆栈或外部服务原始错误直接给客户端。</p>
+<h3 id="section-18">9.2 进度</h3>
+<p>不是所有 Task 都能给出准确百分比。应区分：</p>
+<table>
+<thead>
+<tr>
+<th>进度形式</th>
+<th>适用情况</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>状态型进度</td>
+<td>排队、运行、重试等待、已完成；大多数任务都适用。</td>
+</tr>
+<tr>
+<td>阶段型进度</td>
+<td>已下载、已解析、已生成、已保存；适合有稳定步骤的任务。</td>
+</tr>
+<tr>
+<td>百分比进度</td>
+<td>总工作量可估算，例如固定页数或固定条目数。</td>
+</tr>
+</tbody>
+</table>
+<p>如果进度不可靠，宁可展示阶段和状态，也不要制造虚假的 87%。</p>
+<h3 id="section-19">9.3 权限</h3>
+<p>Task 是资源，通常需要明确：</p>
+<ul>
+<li>谁可以创建；</li>
+<li>谁可以查看；</li>
+<li>谁可以取消；</li>
+<li>谁可以重试；</li>
+<li>管理员是否拥有额外权限；</li>
+<li>结果资源是否沿用 Task 的访问边界。</li>
+</ul>
+<p>客户端传入的 <code>owner</code>、状态或 Task ID 不构成授权依据，服务端必须根据可信身份和资源归属重新判断。</p>
+<h3 id="section-20">9.4 审计</h3>
+<p>Task 的审计至少应能还原：</p>
+<ul>
+<li>谁创建任务；</li>
+<li>何时被哪个 Worker 领取；</li>
+<li>尝试过多少次；</li>
+<li>谁请求了取消或重试；</li>
+<li>最终状态及安全失败原因；</li>
+<li>结果资源是什么。</li>
+</ul>
+<h2 id="section-21">10. 常见实现方案与适用范围</h2>
+<h3 id="section-22">10.1 进程内后台任务</h3>
+<pre><code class="language-text">HTTP 请求 -&gt; 协程 / 线程 -&gt; 完成
+</code></pre>
+<p>适合：本地开发、极短的非关键辅助工作、进程重启后可丢失的任务。</p>
+<p>不足：无法可靠恢复，多实例间无法协调，不适合正式的 Task Management。</p>
+<h3 id="section-23">10.2 数据库持久化队列</h3>
+<pre><code class="language-text">数据库任务表 -&gt; Worker 轮询领取 -&gt; 执行 -&gt; 更新状态
+</code></pre>
+<p>适合：已有关系型数据库、任务量中等、需要事务一致性、需要审计和可查询生命周期的系统。</p>
+<p>优点：少引入一个基础设施，状态、事件与业务数据容易保持一致。</p>
+<p>注意：需要做好索引、短事务、领取策略、租约、恢复扫描和数据库容量治理。</p>
+<h3 id="worker-2">10.3 消息队列 + Worker</h3>
+<pre><code class="language-text">业务服务 -&gt; 消息中间件 -&gt; Worker 集群
+</code></pre>
+<p>适合：任务吞吐高、生产者与消费者需解耦、需要削峰、多种消费者或跨系统事件分发。</p>
+<p>注意：消息已经被消费不等于业务已经完成。任务状态仍需要持久化；消息队列不能替代 Task 的生命周期模型。</p>
+<h3 id="section-24">10.4 成熟任务框架</h3>
+<p>例如专用的 Job/Task 框架。</p>
+<p>适合：调度、重试、并发控制、分布式 Worker 等需求已经稳定，团队愿意接受框架约束与运维成本。</p>
+<p>学习顺序上，应先理解状态机、幂等、租约与失败语义；否则换任何框架都只是把复杂问题藏进配置。</p>
+<h2 id="section-25">11. 测试与观测应该证明什么</h2>
+<h3 id="section-26">11.1 最小测试矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>应证明的事实</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>正常执行</td>
+<td>Task 从排队到成功，结果可访问。</td>
+</tr>
+<tr>
+<td>两个 Worker 并发</td>
+<td>同一 Task 只会被一个 Worker 有效领取。</td>
+</tr>
+<tr>
+<td>重复创建请求</td>
+<td>相同幂等键不会创建重复 Task。</td>
+</tr>
+<tr>
+<td>相同幂等键、不同输入</td>
+<td>系统明确拒绝冲突请求。</td>
+</tr>
+<tr>
+<td>瞬时失败</td>
+<td>按策略进入重试等待，随后再次执行。</td>
+</tr>
+<tr>
+<td>永久失败</td>
+<td>不自动重试，失败原因安全可见。</td>
+</tr>
+<tr>
+<td>排队时取消</td>
+<td>Task 不会被执行。</td>
+</tr>
+<tr>
+<td>运行时取消</td>
+<td>状态先进入取消请求，执行器确认后才取消完成。</td>
+</tr>
+<tr>
+<td>Worker 崩溃</td>
+<td>租约到期后可恢复或明确失败。</td>
+</tr>
+<tr>
+<td>过期 Worker 恢复</td>
+<td>旧 Worker 不能覆盖新 Worker 的结果。</td>
+</tr>
+<tr>
+<td>权限不足</td>
+<td>非所有者无法查看、取消或重试。</td>
+</tr>
+</tbody>
+</table>
+<h3 id="section-27">11.2 需要观测的指标</h3>
+<p>至少应关心：</p>
+<ul>
+<li>队列长度；</li>
+<li>排队等待时间；</li>
+<li>执行耗时分布；</li>
+<li>成功率、失败率、重试率；</li>
+<li>取消率；</li>
+<li>租约过期或恢复次数；</li>
+<li>各类错误码数量；</li>
+<li>Worker 的并发度与空闲情况。</li>
+</ul>
+<p>指标不是为了“看起来专业”，而是帮助判断系统慢在哪里、失败是否集中、是否有任务卡死，以及何时需要扩容或限流。</p>
+<h2 id="task-workflow">12. Task 与 Workflow 的边界</h2>
+<p>Task Management 解决“一个任务怎样可靠完成”。</p>
+<p>Workflow 解决“多个任务怎样按条件、依赖和分支组合”。</p>
+<p>不要因为看到多个步骤，就立刻做 Workflow。例如“解析 -&gt; 清洗 -&gt; 保存”可以仍是一个 Task 的内部步骤；只有步骤需要独立排队、独立重试、独立人工审批、独立复用或跨系统协调时，才有必要提升为多个 Task 或 Workflow 节点。</p>
+<p>典型升级信号：</p>
+<ul>
+<li>出现明确的任务依赖图；</li>
+<li>某个步骤需人工等待或审批；</li>
+<li>不同步骤由不同团队或不同系统执行；</li>
+<li>每一步需要独立重试、独立结果和独立权限；</li>
+<li>需要可视化查看整条业务流程。</li>
+</ul>
+<h2 id="section-28">13. 推荐学习顺序</h2>
+<p>不要一次性钻进数据库锁、消息队列或框架配置。推荐按下面顺序学习，每一步都写出自己的结论。</p>
+<h3 id="section-29">第一步：概念与边界</h3>
+<p>学习内容：第 1、2、3 节。</p>
+<p>学习目标：能够用自己的话区分 Request、进程内异步任务、Task、Turn 和 Workflow。</p>
+<p>练习：任选“文件处理”“生成报告”“批量导入”之一，说明它为什么需要或不需要 Task。</p>
+<h3 id="section-30">第二步：状态机</h3>
+<p>学习内容：第 4 节。</p>
+<p>学习目标：能画出状态图，说明终态、取消、失败和重试的合法转换。</p>
+<p>练习：回答“运行中的任务被取消、Worker 同时崩溃时，最终可能处于哪些状态，为什么”。</p>
+<h3 id="section-31">第三步：数据与事实</h3>
+<p>学习内容：第 5 节。</p>
+<p>学习目标：理解 Task、Attempt、Event、业务结果是四类不同的东西。</p>
+<p>练习：为一个“导入表格”任务列出应保存的输入、结果、尝试和事件。</p>
+<h3 id="section-32">第四步：执行协调</h3>
+<p>学习内容：第 6、7 节。</p>
+<p>学习目标：理解原子领取、短事务、租约、续租和过期 Worker 保护。</p>
+<p>练习：解释两个 Worker 为什么不能只通过“先查询状态再更新”领取任务。</p>
+<h3 id="section-33">第五步：可靠性</h3>
+<p>学习内容：第 8 节。</p>
+<p>学习目标：理解“至少一次执行”以及幂等为什么不可省略。</p>
+<p>练习：设计一个网络超时场景：调用方不知道外部操作是否成功时，该怎样避免重复副作用。</p>
+<h3 id="section-34">第六步：产品与运营边界</h3>
+<p>学习内容：第 9、11 节。</p>
+<p>学习目标：能说明用户能看到什么、哪些信息不应暴露、怎样判断系统健康。</p>
+<p>练习：为一个失败 Task 写出用户可见提示和内部审计记录分别包含什么。</p>
+<h3 id="section-35">第七步：方案选择与未来边界</h3>
+<p>学习内容：第 10、12 节。</p>
+<p>学习目标：能根据规模、可靠性和运维要求解释为什么选进程内、数据库队列、消息队列或成熟框架。</p>
+<p>练习：说明什么信号出现后，才值得从单个 Task Management 系统升级到 Workflow。</p>
+<h2 id="section-36">14. 常见误区</h2>
+<h3 id="section-37">误区一：把异步函数当成任务系统</h3>
+<p>异步只是不阻塞当前执行线程；它不自动提供持久化、恢复、权限、审计和重试。</p>
+<h3 id="section-38">误区二：只有成功和失败两种状态</h3>
+<p>排队、运行、等待重试、取消请求、租约过期都具有不同的业务含义。状态过少会让错误处理和用户体验变得模糊。</p>
+<h3 id="section-39">误区三：用全局内存锁解决分布式执行</h3>
+<p>内存锁只在一个进程内有效。多个进程或多台机器时，需要共享的协调事实。</p>
+<h3 id="section-40">误区四：认为队列天然保证“恰好一次”</h3>
+<p>现实系统更常见的是至少一次执行。网络、崩溃和超时会带来不确定性，幂等必须由业务设计承担。</p>
+<h3 id="section-41">误区五：取消就是立即杀掉执行线程</h3>
+<p>强制中断可能留下半写入的数据、未关闭的文件和不一致的外部副作用。多数业务任务应协作式取消。</p>
+<h3 id="section-42">误区六：失败后无限重试</h3>
+<p>无限重试会放大错误、挤占资源、持续冲击外部服务。重试需要分类、上限、退避和人工介入出口。</p>
+<h3 id="task-5">误区七：把所有步骤都做成独立 Task</h3>
+<p>这会过早引入编排、依赖、监控和事务复杂度。内部不可独立管理的短步骤通常仍属于一个 Task。</p>
+<h3 id="section-43">误区八：先选框架，再定义状态和语义</h3>
+<p>框架不能替你决定“什么时候可重试”“取消是否生效”“结果如何审计”。这些首先是产品和领域语义。</p>
+<h2 id="section-44">15. 术语速查</h2>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>简要解释</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Task</td>
+<td>一项可持久化管理的后台工作。</td>
+</tr>
+<tr>
+<td>Worker</td>
+<td>领取并执行 Task 的后台执行者。</td>
+</tr>
+<tr>
+<td>Queue</td>
+<td>等待被执行的 Task 集合或其传递机制。</td>
+</tr>
+<tr>
+<td>Claim</td>
+<td>Worker 原子地取得一个 Task 的执行权。</td>
+</tr>
+<tr>
+<td>Lease</td>
+<td>有过期时间的临时执行权。</td>
+</tr>
+<tr>
+<td>Heartbeat</td>
+<td>Worker 续租或报告仍存活的动作。</td>
+</tr>
+<tr>
+<td>Attempt</td>
+<td>同一 Task 的一次执行尝试。</td>
+</tr>
+<tr>
+<td>Idempotency</td>
+<td>重复请求不重复产生业务副作用的性质。</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td>失败后按策略再次尝试执行。</td>
+</tr>
+<tr>
+<td>Backoff</td>
+<td>重试前的等待策略。</td>
+</tr>
+<tr>
+<td>Jitter</td>
+<td>在等待时间中加入随机扰动，防止同时重试。</td>
+</tr>
+<tr>
+<td>Cancellation</td>
+<td>对任务提出停止请求及其最终确认过程。</td>
+</tr>
+<tr>
+<td>Recovery</td>
+<td>崩溃、租约过期或重启后对未完成 Task 的处置。</td>
+</tr>
+<tr>
+<td>Compensation</td>
+<td>外部副作用已发生且无法回滚时，执行补救动作。</td>
+</tr>
+<tr>
+<td>Workflow</td>
+<td>多个 Task 或步骤的依赖、分支和编排。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="section-45">一句话总结</h2>
+<pre><code class="language-text">Task Management 不是“后台运行代码”，
+而是把一项业务工作变成可识别、可追踪、可控制、可恢复的生命周期事实。
+
+先定义边界和状态机，
+再处理领取和租约，
+然后补齐幂等、重试、取消与恢复，
+最后才选择队列、框架或 Workflow。
+</code></pre>
+
+      </article>
+      <aside class="toc" aria-label="本文目录">
+        <p class="toc__title">本文目录</p>
+        <nav class="toc__links" id="toc-links"></nav>
+      </aside>
+    </main>
+    <script>
+      (() => {
+        const article = document.getElementById('article');
+        const toc = document.getElementById('toc-links');
+        const headings = Array.from(article.querySelectorAll('h2, h3'));
+        const usedIds = new Set();
+        const slugify = (text) => {
+          const raw = text
+            .trim()
+            .toLowerCase()
+            .replace(/[.,，、:：;；!?！？()[\]{}'"“”‘’`~@#$%^&*+=|\\/<>]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
+          return raw || 'section';
+        };
+        headings.forEach((heading) => {
+          const base = slugify(heading.textContent);
+          let id = base;
+          let index = 2;
+          while (usedIds.has(id)) {
+            id = `${base}-${index++}`;
+          }
+          usedIds.add(id);
+          heading.id = id;
+          const link = document.createElement('a');
+          link.href = `#${id}`;
+          link.dataset.level = heading.tagName.slice(1);
+          link.textContent = heading.textContent;
+          toc.appendChild(link);
+        });
+        if (!headings.length) {
+          toc.innerHTML = '<span class="empty-toc">当前文档没有二级或三级标题。</span>';
+          return;
+        }
+        const links = Array.from(toc.querySelectorAll('a'));
+        const updateActiveLink = () => {
+          let active = headings[0];
+          for (const heading of headings) {
+            if (heading.getBoundingClientRect().top <= 112) active = heading;
+          }
+          links.forEach((link) => link.classList.toggle('is-active', link.hash === `#${active.id}`));
+        };
+        updateActiveLink();
+        document.addEventListener('scroll', updateActiveLink, { passive: true });
+      })();
+    </script>
+  </body>
+</html>

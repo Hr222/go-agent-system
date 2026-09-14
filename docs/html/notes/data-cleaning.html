@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Go Agent System 学习资料：数据清洗学习笔记" />
+    <title>数据清洗学习笔记 · 学习中心</title>
+    <link rel="stylesheet" href="../reader.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__inner">
+        <a class="back-link" href="../index.html">返回学习中心</a>
+        <span class="article-name">数据清洗学习笔记</span>
+      </div>
+    </header>
+    <main class="page">
+      <article class="article" id="article">
+<h1 id="section">数据清洗学习笔记</h1>
+<p>在过往项目中如我处理过BI和 RAG, 作为他们操作的第一步相关重要。 借着本项目这次机会，对“数据清洗”这个概念及其工程落地方式的理解，方便后续继续做知识库入库、RAG、文档解析时反复翻看。</p>
+<h2 id="section-1">一、什么是数据清洗</h2>
+<p>数据清洗，简单说就是：</p>
+<p><strong>把原始数据处理成更规范、更可用、更可靠的数据。</strong></p>
+<p>如果用工程化一点的话来说：</p>
+<p><strong>数据清洗 = 发现并处理原始数据中的脏数据、噪音、格式不统一、缺失、重复、异常等问题，让它能被后续系统稳定使用。</strong></p>
+<p>要注意一点：</p>
+<ul>
+<li>数据清洗不是创造新数据</li>
+<li>数据清洗也不是凭空修改业务含义</li>
+<li>数据清洗的核心，是让原始数据变成系统真正“能吃”的样子</li>
+</ul>
+<h2 id="section-2">二、为什么需要数据清洗</h2>
+<p>只要数据不是完全由自己系统内部、严格受控地生成出来，通常就会有清洗需求。</p>
+<p>最常见的原因有这些：</p>
+<ul>
+<li>原始数据来源复杂</li>
+<li>数据格式不统一</li>
+<li>数据中混有噪音</li>
+<li>数据质量不稳定</li>
+<li>后续系统处理对数据规范性要求更高</li>
+</ul>
+<p>比如在知识库入库场景里，一份 PDF 或 DOCX 抽出来的文本，往往并不是天然就适合直接入库的，可能会有：</p>
+<ul>
+<li>页码</li>
+<li>页眉页脚</li>
+<li>多余空格</li>
+<li>换行混乱</li>
+<li>重复短句</li>
+<li>标题和正文粘连</li>
+<li>表格文本拼接不规整</li>
+</ul>
+<p>如果不先做清洗，后面的章节拆分、结构化入库、检索、问答都会变得不稳定。</p>
+<h2 id="section-3">三、数据清洗的核心目标</h2>
+<p>数据清洗通常有三个核心目标：</p>
+<ol>
+<li>让数据更正确</li>
+<li>让数据更统一</li>
+<li>让数据更适合后续使用</li>
+</ol>
+<p>可以进一步展开理解：</p>
+<ul>
+<li>更正确：去掉明显错误、异常、重复、乱码</li>
+<li>更统一：统一格式、统一类型、统一表达方式</li>
+<li>更适合使用：为后续入库、检索、统计、建模、问答打基础</li>
+</ul>
+<h2 id="section-4">四、常见的数据清洗操作</h2>
+<p>日常项目里最常见的数据清洗操作，大体可以分成下面几类。</p>
+<table>
+<thead>
+<tr>
+<th>操作类型</th>
+<th>典型问题</th>
+<th>常见做法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>去脏数据</td>
+<td>空文件、页码、页眉页脚、测试数据、重复盖章件、无意义内容</td>
+<td>规则过滤、正则匹配、黑名单关键词、长度阈值</td>
+</tr>
+<tr>
+<td>补缺失值</td>
+<td>字段为空、日期缺失、部门未填、来源信息不全</td>
+<td>直接丢弃、给默认值、上下文推断、保留为 <code>NULL</code></td>
+</tr>
+<tr>
+<td>格式统一</td>
+<td>换行不统一、全角半角混用、多空格、扩展名大小写不一致、日期格式不统一</td>
+<td><code>replace</code>、正则替换、<code>strip</code>、大小写统一、字符标准化</td>
+</tr>
+<tr>
+<td>类型转换</td>
+<td>字符串数字、字符串时间、文本状态值不能直接用于业务计算</td>
+<td>数值转换、日期解析、布尔转换、枚举转换</td>
+</tr>
+<tr>
+<td>去重</td>
+<td>重复文档、重复 section、重复业务记录</td>
+<td>按主键去重、按业务唯一键去重、按哈希去重、模糊去重</td>
+</tr>
+<tr>
+<td>合法性校验</td>
+<td>文件类型不允许、文本太短、页数异常、金额超范围、字段格式非法</td>
+<td>类型白名单、大小阈值、长度阈值、正则校验、枚举约束</td>
+</tr>
+<tr>
+<td>标准化枚举值</td>
+<td>同一部门多种写法、同一状态多种表达、同一类制度命名不统一</td>
+<td>映射表、标准命名规则、领域规则统一</td>
+</tr>
+<tr>
+<td>结构化拆分</td>
+<td>文档拆章节、表格拆行、全文拆段落、长文拆 section</td>
+<td>标题模式识别、按段落和换行拆分、按业务规则构建结构化对象</td>
+</tr>
+</tbody>
+</table>
+<p>其中“结构化拆分”在文档知识库项目里尤其常见，因为原始文件通常是非结构化的。</p>
+<h2 id="python">五、Python 项目里常见的数据清洗实现方式</h2>
+<p>在 Python 项目里，数据清洗通常不是靠一个单独的大框架完成的，而是根据数据类型，组合使用不同手段。</p>
+<p>常见实现方式大体有下面几类：</p>
+<h3 id="section-5">5.1 字符串处理</h3>
+<p>这是最基础、也最常见的一类。</p>
+<p>常用手段：</p>
+<ul>
+<li><code>replace</code></li>
+<li><code>strip</code></li>
+<li><code>split</code></li>
+<li><code>join</code></li>
+<li><code>lower</code></li>
+<li><code>upper</code></li>
+</ul>
+<p>适合处理：</p>
+<ul>
+<li>多余空格</li>
+<li>换行统一</li>
+<li>前后空白去除</li>
+<li>文件扩展名统一</li>
+<li>字段名简单标准化</li>
+</ul>
+<h3 id="section-6">5.2 正则表达式</h3>
+<p>Python 里做文本型清洗时，<code>re</code> 几乎是最常用的工具之一。</p>
+<p>常用手段：</p>
+<ul>
+<li><code>re.sub</code></li>
+<li><code>re.match</code></li>
+<li><code>re.fullmatch</code></li>
+<li><code>re.findall</code></li>
+</ul>
+<p>适合处理：</p>
+<ul>
+<li>页码识别</li>
+<li>标题识别</li>
+<li>手机号、邮箱、证件号格式判断</li>
+<li>去除特定模式噪音</li>
+<li>抽取结构化字段</li>
+</ul>
+<h3 id="section-7">5.3 列表 / 字典 / 集合循环处理</h3>
+<p>这类方式非常符合 Python 风格。</p>
+<p>常用手段：</p>
+<ul>
+<li>列表推导式</li>
+<li>字典推导式</li>
+<li><code>set</code> 去重</li>
+<li><code>Counter</code> 计数</li>
+<li><code>for</code> 循环过滤</li>
+</ul>
+<p>适合处理：</p>
+<ul>
+<li>重复值统计</li>
+<li>批量规则过滤</li>
+<li>短文本去重</li>
+<li>行级清洗</li>
+<li>分类映射</li>
+</ul>
+<h3 id="dataframe">5.4 DataFrame 清洗</h3>
+<p>如果数据是表格型、结构化字段型，Python 里很常见的做法是使用 <code>pandas</code>。</p>
+<p>常用手段：</p>
+<ul>
+<li>缺失值处理</li>
+<li>类型转换</li>
+<li>批量替换</li>
+<li>重复行处理</li>
+<li>条件过滤</li>
+</ul>
+<p>适合处理：</p>
+<ul>
+<li>Excel 导入</li>
+<li>CSV 清洗</li>
+<li>统计分析前预处理</li>
+<li>数据对账</li>
+</ul>
+<h3 id="section-8">5.5 文档解析后清洗</h3>
+<p>如果数据来源是 PDF、DOCX、网页、日志，Python 里通常是：</p>
+<ol>
+<li>先用解析库抽出原始内容</li>
+<li>再对抽出的文本做二次清洗</li>
+</ol>
+<p>常见做法：</p>
+<ul>
+<li>PDF 先抽文本，再统一换行和空格</li>
+<li>DOCX 先抽段落和表格，再做噪音清理</li>
+<li>HTML 先去标签，再做正文抽取</li>
+<li>日志先按行切分，再做正则筛选</li>
+</ul>
+<h3 id="section-9">5.6 规则函数组合</h3>
+<p>企业项目里比较常见的做法，不是写一个超大的“万能清洗器”，而是拆成多个小规则函数，再按顺序组合。</p>
+<p>例如：</p>
+<ol>
+<li><code>normalize_whitespace</code></li>
+<li><code>remove_page_number</code></li>
+<li><code>remove_repeated_header</code></li>
+<li><code>normalize_title</code></li>
+<li><code>validate_min_length</code></li>
+</ol>
+<p>这样的好处是：</p>
+<ul>
+<li>易读</li>
+<li>易测</li>
+<li>易扩展</li>
+<li>易按业务阶段开关某条规则</li>
+</ul>
+<h2 id="python-1">六、Python 里常见的数据清洗相关库</h2>
+<p>Python 的优势之一，是不同数据形态都有比较成熟的处理生态。</p>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>常见库</th>
+<th>主要用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>纯文本和规则处理</td>
+<td><code>re</code>、<code>collections</code>、<code>unicodedata</code>、<code>string</code></td>
+<td>正则匹配、频次统计、Unicode 标准化、基础字符串处理</td>
+</tr>
+<tr>
+<td>表格和结构化数据</td>
+<td><code>pandas</code>、<code>openpyxl</code>、<code>csv</code></td>
+<td>Excel / CSV 清洗、字段批量转换、缺失值处理、去重与聚合</td>
+</tr>
+<tr>
+<td>文档处理</td>
+<td><code>python-docx</code>、<code>pypdf</code>、<code>pdfplumber</code>、<code>python-pptx</code></td>
+<td>DOCX 段落与表格抽取、PDF 文本抽取、页面级定位、PPT 文字抽取</td>
+</tr>
+<tr>
+<td>HTML 和网页数据</td>
+<td><code>beautifulsoup4</code>、<code>lxml</code>、<code>readability-lxml</code></td>
+<td>去标签、提取正文、清理网页噪音</td>
+</tr>
+<tr>
+<td>OCR 和图片文本</td>
+<td><code>paddleocr</code>、<code>tesseract</code>、<code>easyocr</code></td>
+<td>扫描件识别、图片转文本、票据/合同/盖章件预处理</td>
+</tr>
+<tr>
+<td>校验和数据模型</td>
+<td><code>pydantic</code>、<code>pydantic-settings</code></td>
+<td>输入结构校验、默认值管理、字段约束、配置统一读取</td>
+</tr>
+</tbody>
+</table>
+<h2 id="section-10">七、数据清洗一般出现在哪些场景</h2>
+<p>数据清洗出现得非常广，几乎所有“数据不是自己完全严格生成出来”的场景里都会出现。</p>
+<p>常见场景如下：</p>
+<h3 id="section-11">5.1 文件入库</h3>
+<p>比如：</p>
+<ul>
+<li>PDF</li>
+<li>DOCX</li>
+<li>Excel</li>
+<li>邮件附件</li>
+<li>扫描件</li>
+</ul>
+<p>这类文件往往天然不规整，因此在正式入库前通常都要做清洗。</p>
+<h3 id="section-12">5.2 数据迁移</h3>
+<p>老系统迁新系统时，经常会碰到：</p>
+<ul>
+<li>历史脏数据</li>
+<li>枚举值不统一</li>
+<li>重复记录</li>
+<li>字段缺失</li>
+</ul>
+<h3 id="section-13">5.3 接口对接</h3>
+<p>第三方接口返回的数据可能不稳定、不规范、不完整，因此需要本系统接收后先做清洗和校验。</p>
+<h3 id="bi">5.4 报表和 BI</h3>
+<p>做统计分析前，要先去掉重复值、空值、异常值，否则报表结果容易失真。</p>
+<h3 id="section-14">5.5 爬虫和网页采集</h3>
+<p>网页中的广告、菜单、标签、重复文本都属于噪音，必须先清洗。</p>
+<h3 id="section-15">5.6 日志处理</h3>
+<p>日志中可能会有无效行、敏感信息、格式不统一的内容，在进入分析系统前常常需要先做预处理。</p>
+<h3 id="nlp-rag">5.7 机器学习 / NLP / RAG</h3>
+<p>模型、向量化、检索、问答都非常依赖输入数据质量，因此这类场景下数据清洗往往非常重要。</p>
+<h3 id="section-16">5.8 用户输入</h3>
+<p>表单、导入模板、后台录入的数据，经常带有：</p>
+<ul>
+<li>多余空格</li>
+<li>特殊字符</li>
+<li>日期格式混乱</li>
+<li>状态值乱填</li>
+</ul>
+<p>这类场景本质上也属于数据清洗。</p>
+<h2 id="section-17">八、企业项目里常见的数据清洗应用方案</h2>
+<p>企业里做数据清洗，通常不会只写一个函数就结束，而是会形成一套相对固定的应用方案。</p>
+<p>常见方案如下：</p>
+<h3 id="section-18">8.1 同步清洗</h3>
+<p>特点：</p>
+<ul>
+<li>请求来了就立刻清洗</li>
+<li>清洗成功后直接进入后续流程</li>
+<li>适合低时延、小批量、单文件处理</li>
+</ul>
+<p>常见场景：</p>
+<ul>
+<li>单文件上传入库</li>
+<li>表单提交</li>
+<li>接口实时接收</li>
+</ul>
+<p>优点：</p>
+<ul>
+<li>逻辑直观</li>
+<li>链路短</li>
+<li>出错时反馈快</li>
+</ul>
+<p>注意点：</p>
+<ul>
+<li>不适合超大文件</li>
+<li>不适合高并发重处理</li>
+<li>需要控制单请求耗时和内存</li>
+</ul>
+<h3 id="section-19">8.2 异步清洗</h3>
+<p>特点：</p>
+<ul>
+<li>请求先登记任务</li>
+<li>后台任务再去解析、清洗、入库</li>
+<li>前台通过任务状态轮询结果</li>
+</ul>
+<p>常见场景：</p>
+<ul>
+<li>大批量文件导入</li>
+<li>OCR</li>
+<li>超大 PDF / DOCX 处理</li>
+<li>多阶段知识库构建</li>
+</ul>
+<p>优点：</p>
+<ul>
+<li>不阻塞前台请求</li>
+<li>更适合长流程和重处理</li>
+<li>容易做失败重试</li>
+</ul>
+<p>注意点：</p>
+<ul>
+<li>需要任务状态管理</li>
+<li>需要幂等控制</li>
+<li>需要补偿和失败排查能力</li>
+</ul>
+<h3 id="section-20">8.3 分层清洗</h3>
+<p>特点：</p>
+<ul>
+<li>输入层做轻校验</li>
+<li>解析层做技术清洗</li>
+<li>领域层做业务标准化</li>
+<li>落库层只做约束和兜底</li>
+</ul>
+<p>这是比较推荐的企业方案，因为更利于维护和扩展。</p>
+<h3 id="section-21">8.4 分阶段清洗</h3>
+<p>特点：</p>
+<ul>
+<li>第一阶段只做保守清洗</li>
+<li>第二阶段再做结构化增强</li>
+<li>第三阶段再做检索或建模需要的深加工</li>
+</ul>
+<p>常见场景：</p>
+<ul>
+<li>RAG</li>
+<li>知识库建设</li>
+<li>文档治理</li>
+<li>数据治理平台</li>
+</ul>
+<p>这种方式适合逐步落地 MVP，而不是一开始把所有复杂规则都堆进去。</p>
+<h3 id="section-22">8.5 可审计清洗</h3>
+<p>特点：</p>
+<ul>
+<li>记录清洗前后结果</li>
+<li>记录被删除的噪音样本</li>
+<li>记录命中的规则</li>
+<li>记录失败原因</li>
+</ul>
+<p>适合场景：</p>
+<ul>
+<li>企业制度入库</li>
+<li>合规资料处理</li>
+<li>财务数据治理</li>
+<li>高可信知识库</li>
+</ul>
+<p>这样做的价值在于：后续出了问题能追查。</p>
+<h2 id="section-23">九、企业端通常如何处理数据清洗</h2>
+<p>企业项目里，数据清洗往往不是一个“纯算法动作”，而是一个带工程约束的处理链路。</p>
+<p>常见做法如下：</p>
+<h3 id="section-24">9.1 先定义输入边界</h3>
+<p>在真正做清洗前，先明确：</p>
+<ul>
+<li>支持哪些文件类型</li>
+<li>不支持哪些文件类型</li>
+<li>文件大小上限是多少</li>
+<li>哪些内容首期排除</li>
+<li>哪些数据必须人工复核</li>
+</ul>
+<p>这一步很重要，因为很多脏数据问题，最好的解决方式不是“硬清洗”，而是“禁止进入流程”。</p>
+<h3 id="section-25">9.2 先做轻量准入，再做重处理</h3>
+<p>企业里一般不会拿到文件就立刻全文解析，而是先做一层轻量准入判断：</p>
+<ul>
+<li>文件是否存在</li>
+<li>扩展名是否合法</li>
+<li>文件是否过大</li>
+<li>文件名是否命中排除规则</li>
+<li>是否疑似扫描件</li>
+</ul>
+<p>只有过了这一层，才进入真正的解析和清洗。</p>
+<h3 id="section-26">9.3 规则优先，模型辅助</h3>
+<p>在企业业务里，数据清洗第一选择通常仍然是规则，而不是一上来就交给模型。</p>
+<p>原因：</p>
+<ul>
+<li>规则稳定</li>
+<li>成本低</li>
+<li>可解释</li>
+<li>可复现</li>
+<li>易审计</li>
+</ul>
+<p>模型通常适合用在：</p>
+<ul>
+<li>OCR</li>
+<li>模糊分类</li>
+<li>标题补全</li>
+<li>异常识别</li>
+<li>复杂字段抽取</li>
+</ul>
+<p>但即便用了模型，前后通常也要配规则做约束。</p>
+<h3 id="section-27">9.4 小步迭代，不追求首版完美</h3>
+<p>企业端比较稳妥的做法通常是：</p>
+<ol>
+<li>先定义 MVP 范围</li>
+<li>先支持少量明确类型</li>
+<li>先做保守清洗</li>
+<li>先保证链路稳定</li>
+<li>再根据脏数据样本不断补规则</li>
+</ol>
+<p>因为数据清洗高度依赖真实样本，很多规则不是坐在会议室里一次性设计出来的，而是在运行中不断补齐的。</p>
+<h3 id="section-28">9.5 失败要可见、可追踪、可重试</h3>
+<p>企业项目里，清洗失败不能只抛一个异常结束。</p>
+<p>通常至少要能回答下面这些问题：</p>
+<ul>
+<li>失败发生在哪个阶段</li>
+<li>失败的是哪份文件</li>
+<li>失败原因是什么</li>
+<li>是否已经部分入库</li>
+<li>能不能重试</li>
+</ul>
+<p>如果是重要业务，还会进一步要求：</p>
+<ul>
+<li>保留失败样本</li>
+<li>保留原始文件路径</li>
+<li>保留规则命中记录</li>
+<li>保留人工复核入口</li>
+</ul>
+<h3 id="section-29">9.6 输出要服务后续环节</h3>
+<p>清洗结果不是“洗干净就完了”，还要考虑后面谁来消费。</p>
+<p>例如：</p>
+<ul>
+<li>入库层要什么字段</li>
+<li>检索层要什么文本粒度</li>
+<li>embedding 层要不要保留原段落边界</li>
+<li>问答层要不要保留章节路径</li>
+<li>审核层要不要看到被删掉的噪音样本</li>
+</ul>
+<p>也就是说，企业里的数据清洗一定是“面向下游”的。</p>
+<h2 id="python-2">十、Python 项目里常见的数据清洗实施细节</h2>
+<p>如果从 Python 工程实现角度看，一个相对通用的落地方式通常包括下面这些细节。</p>
+<h3 id="dto">10.1 先定义输入 DTO</h3>
+<p>先把输入结构固定下来，例如：</p>
+<ul>
+<li>文件路径</li>
+<li>文件类型</li>
+<li>来源信息</li>
+<li>业务分类</li>
+<li>可选人工标签</li>
+</ul>
+<p>这样做的好处是：清洗逻辑不会直接依赖零散参数。</p>
+<h3 id="section-30">10.2 再定义输出结果对象</h3>
+<p>清洗结果不要只返回一个字符串，通常应该返回结构化结果，例如：</p>
+<ul>
+<li>清洗后的正文</li>
+<li>清洗备注</li>
+<li>被移除的噪音示例</li>
+<li>是否疑似异常</li>
+<li>处理阶段状态</li>
+</ul>
+<p>这样便于日志、预览、排错和后续落库。</p>
+<h3 id="section-31">10.3 每条规则尽量做成小函数</h3>
+<p>例如：</p>
+<ul>
+<li><code>normalize_newlines</code></li>
+<li><code>normalize_whitespace</code></li>
+<li><code>remove_page_number</code></li>
+<li><code>remove_repeated_noise</code></li>
+<li><code>keep_heading_structure</code></li>
+</ul>
+<p>这样做的好处是：</p>
+<ul>
+<li>单条规则容易测试</li>
+<li>后期容易增删</li>
+<li>容易判断是哪条规则导致误删</li>
+</ul>
+<h3 id="section-32">10.4 保守优先</h3>
+<p>在文档型项目里，首版清洗通常更适合：</p>
+<ul>
+<li>宁可少删</li>
+<li>不要误删正文</li>
+<li>优先保留结构</li>
+<li>先保证 section 能稳定拆分</li>
+</ul>
+<p>这比一开始追求“极致干净”更适合企业落地。</p>
+<h3 id="section-33">10.5 规则顺序要稳定</h3>
+<p>清洗规则往往不是无序执行的。</p>
+<p>例如更常见的顺序是：</p>
+<ol>
+<li>编码与换行标准化</li>
+<li>空白压缩</li>
+<li>页码和重复噪音移除</li>
+<li>标题和正文边界保护</li>
+<li>最终输出整理</li>
+</ol>
+<p>如果顺序乱掉，可能会导致：</p>
+<ul>
+<li>原本能识别的页码识别不到</li>
+<li>原本要保留的标题被提前破坏</li>
+<li>后续结构拆分不稳定</li>
+</ul>
+<h3 id="section-34">10.6 尽量保留中间结果</h3>
+<p>Python 项目里，实际落地时比较推荐保留：</p>
+<ul>
+<li><code>raw_text</code></li>
+<li><code>clean_text</code></li>
+<li><code>removed_noise_examples</code></li>
+<li><code>notes</code></li>
+</ul>
+<p>这样对调试非常有帮助。</p>
+<h3 id="section-35">10.7 把规则和编排分开</h3>
+<p>推荐做法是：</p>
+<ul>
+<li><code>service</code> 负责流程编排</li>
+<li><code>cleaner</code> 负责清洗规则</li>
+<li><code>domain rules</code> 负责业务判断</li>
+<li><code>repository</code> 负责落库</li>
+</ul>
+<p>这样不会让一个类既做解析、又做清洗、又做入库，导致越来越臃肿。</p>
+<h3 id="section-36">10.8 先写样本测试，再补规则</h3>
+<p>数据清洗最怕“感觉上没问题，实际一跑全是误删”。</p>
+<p>因此比较推荐的做法是：</p>
+<ul>
+<li>先准备几个真实样本文档</li>
+<li>每次新增规则都补测试</li>
+<li>保证典型文档不会被清洗坏</li>
+</ul>
+<h2 id="section-37">十一、企业项目里数据清洗的质量控制</h2>
+<p>企业端真正难的，不只是“把清洗写出来”，而是“怎么证明它可用、可控、可维护”。</p>
+<p>通常会关注下面这些方面：</p>
+<h3 id="section-38">11.1 准确性</h3>
+<p>重点看：</p>
+<ul>
+<li>是否删掉了不该删的正文</li>
+<li>是否保留了关键结构</li>
+<li>是否把明显噪音清掉了</li>
+</ul>
+<h3 id="section-39">11.2 稳定性</h3>
+<p>重点看：</p>
+<ul>
+<li>同类文档是否表现一致</li>
+<li>不同批次数据是否稳定</li>
+<li>是否容易因个别格式变化失效</li>
+</ul>
+<h3 id="section-40">11.3 可解释性</h3>
+<p>重点看：</p>
+<ul>
+<li>为什么这行被删了</li>
+<li>为什么这个文件被拒绝</li>
+<li>为什么这个标题被识别成 section</li>
+</ul>
+<p>规则型清洗在这方面通常更有优势。</p>
+<h3 id="section-41">11.4 可回溯性</h3>
+<p>重点看：</p>
+<ul>
+<li>原始文件路径是什么</li>
+<li>原始文本是什么</li>
+<li>清洗后文本是什么</li>
+<li>命中了哪些规则</li>
+<li>哪一步失败了</li>
+</ul>
+<h3 id="section-42">11.5 可扩展性</h3>
+<p>重点看：</p>
+<ul>
+<li>新文件类型能不能接入</li>
+<li>新规则能不能独立增加</li>
+<li>是否能从单文件扩展到批量</li>
+<li>是否能从保守清洗扩展到深度治理</li>
+</ul>
+<h2 id="section-43">十二、结合当前项目的一种典型实施方案</h2>
+<p>对于当前制度类知识库入库 MVP，可以用下面这种方案理解数据清洗落地：</p>
+<ol>
+<li>文件登记</li>
+<li>intake 校验</li>
+<li>解析 DOCX / 原生 PDF</li>
+<li>产出 <code>raw_text</code></li>
+<li>做保守清洗</li>
+<li>产出 <code>clean_text</code></li>
+<li>按章 / 节 / 条拆 section</li>
+<li>一次性落库</li>
+</ol>
+<p>其中保守清洗阶段通常做：</p>
+<ul>
+<li>换行统一</li>
+<li>全角空格转半角空格</li>
+<li>连续空格压缩</li>
+<li>典型页码移除</li>
+<li>重复短噪音移除</li>
+<li>保留章节结构</li>
+</ul>
+<p>这类方案的特点是：</p>
+<ul>
+<li>规则简单</li>
+<li>成本可控</li>
+<li>易解释</li>
+<li>适合 MVP</li>
+<li>便于后续逐步增强</li>
+</ul>
+<h2 id="section-44">十三、结合当前项目理解数据清洗</h2>
+<p>这一点非常重要，因为很多项目不是不会清洗，而是清洗逻辑放乱了。</p>
+<p>一个更合理的思路是：</p>
+<p><strong>数据清洗不应该全塞在一个地方，而应该按“技术清洗”和“业务清洗”分层放。</strong></p>
+<h3 id="api">6.1 API 层</h3>
+<p>适合放：</p>
+<ul>
+<li>必填校验</li>
+<li>基础类型校验</li>
+<li>默认值填充</li>
+<li>很轻量的字符串整理</li>
+</ul>
+<p>不适合放：</p>
+<ul>
+<li>大段文本清洗</li>
+<li>文档解析</li>
+<li>复杂业务规则</li>
+</ul>
+<h3 id="section-45">6.2 技术适配层 / 解析层</h3>
+<p>适合放“技术型清洗”：</p>
+<ul>
+<li>PDF 抽文本</li>
+<li>DOCX 抽段落</li>
+<li>编码处理</li>
+<li>换行统一</li>
+<li>空格统一</li>
+<li>页码初步处理</li>
+</ul>
+<p>这类清洗更偏“让数据能被系统处理”。</p>
+<h3 id="section-46">6.3 领域层</h3>
+<p>适合放“业务型清洗”或“业务标准化”：</p>
+<ul>
+<li>哪些文件属于制度类</li>
+<li>哪些关键词应该排除</li>
+<li>制度名称怎么规范化</li>
+<li>章 / 节 / 条怎么识别</li>
+<li>部门名称怎么统一</li>
+</ul>
+<p>这类清洗更偏“让数据符合业务定义”。</p>
+<h3 id="section-47">6.4 应用服务层</h3>
+<p>适合放流程编排：</p>
+<ul>
+<li>先解析</li>
+<li>再清洗</li>
+<li>再拆 section</li>
+<li>再落库</li>
+</ul>
+<p>这一层主要负责调度，不适合堆太多底层规则细节。</p>
+<h3 id="repository-db">6.5 Repository / DB 层</h3>
+<p>适合放：</p>
+<ul>
+<li>非空约束</li>
+<li>默认值</li>
+<li>唯一约束</li>
+<li>类型约束</li>
+</ul>
+<p>这一层更适合做兜底保护，不适合承载主清洗逻辑。</p>
+<h2 id="section-48">七、技术清洗和业务清洗的区别</h2>
+<p>这个区分对工程分层特别有帮助。</p>
+<h3 id="section-49">7.1 技术清洗</h3>
+<p>目标是：</p>
+<p><strong>让数据能处理。</strong></p>
+<p>常见内容：</p>
+<ul>
+<li>格式统一</li>
+<li>换行统一</li>
+<li>去掉明显噪音</li>
+<li>编码修正</li>
+<li>类型转换</li>
+<li>文件内容解析</li>
+</ul>
+<h3 id="section-50">7.2 业务清洗</h3>
+<p>目标是：</p>
+<p><strong>让数据符合业务定义。</strong></p>
+<p>常见内容：</p>
+<ul>
+<li>制度类文件识别</li>
+<li>标题识别规则</li>
+<li>文件准入规则</li>
+<li>版本标签生成规则</li>
+<li>标准制度名称推导</li>
+</ul>
+<h3 id="section-51">7.3 一句话区分</h3>
+<ul>
+<li>技术清洗：让数据“能处理”</li>
+<li>业务清洗：让数据“能入业务”</li>
+</ul>
+<p>结合当前这个制度类知识库入库 MVP，可以把数据清洗理解为下面这条链路中的一环：</p>
+<ol>
+<li>文件登记</li>
+<li>intake 校验</li>
+<li>格式标准化</li>
+<li>解析器选择</li>
+<li>原文抽取</li>
+<li>文本清洗</li>
+<li>章节拆分</li>
+<li>落库</li>
+</ol>
+<p>其中和“清洗”最直接相关的内容包括：</p>
+<ul>
+<li>原文抽取后的换行统一</li>
+<li>空格统一</li>
+<li>去除重复短噪音</li>
+<li>去除典型页码</li>
+<li>尽量保留章、节、条结构</li>
+<li>为后续章节拆分提供更稳定的输入</li>
+</ul>
+<p>要注意，这里的清洗策略是：</p>
+<p><strong>保守清洗。</strong></p>
+<p>也就是说：</p>
+<ul>
+<li>不追求把文本洗得特别“漂亮”</li>
+<li>更重视不误删正文</li>
+<li>更重视后续结构化拆分稳定</li>
+</ul>
+<h2 id="section-52">十四、当前项目中的一个典型理解</h2>
+<p>以制度文档为例，原始文本可能像这样：</p>
+<pre><code class="language-text">第一章   总则
+
+第 1 页
+
+第一条   为规范公司采购行为...
+</code></pre>
+<p>经过保守清洗后，可能变成：</p>
+<pre><code class="language-text">第一章 总则
+
+第一条 为规范公司采购行为...
+</code></pre>
+<p>这里做的就是典型的数据清洗：</p>
+<ul>
+<li>空格统一</li>
+<li>页码移除</li>
+<li>保留制度结构</li>
+</ul>
+<p>它的目的不是改写业务内容，而是让后面的 section 拆分更稳定。</p>
+<h2 id="section-53">十五、我当前对数据清洗的阶段性理解</h2>
+<p>结合这次沟通，我当前可以把“数据清洗”理解成下面这句话：</p>
+<p><strong>数据清洗就是把外部来的、格式杂乱或质量不稳定的数据，按照技术规则和业务规则整理成可稳定处理、可稳定入库、可稳定复用的数据。</strong></p>
+<p>对于当前知识库项目来说，它不是一个可有可无的小步骤，而是：</p>
+<ul>
+<li>文档入库前的重要预处理</li>
+<li>章节拆分前的重要稳定器</li>
+<li>后续检索和问答质量的基础保障</li>
+</ul>
+<h2 id="section-54">十六、常见应用场景与对应处理方案</h2>
+<p>这一节不再只讲概念，而是按企业项目里最常见的场景来整理“通常怎么处理”。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>常见输入</th>
+<th>常见脏数据</th>
+<th>通常处理步骤</th>
+<th>Python 常用工具</th>
+<th>企业项目注意点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文件入库</td>
+<td>PDF、DOCX、Excel、邮件附件、扫描件</td>
+<td>页码、页眉页脚、多余空格、换行混乱、OCR 错字、重复扫描副本、文件名不规范</td>
+<td>先做文件存在性/扩展名/大小校验，再判断是否允许入库；对可解析文件抽取原始文本；统一换行和空格；去除页码、重复短噪音、明显模板文字；保留标题、章节、表格等关键结构；输出清洗结果供 section 拆分或结构化入库</td>
+<td><code>pathlib</code>、<code>python-docx</code>、<code>pypdf</code>、<code>pdfplumber</code>、<code>re</code></td>
+<td>首版不要一下支持太多格式；扫描件和原生 PDF 要分开处理；重要文档建议保留 <code>raw_text</code> 和 <code>clean_text</code>；对删除内容保留示例便于复核</td>
+</tr>
+<tr>
+<td>Excel / CSV 导入</td>
+<td>客户清单、供应商名单、项目台账、财务统计表</td>
+<td>列名不统一、空单元格、日期格式混乱、数字列被读成字符串、重复行、合并单元格影响解析</td>
+<td>先读取表头并做标准列名映射；检查必填列；处理空值、默认值、异常值；统一日期、金额、数量等字段类型；按主键或业务唯一键去重；生成结构化记录后再落库或对账</td>
+<td><code>pandas</code>、<code>openpyxl</code>、<code>csv</code>、<code>datetime</code></td>
+<td>模板导入最好固定表头；不要直接相信用户上传的类型；金额、税率、日期列最容易出问题；批量导入最好输出错误明细</td>
+</tr>
+<tr>
+<td>第三方接口对接</td>
+<td>外部平台回调、第三方业务接口、供应商系统同步、政务平台返回结果</td>
+<td>字段缺失、枚举值不一致、时间格式不统一、布尔表达不一致、空串代替 <code>null</code>、数字字段返回文本</td>
+<td>先校验响应结构；将第三方字段映射为内部字段；统一时间、状态、金额、布尔类型；对异常字段做默认值或拒绝处理；保留原始响应和清洗后结果；再进入内部业务逻辑</td>
+<td><code>pydantic</code>、<code>requests</code>、<code>httpx</code>、<code>datetime</code>、<code>decimal</code></td>
+<td>外部接口经常变更字段，需要兼容旧值；映射规则最好单独维护；高风险接口建议保留原始报文；对状态值和枚举值要建立标准字典</td>
+</tr>
+<tr>
+<td>数据迁移</td>
+<td>老系统 SQL、Excel 批量数据、CSV 历史数据、多系统合并数据集</td>
+<td>历史空值、重复记录、编码不一致、枚举值不统一、主键冲突、历史脏备注字段</td>
+<td>先梳理原始字段和目标字段映射；标准化编码、日期、状态、枚举值；按业务主键识别重复数据；对无效数据做隔离或单独导出；迁移前抽样验证；迁移后做数量、金额、关键字段对账</td>
+<td><code>pandas</code>、<code>sqlalchemy</code>、<code>csv</code>、<code>json</code></td>
+<td>数据迁移最怕值不对但看起来导进去了；必须做迁移前后对账；不仅要关注能否导入，还要关注是否符合新系统业务定义；历史脏数据要单独留痕</td>
+</tr>
+<tr>
+<td>RAG / 知识库</td>
+<td>制度文件、操作手册、会议纪要、合同模板、FAQ 文档</td>
+<td>标题层级不稳定、OCR 噪音、长段落缺少边界、表格抽取后变形、同一制度多个版本混在一起、大段重复模板文字</td>
+<td>先筛掉不适合首期入库的文件；抽取原始文本并判断是否疑似扫描件；统一换行、空格和页面噪音；尽量保留章节结构和标题路径；拆成 section 或 chunk；再进入 embedding、检索、问答等后续环节</td>
+<td><code>python-docx</code>、<code>pypdf</code>、<code>pdfplumber</code>、<code>re</code>、<code>pydantic</code></td>
+<td>不要过早为了 chunk 破坏原始结构；制度类文档要优先保留章、节、条；首版适合做保守清洗；清洗策略要为后续检索和引用服务</td>
+</tr>
+<tr>
+<td>用户表单输入</td>
+<td>后台新增页面、Excel 导入模板、外部用户注册资料、审批流表单</td>
+<td>前后空格、手机号带分隔符、日期手填格式不统一、必填项漏填、状态值乱填、多选字段分隔符混乱</td>
+<td>先做必填和格式校验；统一空白和分隔符；统一手机号、邮箱、日期等字段格式；对枚举字段映射为标准值；无法纠正的输入直接返回错误提示</td>
+<td><code>pydantic</code>、<code>re</code>、<code>datetime</code>、<code>email-validator</code></td>
+<td>表单清洗不能悄悄篡改用户真实意图；能自动纠正的轻问题可以纠正；影响业务含义的问题必须显式报错；错误提示要具体</td>
+</tr>
+<tr>
+<td>日志与监控数据</td>
+<td>应用日志、审计日志、接口调用记录、异常堆栈</td>
+<td>无效空行、日志格式不统一、敏感信息未脱敏、同一异常大量重复、多行堆栈难以归并</td>
+<td>先按日志格式切分记录；抽取时间、级别、模块、错误码等字段；过滤空行和无效记录；做敏感信息脱敏；对重复异常聚合或计数；输出适合检索或告警的数据结构</td>
+<td><code>logging</code>、<code>re</code>、<code>json</code>、<code>pandas</code></td>
+<td>日志清洗不能破坏排障信息；脱敏规则要优先于聚合和展示；监控场景要控制日志量；对关键错误要保留足够上下文</td>
+</tr>
+</tbody>
+</table>
+<h2 id="section-55">16.8 一个通用判断方法</h2>
+<p>如果后面遇到新的业务场景，可以先按下面这个顺序判断怎么设计清洗方案：</p>
+<ol>
+<li>输入数据是什么类型</li>
+<li>主要脏数据是什么</li>
+<li>后续谁要消费清洗结果</li>
+<li>哪些错误可以自动修正</li>
+<li>哪些错误必须直接拒绝</li>
+<li>是否需要保留原始数据和中间结果</li>
+<li>是否需要同步处理还是异步处理</li>
+</ol>
+<p>只要先把这几个问题想清楚，数据清洗方案通常就不会偏得太远。</p>
+
+      </article>
+      <aside class="toc" aria-label="本文目录">
+        <p class="toc__title">本文目录</p>
+        <nav class="toc__links" id="toc-links"></nav>
+      </aside>
+    </main>
+    <script>
+      (() => {
+        const article = document.getElementById('article');
+        const toc = document.getElementById('toc-links');
+        const headings = Array.from(article.querySelectorAll('h2, h3'));
+        const usedIds = new Set();
+        const slugify = (text) => {
+          const raw = text
+            .trim()
+            .toLowerCase()
+            .replace(/[.,，、:：;；!?！？()[\]{}'"“”‘’`~@#$%^&*+=|\\/<>]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
+          return raw || 'section';
+        };
+        headings.forEach((heading) => {
+          const base = slugify(heading.textContent);
+          let id = base;
+          let index = 2;
+          while (usedIds.has(id)) {
+            id = `${base}-${index++}`;
+          }
+          usedIds.add(id);
+          heading.id = id;
+          const link = document.createElement('a');
+          link.href = `#${id}`;
+          link.dataset.level = heading.tagName.slice(1);
+          link.textContent = heading.textContent;
+          toc.appendChild(link);
+        });
+        if (!headings.length) {
+          toc.innerHTML = '<span class="empty-toc">当前文档没有二级或三级标题。</span>';
+          return;
+        }
+        const links = Array.from(toc.querySelectorAll('a'));
+        const updateActiveLink = () => {
+          let active = headings[0];
+          for (const heading of headings) {
+            if (heading.getBoundingClientRect().top <= 112) active = heading;
+          }
+          links.forEach((link) => link.classList.toggle('is-active', link.hash === `#${active.id}`));
+        };
+        updateActiveLink();
+        document.addEventListener('scroll', updateActiveLink, { passive: true });
+      })();
+    </script>
+  </body>
+</html>
