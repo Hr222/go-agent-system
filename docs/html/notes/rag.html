@@ -18,46 +18,6 @@
       <article class="article" id="article">
 <h1 id="rag">RAG 构建流程说明</h1>
 <p>文档用于沉淀我在过往到现在学习AI工程化和构建 RAG 落地方式的处理思路。</p>
-<h2 id="section">目录</h2>
-<ul>
-<li><a href="#%E4%B8%80%E6%88%91%E5%AF%B9rag%E7%9A%84%E7%90%86%E8%A7%A3">一、我对RAG的理解</a></li>
-<li><a href="#%E4%BA%8C%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93">二、向量数据库</a>
-<ul>
-<li><a href="#21-%E4%B8%80%E4%B8%AA%E5%85%B7%E4%BD%93%E5%9C%BA%E6%99%AF">2.1 一个具体场景</a></li>
-<li><a href="#22-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93">2.2 为什么需要向量数据库</a></li>
-<li><a href="#23-%E4%BB%8E%E6%A6%82%E5%BF%B5%E5%88%B0%E8%90%BD%E5%9C%B0">2.3 从概念到落地</a></li>
-<li><a href="#24-%E5%AF%B9%E5%88%87%E7%89%87%E9%80%9A%E7%94%A8%E5%A4%84%E7%90%86%E4%B8%AA%E4%BA%BA%E7%BB%8F%E9%AA%8C">2.4 对切片通用处理(个人经验)</a></li>
-<li><a href="#25-%E5%A6%82%E4%BD%95%E8%A7%A3%E5%BB%BA%E7%AB%8B%E5%90%91%E9%87%8F%E8%A1%A8">2.5 如何解建立向量表</a></li>
-<li><a href="#26-%E6%88%91%E7%8E%B0%E5%9C%A8%E6%80%8E%E4%B9%88%E7%90%86%E8%A7%A3%E5%90%91%E9%87%8F%E8%A1%A8%E5%AD%97%E6%AE%B5%E5%92%8C%E5%9C%BA%E6%99%AF">2.6 我现在怎么理解向量表字段和场景</a></li>
-<li><a href="#27-%E5%90%91%E9%87%8F%E7%B4%A2%E5%BC%95">2.7 向量索引</a></li>
-</ul>
-</li>
-<li><a href="#%E4%B8%89%E5%AE%9E%E8%B7%B5%E6%93%8D%E4%BD%9C">三、实践操作</a></li>
-<li><a href="#%E5%9B%9B%E6%96%87%E6%9C%AC%E6%B8%85%E6%B4%97%E5%8E%9F%E5%88%99">四、文本清洗原则</a></li>
-<li><a href="#%E4%BA%94-mvp-%E9%98%B6%E6%AE%B5%E9%AA%8C%E6%94%B6">五、MVP 阶段验收</a></li>
-<li><a href="#%E5%85%AD%E6%95%88%E6%9E%9C%E9%AA%8C%E8%AF%81">六、效果验证</a></li>
-<li><a href="#%E4%B8%83%E9%AA%8C%E6%94%B6%E9%98%B6%E6%AE%B5">七、验收阶段</a></li>
-<li><a href="#%E5%85%ABrag-%E6%A3%80%E7%B4%A2%E4%BC%98%E5%8C%96">八、RAG 检索优化</a>
-<ul>
-<li><a href="#81-%E4%BB%80%E4%B9%88%E6%98%AF%E5%8F%AC%E5%9B%9E">8.1 什么是召回</a></li>
-<li><a href="#82-%E4%BB%80%E4%B9%88%E6%98%AF%E5%90%91%E9%87%8F%E5%8F%AC%E5%9B%9E">8.2 什么是向量召回</a></li>
-<li><a href="#83-%E4%BB%80%E4%B9%88%E6%98%AF%E5%85%B3%E9%94%AE%E8%AF%8D%E5%8F%AC%E5%9B%9E">8.3 什么是关键词召回</a></li>
-<li><a href="#84-%E4%BB%80%E4%B9%88%E6%98%AF%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2">8.4 什么是混合检索</a></li>
-<li><a href="#85-%E4%BB%80%E4%B9%88%E6%98%AF-rerank">8.5 什么是 rerank</a></li>
-<li><a href="#86-%E5%B8%B8%E8%A7%81%E6%A3%80%E7%B4%A2%E7%AE%97%E6%B3%95%E7%B1%BB%E5%88%AB%E4%B8%8E%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF">8.6 常见检索算法类别与适用场景</a></li>
-</ul>
-</li>
-<li><a href="#%E4%B9%9Drag-%E5%B7%A5%E7%A8%8B%E5%8C%96">九、RAG 工程化</a>
-<ul>
-<li><a href="#91-%E4%BB%80%E4%B9%88%E6%98%AF-retrieval-pipeline">9.1 什么是 retrieval pipeline</a></li>
-<li><a href="#92-%E4%BB%80%E4%B9%88%E6%98%AF-retriever">9.2 什么是 retriever</a></li>
-<li><a href="#93-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E6%9A%B4%E9%9C%B2%E4%B8%AD%E9%97%B4%E8%B0%83%E8%AF%95%E4%BF%A1%E6%81%AF">9.3 为什么要暴露中间调试信息</a></li>
-<li><a href="#94-%E4%BB%80%E4%B9%88%E6%98%AF%E8%AF%84%E6%B5%8B%E9%9B%86">9.4 什么是评测集</a></li>
-<li><a href="#95-%E4%BB%80%E4%B9%88%E6%98%AF-baseline">9.5 什么是 baseline</a></li>
-<li><a href="#96-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%AF%84%E6%B5%8B%E8%A6%81%E5%89%8D%E7%BD%AE">9.6 为什么评测要前置</a></li>
-</ul>
-</li>
-</ul>
 <h2 id="section-1">阅读提示：这次新增知识和原有内容的关系</h2>
 <p>为了方便后续查阅，这里把当前阶段最常提到的 6 个关键词，和这份笔记里原本已有的内容做一个对应说明。</p>
 <h3 id="section-2">1. 召回</h3>
