@@ -4,7 +4,7 @@
 
 ## 1. 系统定位
 
-Go Agent System 是一个面向 Agent 开发的平台型应用。平台提供 LLM、Knowledge/RAG、资料处理、对话、交互、Agent Management、附件和安全等可复用能力；业务应用在平台能力之上实现具体领域 Agent 与业务流程。
+Go Agent System 是一个面向 Agent 开发的平台型应用。平台提供 LLM、Knowledge/RAG、资料处理、对话、交互、Agent Management、附件、安全和 Task Management 等可复用能力；业务应用在平台能力之上实现具体领域 Agent 与业务流程。
 
 系统以两类输入为基础：一类是可检索、可追溯的业务资料，另一类是用户的自然语言请求。资料经过通用 Ingestion Pipeline 进入 Knowledge/RAG；用户可以通过直接业务接口使用能力，也可以通过自然语言 Chat 由 Gateway 识别能力并受控调用 Agent 或对话能力。
 
@@ -15,7 +15,7 @@ Go Agent System 是一个面向 Agent 开发的平台型应用。平台提供 LL
 ```text
 平台能力层 / Platform Capabilities
   LLM、Knowledge/RAG、Ingestion、Conversation、Dialogue、Interaction
-  Agent Management、Attachment、Security
+  Agent Management、Attachment、Security、Task Management
 
 业务应用层 / Business Applications
   online、agents/tender
@@ -40,6 +40,8 @@ shared 提供配置、日志、异常等不携带领域职责的共享基础能�
 ```
 
 依赖方向由内向外保持稳定：接口层依赖应用契约，应用层依赖本模块 Domain 与 Ports，基础设施实现 Ports。Domain 不依赖 HTTP、ORM、数据库、模型 SDK 或具体 Agent 框架。应用模块不把路由、Schema、SQL 和 Provider 调用混在同一职责中。
+
+Task Management 当前只实现 `app/platform/task` 的状态机、Attempt/Event 生命周期和命令幂等基础。PostgreSQL 持久化、独立 Worker、HTTP 管理接口、业务接入、前端、E2E 和 Workflow 均不在当前已实现范围，必须按独立 Change 继续交付。
 
 ### 2.3 请求入口
 
@@ -290,6 +292,10 @@ Attachment 负责上传、访问绑定、读取和文件存储边界。它为 Co
 
 Security 通过 `PrincipalResolverPort` 将服务端可信上下文解析为 `RequestPrincipal`，供 Interaction、Conversation 和 Attachment 进行权限与资源归属校验。主体、权限和资源 owner 是不同概念：权限决定能力是否可调用，主体决定资源访问范围，业务模块不能信任客户端提交的授权字段。
 
+### 4.10 Task Management
+
+Task Management 是平台级的任务生命周期能力。当前 `app/platform/task` 只提供 Task、Attempt、Event 的领域状态机、合法转换、命令幂等契约和内存验证替身；它不依赖 HTTP、ORM、数据库、Worker 或具体业务 Agent。后续持久化、lease 协调、任务 HTTP、Tender 接入和前端页面必须以此领域契约为边界，不能反向把基础设施或业务规则放入 Domain。
+
 ## 5. 业务应用
 
 ### 5.1 online
@@ -363,7 +369,8 @@ app/
 │   ├── interaction/        # Gateway、目录、确认与分发
 │   ├── knowledge/          # Knowledge/RAG 查询、写入与发布
 │   ├── llm/                # LLM 契约与应用能力
-│   └── security/           # RequestPrincipal 与安全端口
+│   ├── security/           # RequestPrincipal 与安全端口
+│   └── task/               # Task 状态机、Attempt/Event 与命令幂等
 ├── business/
 │   ├── online/             # Knowledge/RAG 业务应用
 │   └── agents/tender/      # Tender 业务 Agent

@@ -20,7 +20,7 @@
 | Interaction 与 Agent | 已完成基础链路 | 支持能力目录、候选识别、确认、受控分发和 Tender Agent 调用。 |
 | 附件与产物 | 已完成基础链路 | 支持上传、主体/会话访问绑定、Tender 输入解析和受控下载。 |
 | Conversation 与 Dialogue | 已完成当前交付 | 支持会话持久化、历史读取、列表管理、话题概括、主体隔离、轮次串行、Agent 异步执行、上下文管理和异步持久化。 |
-| Task Management | 当前阶段 | 进入第二阶段，规划任务模型、状态机、执行生命周期、取消/重试/恢复和任务查询；具体范围由独立 OpenSpec Change 定义。 |
+| Task Management | 当前阶段 | TM-01 任务状态机与幂等已完成并归档；TM-02 持久化生命周期尚未创建，只保留路线图占位。 |
 | Workflow / Agent 平台 | 后续阶段 | 第三阶段，位于 Task Management 之后；当前前端仅有 Workflow mock，真实编排能力尚未实施。 |
 | 真实身份认证与用户模块 | 待规划 | 不作为当前验收项，具体边界以 `ARCHITECTURE.md` 的当前边界为准。 |
 
@@ -49,7 +49,7 @@
 | `fix-interaction-stream-resource-lifecycle` | `eff266f` | 已完成并归档 |
 | `fix-interaction-sync-boundaries-and-cancellation` | `21ae687` | 已完成并归档 |
 
-当前没有活动中的 Change；新的 Task Management Change 尚未创建。
+当前没有活动中的 Task Management Change。TM-01“任务状态机与幂等”已完成并归档；同一时间只处理一个 Task Management Change，TM-02 需在人工审阅后另行创建。
 已完成 Change 的完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
 
 ## 5. 当前验证
@@ -71,10 +71,27 @@
 | 3 | Workflow / Agent 平台 | 后续阶段；依赖 Task Management，尚未实施真实编排引擎。 |
 | 4 | 真实认证与用户模块 | 待规划；尚未创建 Change。 |
 
+### Task Management Change 顺序（占位）
+
+以下只记录实施顺序、依赖和验收目标。TM-09 当前只保留空目录名称占位，不含 OpenSpec 工件、任务或实现；其余后续项仅记录在本表。必须在前置 Change 完成、验证和归档后，才逐个创建各自的 proposal、design、specs 和 tasks。
+
+| 顺序 | 占位 Change | 依赖 | 本阶段验收目标 | 状态 |
+|---|---|---|---|---|
+| TM-01 | `define-task-state-machine-and-idempotency` | 无 | 明确 Task、Attempt、Event 的状态与转换，以及创建、领取、取消、重试和终态提交的幂等语义。 | 已完成并归档为 `2026-09-18-introduce-task-management`。 |
+| TM-02 | `persist-task-lifecycle` | TM-01 | 将任务、尝试、事件和幂等约束持久化到 PostgreSQL。 | 占位。 |
+| TM-03 | `submit-trusted-tasks` | TM-02 | 提供受信任业务提交契约，不开放浏览器通用创建入口。 | 占位。 |
+| TM-04 | `claim-task-worker-leases` | TM-02 | 以原子领取、lease 和独立 Worker 执行任务。 | 占位。 |
+| TM-05 | `recover-cancel-and-retry-tasks` | TM-03、TM-04 | 支持租约恢复、协作式取消与自动/手动重试。 | 占位。 |
+| TM-06 | `manage-owned-tasks-over-http` | TM-05 | 提供主体隔离的查询、事件、取消和重试接口。 | 占位。 |
+| TM-07 | `run-tender-as-managed-task` | TM-06 | 将 Tender 以受信任提交者和注册执行器接入任务平台。 | 占位。 |
+| TM-08 | `connect-task-management-frontend` | TM-06、TM-07 | 以真实 Task API 替换任务页面 mock，支持查询、取消和重试。 | 占位。 |
+| TM-09 | `task-management-e2e-integration` | TM-07、TM-08 | 用合成执行器验证浏览器、API、Worker 和 PostgreSQL 的成功、取消、重试、隔离与恢复链路。 | 空目录占位；在 Workflow 前实施。 |
+| TM-10 | `orchestrate-task-workflows` | TM-09 | 基于已验证的单任务能力设计多任务编排。 | 占位。 |
+
 ## 7. 当前待办
 
-1. 为 Task Management 进行需求梳理，并创建独立 OpenSpec Change。
-2. 明确任务模型、状态机、执行生命周期、取消/重试/恢复和查询范围。
+1. 完成人工审阅后，再创建 TM-02 的完整 OpenSpec 工件；不得并行展开后续 Change。
+2. TM-07、TM-08 完成后，实施 TM-09 的浏览器、API、Worker 和 PostgreSQL 端到端联调。
 3. 根据实际代码和验证结果持续同步 OpenSpec 正式规格并归档已完成 Change。
 4. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。
 

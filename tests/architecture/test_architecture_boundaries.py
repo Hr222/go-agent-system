@@ -159,6 +159,7 @@ def test_all_domain_modules_do_not_depend_on_external_adapters() -> None:
         APP_ROOT / "platform" / "ingestion" / "domain",
         APP_ROOT / "business" / "agents" / "tender" / "domain",
         APP_ROOT / "platform" / "conversation" / "domain",
+        APP_ROOT / "platform" / "task" / "domain",
     )
 
     for domain_root in domain_roots:
@@ -425,6 +426,7 @@ def test_module_ports_do_not_depend_on_infrastructure() -> None:
         APP_ROOT / "platform" / "ingestion" / "ports",
         APP_ROOT / "platform" / "knowledge" / "ports",
         APP_ROOT / "business" / "agents" / "tender" / "ports",
+        APP_ROOT / "platform" / "task" / "ports",
     ):
         if ports_root.is_dir():
             imported.update(_imported_modules(ports_root))
@@ -491,6 +493,9 @@ def test_targeted_architecture_packages_exist_and_old_packages_are_gone() -> Non
         APP_ROOT / "business" / "online" / "domain" / "checklist",
         APP_ROOT / "business" / "agents" / "tender" / "application",
         APP_ROOT / "platform" / "agent" / "runtime",
+        APP_ROOT / "platform" / "task" / "application",
+        APP_ROOT / "platform" / "task" / "domain",
+        APP_ROOT / "platform" / "task" / "ports",
         APP_ROOT / "interfaces" / "agent" / "contracts.py",
         APP_ROOT / "infrastructure" / "filesystem",
         APP_ROOT / "infrastructure" / "ocr",
@@ -544,3 +549,11 @@ def test_sensitive_ocr_outputs_are_not_kept_in_tests() -> None:
     )
     assert "tests/ocr/output" not in classifier_source
     assert "tests/ocr/output" not in ocr_source
+
+
+def test_architecture_baseline_describes_task_management_foundation_only() -> None:
+    architecture = (PROJECT_ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
+
+    assert "Task Management 当前只实现" in architecture
+    assert "PostgreSQL 持久化、独立 Worker、HTTP 管理接口" in architecture
+    assert "app/platform/task" in architecture
