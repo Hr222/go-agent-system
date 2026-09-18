@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Callable, Mapping
 from uuid import UUID, uuid4
 
-from app.platform.task.application.contracts import TaskView
+from app.platform.task.application.contracts import CancellationCheckCommand, TaskView
 from app.platform.task.application.executor_contracts import (
     ClaimTaskCommand,
     CompleteTaskCommand,
@@ -169,6 +169,13 @@ class TaskWorker:
                 lease_token=claimed.lease.lease_token,
                 worker_id=claimed.lease.worker_id,
                 current_expires_at=claimed.lease.lease_expires_at,
+            ),
+            is_cancel_requested=lambda: self._lifecycle.is_cancel_requested(
+                CancellationCheckCommand(
+                    task_id=claimed.task.id,
+                    attempt_id=claimed.lease.attempt_id,
+                    lease_token=claimed.lease.lease_token,
+                )
             ),
         )
         try:

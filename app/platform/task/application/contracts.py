@@ -42,6 +42,14 @@ class RecoverTaskCommand:
     task_id: UUID
     command_id: str
     retry_at: datetime | None = None
+    attempt_id: UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CancellationCheckCommand:
+    task_id: UUID
+    attempt_id: UUID
+    lease_token: str
 
 
 @dataclass(frozen=True, slots=True)

@@ -67,6 +67,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_task_attempt_one_active
     ON task_attempt(task_id)
     WHERE status = 'active';
 
+CREATE INDEX IF NOT EXISTS idx_task_attempt_active_expiry
+    ON task_attempt(lease_expires_at, task_id)
+    WHERE status = 'active';
+
 CREATE TABLE IF NOT EXISTS task_event (
     id UUID PRIMARY KEY,
     task_id UUID NOT NULL REFERENCES task(id) ON DELETE CASCADE,

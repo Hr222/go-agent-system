@@ -1,3 +1,13 @@
-from app.platform.task.ports.repository import TaskCommandReceipt, TaskRepositoryPort
+from app.platform.task.ports.repository import (
+    DueRetryCandidate,
+    ExpiredTaskCandidate,
+    TaskCommandReceipt,
+    TaskRepositoryPort,
+)
 
-__all__ = ["TaskCommandReceipt", "TaskRepositoryPort"]
+__all__ = [
+    "DueRetryCandidate",
+    "ExpiredTaskCandidate",
+    "TaskCommandReceipt",
+    "TaskRepositoryPort",
+]

@@ -5,7 +5,11 @@ from threading import RLock
 from uuid import UUID
 
 from app.platform.task.domain import Task
-from app.platform.task.ports import TaskCommandReceipt
+from app.platform.task.ports import (
+    DueRetryCandidate,
+    ExpiredTaskCandidate,
+    TaskCommandReceipt,
+)
 
 
 class InMemoryTaskRepository:
@@ -35,6 +39,34 @@ class InMemoryTaskRepository:
                 return task
         self._claim_lock.release()
         return None
+
+    def get_expired_attempts_for_update(
+        self, *, now: datetime, limit: int
+    ) -> list[ExpiredTaskCandidate]:
+        candidates: list[ExpiredTaskCandidate] = []
+        for task in sorted(self._tasks.values(), key=lambda item: (item.updated_at, item.id)):
+            if task.status.value not in {"running", "cancel_requested"}:
+                continue
+            attempt = task.active_attempt
+            if attempt is not None and attempt.lease_expires_at <= now:
+                candidates.append(
+                    ExpiredTaskCandidate(task.id, attempt.id, attempt.lease_expires_at)
+                )
+            if len(candidates) >= limit:
+                break
+        return candidates
+
+    def get_due_retries_for_update(
+        self, *, now: datetime, limit: int
+    ) -> list[DueRetryCandidate]:
+        candidates = [
+            DueRetryCandidate(task.id, task.available_at)
+            for task in sorted(
+                self._tasks.values(), key=lambda item: (item.available_at, item.id)
+            )
+            if task.status.value == "retry_wait" and task.available_at <= now
+        ]
+        return candidates[:limit]
 
     def create_or_get_submission(self, task: Task) -> Task:
         existing = self.find_by_submission(

@@ -1,13 +1,19 @@
 """Task Management 的 PostgreSQL Composition Root。"""
 
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable
 
 from sqlalchemy.orm import Session
 
 from app.infrastructure.persistence.repositories.task_repository import PostgresTaskRepository
 from app.platform.task.application.lifecycle_service import TaskLifecycleService
+from app.platform.task.application.recovery import (
+    CancellationCoordinator,
+    ManualRetryCoordinator,
+    RecoveryCoordinator,
+    RetryScheduler,
+)
 from app.platform.task.application.trusted_submission import (
     TrustedTaskSubmissionProfile,
     TrustedTaskSubmissionService,
@@ -58,6 +64,57 @@ def build_task_worker(
         worker_id=worker_id,
         clock=clock or _utc_now,
     )
+
+
+def build_task_recovery_coordinator(
+    session: Session,
+    *,
+    clock: Callable[[], datetime] | None = None,
+    retry_delay: timedelta | None = None,
+    batch_size: int = 50,
+) -> RecoveryCoordinator:
+    """组装受信任的 lease 恢复调度器，不暴露协议入口。"""
+
+    repository = build_task_repository(session)
+    lifecycle = TaskLifecycleService(repository, clock=clock or _utc_now)
+    if retry_delay is None:
+        return RecoveryCoordinator(
+            repository, lifecycle, clock=clock or _utc_now, batch_size=batch_size
+        )
+    return RecoveryCoordinator(
+        repository,
+        lifecycle,
+        clock=clock or _utc_now,
+        retry_delay=retry_delay,
+        batch_size=batch_size,
+    )
+
+
+def build_task_retry_scheduler(
+    session: Session,
+    *,
+    clock: Callable[[], datetime] | None = None,
+    batch_size: int = 50,
+) -> RetryScheduler:
+    """组装退避到期重入队调度器。"""
+
+    repository = build_task_repository(session)
+    lifecycle = TaskLifecycleService(repository, clock=clock or _utc_now)
+    return RetryScheduler(
+        repository, lifecycle, clock=clock or _utc_now, batch_size=batch_size
+    )
+
+
+def build_task_cancellation_coordinator(session: Session) -> CancellationCoordinator:
+    """组装协作式取消协调器。"""
+
+    return CancellationCoordinator(TaskLifecycleService(build_task_repository(session)))
+
+
+def build_task_manual_retry_coordinator(session: Session) -> ManualRetryCoordinator:
+    """组装受信任手动重试入口。"""
+
+    return ManualRetryCoordinator(TaskLifecycleService(build_task_repository(session)))
 
 
 def _utc_now() -> datetime:

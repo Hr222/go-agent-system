@@ -23,7 +23,12 @@ from app.infrastructure.persistence.task_mapper import (
 )
 from app.platform.task.domain import Task
 from app.platform.task.errors import TaskNotFoundError, TaskSchemaUnavailableError
-from app.platform.task.ports import TaskCommandReceipt, TaskRepositoryPort
+from app.platform.task.ports import (
+    DueRetryCandidate,
+    ExpiredTaskCandidate,
+    TaskCommandReceipt,
+    TaskRepositoryPort,
+)
 
 TASK_SCHEMA_SETUP_GUIDE = "任务数据表尚未初始化。请先执行 sql/013_task_lifecycle.sql。"
 
@@ -78,6 +83,74 @@ class PostgresTaskRepository(TaskRepositoryPort):
                 self.session.rollback()
                 return None
             return self._from_task_record(record)
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            self._translate_schema_error(exc)
+            raise
+
+    def get_expired_attempts_for_update(
+        self, *, now: datetime, limit: int
+    ) -> list[ExpiredTaskCandidate]:
+        """锁定一批过期活动尝试；锁跳过保证多个恢复器不争用同一候选。"""
+
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("候选批次大小必须是正整数。")
+        try:
+            rows = self.session.execute(
+                select(
+                    TaskRecord.id,
+                    TaskAttemptRecord.id,
+                    TaskAttemptRecord.lease_expires_at,
+                )
+                .join(TaskAttemptRecord, TaskAttemptRecord.task_id == TaskRecord.id)
+                .where(
+                    TaskRecord.status.in_(("running", "cancel_requested")),
+                    TaskAttemptRecord.status == "active",
+                    TaskAttemptRecord.lease_expires_at <= now,
+                )
+                .order_by(TaskAttemptRecord.lease_expires_at.asc(), TaskRecord.id.asc())
+                .with_for_update(skip_locked=True)
+                .limit(limit)
+            ).all()
+            if not rows:
+                self.session.rollback()
+            return [
+                ExpiredTaskCandidate(
+                    task_id=task_id,
+                    attempt_id=attempt_id,
+                    lease_expires_at=lease_expires_at,
+                )
+                for task_id, attempt_id, lease_expires_at in rows
+            ]
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            self._translate_schema_error(exc)
+            raise
+
+    def get_due_retries_for_update(
+        self, *, now: datetime, limit: int
+    ) -> list[DueRetryCandidate]:
+        """锁定到期 retry_wait 任务，避免多个重试调度器重复转换。"""
+
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("候选批次大小必须是正整数。")
+        try:
+            rows = self.session.execute(
+                select(TaskRecord.id, TaskRecord.available_at)
+                .where(
+                    TaskRecord.status == "retry_wait",
+                    TaskRecord.available_at <= now,
+                )
+                .order_by(TaskRecord.available_at.asc(), TaskRecord.id.asc())
+                .with_for_update(skip_locked=True)
+                .limit(limit)
+            ).all()
+            if not rows:
+                self.session.rollback()
+            return [
+                DueRetryCandidate(task_id=task_id, available_at=available_at)
+                for task_id, available_at in rows
+            ]
         except SQLAlchemyError as exc:
             self.session.rollback()
             self._translate_schema_error(exc)

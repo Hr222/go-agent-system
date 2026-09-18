@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from app.platform.task.application.contracts import (
+    CancellationCheckCommand,
     CancelTaskCommand,
     RecoverTaskCommand,
     RequeueTaskCommand,
@@ -25,6 +26,7 @@ from app.platform.task.application.executor_contracts import (
 from app.platform.task.domain import Task, TaskAttempt
 from app.platform.task.errors import (
     TaskIdempotencyConflictError,
+    TaskLeaseRejectedError,
     TaskNotFoundError,
 )
 from app.platform.task.ports import TaskCommandReceipt, TaskRepositoryPort
@@ -168,9 +170,27 @@ class TaskLifecycleService:
             command_id=command.command_id,
             retry_at=command.retry_at,
             now=self._clock(),
+            attempt_id=command.attempt_id,
         )
         self._save_with_receipt(task, "recover", command.command_id)
         return TaskView.from_task(task)
+
+    def is_cancel_requested(self, command: CancellationCheckCommand) -> bool:
+        """执行器安全检查点只读取取消状态，不改变生命周期。"""
+
+        task = self._repository.get(command.task_id)
+        if task is None:
+            raise TaskNotFoundError("任务不存在。")
+        attempt = task.find_attempt(command.attempt_id)
+        if attempt.lease_token != _require_text(command.lease_token, "租约令牌"):
+            return False
+        if task.active_attempt is not attempt:
+            return False
+        try:
+            attempt.assert_valid_lease(lease_token=command.lease_token, now=self._clock())
+        except TaskLeaseRejectedError:
+            return False
+        return task.status.value == "cancel_requested"
 
     def _task(self, task_id: UUID) -> Task:
         if not isinstance(task_id, UUID):

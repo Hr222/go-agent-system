@@ -92,3 +92,17 @@ def test_task_composition_exposes_only_fixed_worker_binding() -> None:
     assert "def build_task_worker" in composition_source
     assert "MappingTaskExecutorRegistry" in composition_source
     assert "register" not in composition_source
+
+
+def test_task_recovery_schedulers_use_application_and_ports_only() -> None:
+    recovery_source = TASK_ROOT.joinpath("application", "recovery.py")
+    for imported in _imports_from(recovery_source):
+        assert not imported.startswith(
+            ("sqlalchemy", "app.infrastructure", "app.interfaces", "fastapi")
+        ), f"{recovery_source} 不能直接依赖持久化、协议或 HTTP：{imported}"
+
+    source = recovery_source.read_text(encoding="utf-8")
+    assert "TaskLifecycleService" in source
+    assert "TaskRepositoryPort" in source
+    assert "Session" not in source
+    assert "TaskRecord" not in source

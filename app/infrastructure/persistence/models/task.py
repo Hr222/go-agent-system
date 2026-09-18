@@ -98,6 +98,12 @@ class TaskAttemptRecord(Base):
             unique=True,
             postgresql_where=text("status = 'active'"),
         ),
+        Index(
+            "idx_task_attempt_active_expiry",
+            "lease_expires_at",
+            "task_id",
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)

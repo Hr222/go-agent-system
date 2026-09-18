@@ -41,7 +41,7 @@ shared 提供配置、日志、异常等不携带领域职责的共享基础能�
 
 依赖方向由内向外保持稳定：接口层依赖应用契约，应用层依赖本模块 Domain 与 Ports，基础设施实现 Ports。Domain 不依赖 HTTP、ORM、数据库、模型 SDK 或具体 Agent 框架。应用模块不把路由、Schema、SQL 和 Provider 调用混在同一职责中。
 
-Task Management 当前实现 `app/platform/task` 的状态机、Attempt/Event 生命周期、命令幂等基础、PostgreSQL 生命周期持久化、受信任服务端生产者提交能力和独立 Worker 执行边界。一次合法领取以单条 `TASK_CLAIMED` 事件同时记录领取和开始执行；安全 `TaskView` 不含 lease 或输入指纹，含 lease 的契约仅供受信任执行器内部消费。受信任提交从已认证主体确定 owner，并由 Composition 固定 task type、尝试限制、重试策略和展示字段白名单；它不是公开 HTTP 或浏览器创建入口。PostgreSQL Repository 将 Task、Attempt、Event 和命令回执在同一事务中保存，并以唯一约束、外键、行锁、`SKIP LOCKED` 候选选择和单 active Attempt 索引保护持久化不变量。Worker 通过固定 task type 执行器绑定轮询、续租和安全结果回写；内存仓储仅存在于 `tests/task/` 作为验证替身。租约过期恢复、任务 HTTP、业务接入、前端、E2E 和 Workflow 均未实现，必须按独立 Change 继续交付。
+Task Management 当前实现 `app/platform/task` 的状态机、Attempt/Event 生命周期、命令幂等基础、PostgreSQL 生命周期持久化、受信任服务端生产者提交能力、独立 Worker 执行边界以及恢复/取消/重试调度。一次合法领取以单条 `TASK_CLAIMED` 事件同时记录领取和开始执行；安全 `TaskView` 不含 lease 或输入指纹，含 lease 的契约仅供受信任执行器内部消费。受信任提交从已认证主体确定 owner，并由 Composition 固定 task type、尝试限制、重试策略和展示字段白名单；它不是公开 HTTP 或浏览器创建入口。PostgreSQL Repository 将 Task、Attempt、Event 和命令回执在同一事务中保存，并以唯一约束、外键、行锁、`SKIP LOCKED` 候选选择和 active Attempt/lease 到期索引保护持久化不变量。Worker 通过固定 task type 执行器绑定轮询、续租和安全结果回写；RecoveryCoordinator、RetryScheduler 和 CancellationCoordinator 只通过 Application/Port 触发过期恢复、退避重入队、协作取消和受策略约束的手动重试；内存仓储仅存在于 `tests/task/` 作为验证替身。任务 HTTP、业务接入、前端、E2E 和 Workflow 仍未实现，必须按独立 Change 继续交付。
 
 ### 2.3 请求入口
 
@@ -294,7 +294,7 @@ Security 通过 `PrincipalResolverPort` 将服务端可信上下文解析为 `Re
 
 ### 4.10 Task Management
 
-Task Management 是平台级的任务生命周期能力。`app/platform/task` 提供 Task、Attempt、Event 的领域状态机、合法转换和命令幂等契约；合法领取以唯一 `TASK_CLAIMED` 事件同时形成执行开始事实。受信任服务端生产者通过固定提交档案和已认证主体创建 Task，不能覆盖 owner、task type、尝试策略或展示字段白名单；该能力保持为内部 Application 契约，不新增公开创建协议。`app/infrastructure/persistence` 中的 PostgreSQL Repository 负责聚合恢复、`SKIP LOCKED` 候选锁定、行锁、事务内状态/Event/命令回执写入以及数据库关系约束；事件元数据仍只接受按事件类型白名单化的标准 JSON 安全数据。受信任 Worker 通过固定 task type 执行器绑定进行单次轮询、lease 续租和安全结果回写；`TaskView` 是不含输入指纹和 lease 的安全投影，含 lease 的命令与结果只允许受信任执行器内部消费。内存验证替身位于 `tests/task/`，不属于运行时适配器。Domain、Application 和 Ports 不依赖 HTTP、ORM 或数据库。租约过期恢复、任务 HTTP、Tender 接入和前端页面必须以此领域契约为边界，不能反向把基础设施或业务规则放入 Domain。
+Task Management 是平台级的任务生命周期能力。`app/platform/task` 提供 Task、Attempt、Event 的领域状态机、合法转换和命令幂等契约；合法领取以唯一 `TASK_CLAIMED` 事件同时形成执行开始事实。受信任服务端生产者通过固定提交档案和已认证主体创建 Task，不能覆盖 owner、task type、尝试策略或展示字段白名单；该能力保持为内部 Application 契约，不新增公开创建协议。`app/infrastructure/persistence` 中的 PostgreSQL Repository 负责聚合恢复、过期 active Attempt 与到期 `retry_wait` 候选的 `SKIP LOCKED` 锁定、行锁、事务内状态/Event/命令回执写入以及数据库关系约束；事件元数据仍只接受按事件类型白名单化的标准 JSON 安全数据。受信任 Worker 通过固定 task type 执行器绑定进行单次轮询、lease 续租和安全结果回写；RecoveryCoordinator、RetryScheduler、CancellationCoordinator 和 ManualRetryCoordinator 通过 Application/Port 触发恢复、退避重入队、协作取消和手动重试，不强杀执行器或 Provider；`TaskView` 是不含输入指纹和 lease 的安全投影，含 lease 的命令与结果只允许受信任执行器内部消费。内存验证替身位于 `tests/task/`，不属于运行时适配器。Domain、Application 和 Ports 不依赖 HTTP、ORM 或数据库。任务 HTTP、Tender 接入和前端页面必须以此领域契约为边界，不能反向把基础设施或业务规则放入 Domain。
 
 ## 5. 业务应用
 

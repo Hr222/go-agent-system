@@ -102,4 +102,4 @@ Worker MUST 将一次领取的执行、续租和结果提交限制在该 Task �
 
 - **WHEN** Worker 在 Task 执行期间停止且未完成续租
 - **THEN** Task 保留当前 `running` 和 lease 到期事实
-- **AND** 本 Change 不自动恢复、取消或重新排队该 Task
+- **AND** 独立的受信任恢复调度器在 lease 到期后负责恢复、取消或重新排队，不由 Worker 执行上下文直接伪造这些事实

@@ -661,6 +661,7 @@ class Task:
         command_id: str,
         retry_at: datetime | None,
         now: datetime,
+        attempt_id: UUID | None = None,
     ) -> None:
         normalized_now = _require_utc(now, "恢复时间")
         if self.status not in {TaskStatus.RUNNING, TaskStatus.CANCEL_REQUESTED}:
@@ -668,6 +669,8 @@ class Task:
         attempt = self.active_attempt
         if attempt is None or normalized_now < attempt.lease_expires_at:
             raise TaskStateTransitionError("当前任务没有过期 lease。")
+        if attempt_id is not None and attempt.id != attempt_id:
+            raise TaskStateTransitionError("恢复候选已不再是当前活动尝试。")
         attempt.finish(
             status=AttemptStatus.EXPIRED,
             now=normalized_now,

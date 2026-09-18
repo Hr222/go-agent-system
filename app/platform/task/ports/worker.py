@@ -28,6 +28,7 @@ class TaskExecutionContext:
     display_metadata: Mapping[str, str]
     lease: AttemptLease
     renew_lease: Callable[[], object]
+    is_cancel_requested: Callable[[], bool] | None = None
 
 
 @dataclass(frozen=True, slots=True)
