@@ -3,10 +3,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.platform.task.domain import Task
+from app.platform.task.ports import TaskCommandReceipt
 
 
 class InMemoryTaskRepository:
-    """TM-01 的确定性仓储替身；不提供并发或持久化保证。"""
+    """TM-01 的确定性测试替身；不提供并发或持久化保证。"""
 
     def __init__(self) -> None:
         self._tasks: dict[UUID, Task] = {}
@@ -16,9 +17,34 @@ class InMemoryTaskRepository:
     def get(self, task_id: UUID) -> Task | None:
         return self._tasks.get(task_id)
 
-    def save(self, task: Task) -> None:
+    def get_for_update(self, task_id: UUID) -> Task | None:
+        return self.get(task_id)
+
+    def create_or_get_submission(self, task: Task) -> Task:
+        existing = self.find_by_submission(
+            owner_subject=task.owner_subject,
+            task_type=task.task_type,
+            idempotency_key=task.idempotency_key,
+        )
+        if existing is not None:
+            return existing
+        self.save(task)
+        return task
+
+    def save(
+        self,
+        task: Task,
+        *,
+        command_receipt: TaskCommandReceipt | None = None,
+    ) -> None:
         self._tasks[task.id] = task
         self._submissions[(task.owner_subject, task.task_type, task.idempotency_key)] = task.id
+        if command_receipt is not None:
+            self.mark_command_processed(
+                task_id=command_receipt.task_id,
+                command_type=command_receipt.command_type,
+                command_id=command_receipt.command_id,
+            )
 
     def find_by_submission(
         self,

@@ -1,3 +1,3 @@
-from app.platform.task.ports.repository import TaskRepositoryPort
+from app.platform.task.ports.repository import TaskCommandReceipt, TaskRepositoryPort
 
-__all__ = ["TaskRepositoryPort"]
+__all__ = ["TaskCommandReceipt", "TaskRepositoryPort"]

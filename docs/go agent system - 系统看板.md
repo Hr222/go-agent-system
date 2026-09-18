@@ -10,7 +10,7 @@
 
 ## 2. 当前状态
 
-当前项目已完成上下文管理，正在进入 Task Management 第二阶段。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；最近一组交互稳定性 Change 已完成实现、验证和归档。
+当前项目已完成上下文管理和 Task Management 的 TM-02 持久化生命周期。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；最近一组交互稳定性 Change 已完成实现、验证和归档。
 
 | 领域 | 状态 | 当前进度 |
 |---|---|---|
@@ -20,7 +20,7 @@
 | Interaction 与 Agent | 已完成基础链路 | 支持能力目录、候选识别、确认、受控分发和 Tender Agent 调用。 |
 | 附件与产物 | 已完成基础链路 | 支持上传、主体/会话访问绑定、Tender 输入解析和受控下载。 |
 | Conversation 与 Dialogue | 已完成当前交付 | 支持会话持久化、历史读取、列表管理、话题概括、主体隔离、轮次串行、Agent 异步执行、上下文管理和异步持久化。 |
-| Task Management | 当前阶段 | TM-01 任务状态机与幂等已完成并归档；TM-02 持久化生命周期尚未创建，只保留路线图占位。 |
+| Task Management | 当前阶段 | TM-01 任务状态机与其契约收紧、TM-02 PostgreSQL 生命周期持久化均已完成并归档；下一步进入受信任提交与 Worker Change。 |
 | Workflow / Agent 平台 | 后续阶段 | 第三阶段，位于 Task Management 之后；当前前端仅有 Workflow mock，真实编排能力尚未实施。 |
 | 真实身份认证与用户模块 | 待规划 | 不作为当前验收项，具体边界以 `ARCHITECTURE.md` 的当前边界为准。 |
 
@@ -48,15 +48,16 @@
 | `make-conversation-persistence-asynchronous` | `a61715c` | 已完成并归档 |
 | `fix-interaction-stream-resource-lifecycle` | `eff266f` | 已完成并归档 |
 | `fix-interaction-sync-boundaries-and-cancellation` | `21ae687` | 已完成并归档 |
+| `persist-task-lifecycle` | 未提交 | 已完成并归档 |
 
-当前没有活动中的 Task Management Change。TM-01“任务状态机与幂等”已完成并归档；同一时间只处理一个 Task Management Change，TM-02 需在人工审阅后另行创建。
+`persist-task-lifecycle` 已将 TM-01 的 Task、Attempt、Event 和命令回执持久化到 PostgreSQL；它不实现 Worker、HTTP、业务接入或前端。TM-01“任务状态机与幂等”及其契约收紧均已完成并归档；同一时间只处理一个 Task Management Change。
 已完成 Change 的完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
 
 ## 5. 当前验证
 
 最近一组 Change 的后端验收结果：
 
-`python -m pytest -q`：`680 passed`；PostgreSQL 集成测试：`1 passed`；`ruff check app tests`、`python -m compileall -q app tests`、`git diff --check` 和 `openspec validate --all --strict` 均通过。
+`python -m pytest -q`：`715 passed`；TM-02 PostgreSQL 持久化测试：`7 passed`；`ruff check app tests`、`python -m compileall -q app tests`、`git diff --check` 和 `openspec validate --all --strict` 均通过。
 
 外部 LLM、Embedding、OCR、MCP 和浏览器链路还需要使用项目现有的诊断脚本或人工验收记录结果；不能只凭单元测试宣称外部服务验收完成。
 
@@ -67,7 +68,7 @@
 | 优先级 | 能力 | 状态 |
 |---|---|---|
 | 1 | 上下文管理 | 已完成；会话历史、上下文窗口和多轮上下文链路已交付。 |
-| 2 | Task Management | 当前阶段；开始规划任务模型、状态机、执行生命周期和管理接口，尚未创建 Change。 |
+| 2 | Task Management | TM-01 与 TM-02 已完成；下一步创建受信任提交与 Worker Change。 |
 | 3 | Workflow / Agent 平台 | 后续阶段；依赖 Task Management，尚未实施真实编排引擎。 |
 | 4 | 真实认证与用户模块 | 待规划；尚未创建 Change。 |
 
@@ -77,8 +78,8 @@
 
 | 顺序 | 占位 Change | 依赖 | 本阶段验收目标 | 状态 |
 |---|---|---|---|---|
-| TM-01 | `define-task-state-machine-and-idempotency` | 无 | 明确 Task、Attempt、Event 的状态与转换，以及创建、领取、取消、重试和终态提交的幂等语义。 | 已完成并归档为 `2026-09-18-introduce-task-management`。 |
-| TM-02 | `persist-task-lifecycle` | TM-01 | 将任务、尝试、事件和幂等约束持久化到 PostgreSQL。 | 占位。 |
+| TM-01 | `define-task-state-machine-and-idempotency` | 无 | 明确 Task、Attempt、Event 的状态与转换，以及创建、领取、取消、重试和终态提交的幂等语义。 | 已完成并归档为 `2026-09-18-introduce-task-management`；契约收紧已归档为 `2026-09-18-harden-task-lifecycle-contracts`。 |
+| TM-02 | `persist-task-lifecycle` | TM-01 | 将任务、尝试、事件和幂等约束持久化到 PostgreSQL。 | 已完成并归档为 `2026-09-18-persist-task-lifecycle`。 |
 | TM-03 | `submit-trusted-tasks` | TM-02 | 提供受信任业务提交契约，不开放浏览器通用创建入口。 | 占位。 |
 | TM-04 | `claim-task-worker-leases` | TM-02 | 以原子领取、lease 和独立 Worker 执行任务。 | 占位。 |
 | TM-05 | `recover-cancel-and-retry-tasks` | TM-03、TM-04 | 支持租约恢复、协作式取消与自动/手动重试。 | 占位。 |
@@ -90,7 +91,7 @@
 
 ## 7. 当前待办
 
-1. 完成人工审阅后，再创建 TM-02 的完整 OpenSpec 工件；不得并行展开后续 Change。
+1. 创建 TM-03 的完整 OpenSpec 工件；不得与其他 Task Management Change 并行展开。
 2. TM-07、TM-08 完成后，实施 TM-09 的浏览器、API、Worker 和 PostgreSQL 端到端联调。
 3. 根据实际代码和验证结果持续同步 OpenSpec 正式规格并归档已完成 Change。
 4. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。

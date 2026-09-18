@@ -554,6 +554,12 @@ def test_sensitive_ocr_outputs_are_not_kept_in_tests() -> None:
 def test_architecture_baseline_describes_task_management_foundation_only() -> None:
     architecture = (PROJECT_ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
 
-    assert "Task Management 当前只实现" in architecture
-    assert "PostgreSQL 持久化、独立 Worker、HTTP 管理接口" in architecture
+    assert "Task Management 当前实现" in architecture
+    assert "以单条 `TASK_CLAIMED` 事件同时记录领取和开始执行" in architecture
+    assert "内存仓储仅存在于 `tests/task/`" in architecture
+    assert (
+        "PostgreSQL Repository 将 Task、Attempt、Event 和命令回执在同一事务中保存"
+        in architecture
+    )
+    assert "独立 Worker、HTTP 管理接口" in architecture
     assert "app/platform/task" in architecture

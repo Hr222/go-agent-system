@@ -5,27 +5,29 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from app.platform.task.application.contracts import (
-    AttemptLease,
     CancelTaskCommand,
+    RecoverTaskCommand,
+    RequeueTaskCommand,
+    RetryTaskCommand,
+    SubmitTaskCommand,
+    TaskView,
+)
+from app.platform.task.application.executor_contracts import (
+    AttemptLease,
     ClaimTaskCommand,
     ClaimTaskResult,
     CompleteTaskCommand,
     ConfirmCancellationCommand,
     FailTaskCommand,
-    RecoverTaskCommand,
     RenewLeaseCommand,
     RenewLeaseResult,
-    RequeueTaskCommand,
-    RetryTaskCommand,
-    SubmitTaskCommand,
-    TaskView,
 )
 from app.platform.task.domain import Task, TaskAttempt
 from app.platform.task.errors import (
     TaskIdempotencyConflictError,
     TaskNotFoundError,
 )
-from app.platform.task.ports import TaskRepositoryPort
+from app.platform.task.ports import TaskCommandReceipt, TaskRepositoryPort
 
 
 def _utc_now() -> datetime:
@@ -51,15 +53,6 @@ class TaskLifecycleService:
         self._clock = clock
 
     def submit(self, command: SubmitTaskCommand) -> TaskView:
-        existing = self._repository.find_by_submission(
-            owner_subject=command.owner_subject,
-            task_type=command.task_type,
-            idempotency_key=command.idempotency_key,
-        )
-        if existing is not None:
-            if existing.input_fingerprint != command.input_fingerprint:
-                raise TaskIdempotencyConflictError("同一幂等键使用了不同的输入指纹。")
-            return TaskView.from_task(existing)
         task = Task.create(
             task_type=command.task_type,
             owner_subject=command.owner_subject,
@@ -70,8 +63,10 @@ class TaskLifecycleService:
             allow_manual_retry=command.allow_manual_retry,
             now=self._clock(),
         )
-        self._repository.save(task)
-        return TaskView.from_task(task)
+        persisted = self._repository.create_or_get_submission(task)
+        if persisted.input_fingerprint != task.input_fingerprint:
+            raise TaskIdempotencyConflictError("同一幂等键使用了不同的输入指纹。")
+        return TaskView.from_task(persisted)
 
     def claim(self, command: ClaimTaskCommand) -> ClaimTaskResult:
         task = self._task(command.task_id)
@@ -110,8 +105,7 @@ class TaskLifecycleService:
         if self._already_processed(task.id, "cancel", command.command_id):
             return TaskView.from_task(task)
         task.request_cancel(command_id=command.command_id, now=self._clock())
-        self._record_processed(task.id, "cancel", command.command_id)
-        self._repository.save(task)
+        self._save_with_receipt(task, "cancel", command.command_id)
         return TaskView.from_task(task)
 
     def confirm_cancellation(self, command: ConfirmCancellationCommand) -> TaskView:
@@ -155,8 +149,7 @@ class TaskLifecycleService:
         if self._already_processed(task.id, "requeue", command.command_id):
             return TaskView.from_task(task)
         task.requeue_due(command_id=command.command_id, now=self._clock())
-        self._record_processed(task.id, "requeue", command.command_id)
-        self._repository.save(task)
+        self._save_with_receipt(task, "requeue", command.command_id)
         return TaskView.from_task(task)
 
     def retry(self, command: RetryTaskCommand) -> TaskView:
@@ -164,8 +157,7 @@ class TaskLifecycleService:
         if self._already_processed(task.id, "manual-retry", command.command_id):
             return TaskView.from_task(task)
         task.request_manual_retry(command_id=command.command_id, now=self._clock())
-        self._record_processed(task.id, "manual-retry", command.command_id)
-        self._repository.save(task)
+        self._save_with_receipt(task, "manual-retry", command.command_id)
         return TaskView.from_task(task)
 
     def recover(self, command: RecoverTaskCommand) -> TaskView:
@@ -177,14 +169,13 @@ class TaskLifecycleService:
             retry_at=command.retry_at,
             now=self._clock(),
         )
-        self._record_processed(task.id, "recover", command.command_id)
-        self._repository.save(task)
+        self._save_with_receipt(task, "recover", command.command_id)
         return TaskView.from_task(task)
 
     def _task(self, task_id: UUID) -> Task:
         if not isinstance(task_id, UUID):
             raise ValueError("任务标识必须是 UUID。")
-        task = self._repository.get(task_id)
+        task = self._repository.get_for_update(task_id)
         if task is None:
             raise TaskNotFoundError("任务不存在。")
         return task
@@ -196,11 +187,14 @@ class TaskLifecycleService:
             command_id=_require_text(command_id, "命令标识"),
         )
 
-    def _record_processed(self, task_id: UUID, command_type: str, command_id: str) -> None:
-        self._repository.mark_command_processed(
-            task_id=task_id,
-            command_type=command_type,
-            command_id=_require_text(command_id, "命令标识"),
+    def _save_with_receipt(self, task: Task, command_type: str, command_id: str) -> None:
+        self._repository.save(
+            task,
+            command_receipt=TaskCommandReceipt(
+                task_id=task.id,
+                command_type=command_type,
+                command_id=_require_text(command_id, "命令标识"),
+            ),
         )
 
     @staticmethod

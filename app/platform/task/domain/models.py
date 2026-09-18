@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import math
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -68,27 +71,83 @@ class TaskEventType(StrEnum):
 
 _SENSITIVE_METADATA_PARTS = (
     "input",
-    "lease_token",
+    "token",
     "exception",
     "traceback",
+    "authorization",
+    "api_key",
     "provider_response",
     "raw_response",
     "credential",
     "password",
     "secret",
 )
+_SAFE_FAILURE_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
+_SAFE_FINGERPRINT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+_EVENT_METADATA_FIELDS: dict[TaskEventType, frozenset[str]] = {
+    TaskEventType.TASK_CREATED: frozenset({"task_type"}),
+    TaskEventType.TASK_CLAIMED: frozenset({"attempt_number", "claim_id", "worker_id"}),
+    TaskEventType.TASK_CANCEL_REQUESTED: frozenset(),
+    TaskEventType.TASK_CANCELLED: frozenset({"attempt_number", "cancel_mode"}),
+    TaskEventType.TASK_SUCCEEDED: frozenset({"attempt_number", "result_fingerprint"}),
+    TaskEventType.TASK_FAILED: frozenset(
+        {"attempt_number", "failure_category", "failure_code"}
+    ),
+    TaskEventType.TASK_RETRY_SCHEDULED: frozenset(
+        {"attempt_number", "failure_category", "failure_code"}
+    ),
+    TaskEventType.TASK_REQUEUED: frozenset(),
+    TaskEventType.TASK_RETRY_REQUESTED: frozenset(),
+    TaskEventType.TASK_RECOVERED: frozenset({"attempt_number", "outcome"}),
+}
+_OPTIONAL_EVENT_METADATA_FIELDS: dict[TaskEventType, frozenset[str]] = {
+    TaskEventType.TASK_CANCELLED: frozenset({"attempt_number"}),
+}
 
 
-def _safe_metadata(metadata: Mapping[str, object]) -> dict[str, str | int | float | bool | None]:
-    normalized: dict[str, str | int | float | bool | None] = {}
+def _require_safe_failure_code(value: object) -> str:
+    code = _require_text(value, "失败码")
+    if _SAFE_FAILURE_CODE.fullmatch(code) is None:
+        raise ValueError("失败码必须是安全分类代码。")
+    return code
+
+
+def _require_safe_fingerprint(value: object) -> str:
+    fingerprint = _require_text(value, "结果指纹")
+    if _SAFE_FINGERPRINT.fullmatch(fingerprint) is None:
+        raise ValueError("结果指纹必须是安全标识。")
+    return fingerprint
+
+
+def _safe_metadata(
+    *, event_type: TaskEventType, metadata: Mapping[str, object]
+) -> dict[str, str | int]:
+    allowed_fields = _EVENT_METADATA_FIELDS[event_type]
+    optional_fields = _OPTIONAL_EVENT_METADATA_FIELDS.get(event_type, frozenset())
+    normalized: dict[str, str | int] = {}
     for key, value in metadata.items():
         key_text = _require_text(key, "事件元数据键")
         if any(part in key_text.lower() for part in _SENSITIVE_METADATA_PARTS):
             raise ValueError("事件元数据不能包含敏感内部字段。")
-        if isinstance(value, bool | int | float | str) or value is None:
+        if key_text not in allowed_fields:
+            raise ValueError("事件元数据包含当前事件不允许的字段。")
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError("事件元数据不能包含非有限浮点数。")
+        if key_text == "attempt_number":
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError("事件尝试序号必须是正整数。")
             normalized[key_text] = value
-            continue
-        raise ValueError("事件元数据只能包含 JSON 标量。")
+        elif key_text == "failure_code":
+            normalized[key_text] = _require_safe_failure_code(value)
+        elif key_text == "result_fingerprint":
+            normalized[key_text] = _require_safe_fingerprint(value)
+        else:
+            normalized[key_text] = _require_text(value, "事件元数据值")
+    required_fields = allowed_fields - optional_fields
+    if not required_fields.issubset(normalized):
+        raise ValueError("事件元数据缺少当前事件要求的安全字段。")
+    # 领域阶段先验证标准 JSON，避免 TM-02 的 JSON 持久化才暴露不兼容数据。
+    json.dumps(normalized, ensure_ascii=False, allow_nan=False)
     return normalized
 
 
@@ -98,7 +157,7 @@ class TaskEvent:
     sequence: int
     transition_id: str
     event_type: TaskEventType
-    metadata: dict[str, str | int | float | bool | None] = field(default_factory=dict)
+    metadata: dict[str, str | int] = field(default_factory=dict)
     created_at: datetime = field(default_factory=_utc_now)
     id: UUID = field(default_factory=uuid4)
 
@@ -114,7 +173,11 @@ class TaskEvent:
         object.__setattr__(self, "transition_id", _require_text(self.transition_id, "转换标识"))
         if not isinstance(self.event_type, TaskEventType):
             raise ValueError("任务事件类型无效。")
-        object.__setattr__(self, "metadata", _safe_metadata(self.metadata))
+        object.__setattr__(
+            self,
+            "metadata",
+            _safe_metadata(event_type=self.event_type, metadata=self.metadata),
+        )
         object.__setattr__(self, "created_at", _require_utc(self.created_at, "事件时间"))
 
 
@@ -207,9 +270,9 @@ class TaskAttempt:
         self.status = status
         self.finished_at = _require_utc(now, "尝试完成时间")
         self.failure_category = failure_category
-        self.failure_code = _require_text(failure_code, "失败码") if failure_code else None
+        self.failure_code = _require_safe_failure_code(failure_code) if failure_code else None
         self.result_fingerprint = (
-            _require_text(result_fingerprint, "结果指纹") if result_fingerprint else None
+            _require_safe_fingerprint(result_fingerprint) if result_fingerprint else None
         )
 
 
@@ -346,6 +409,7 @@ class Task:
         self.attempts.append(attempt)
         self.status = TaskStatus.RUNNING
         self.updated_at = normalized_now
+        # 领取是 TM-01 唯一的执行启动边界，不额外追加第二条“开始”事件。
         self._append_event(
             transition_id=f"claim:{attempt.claim_id}",
             event_type=TaskEventType.TASK_CLAIMED,
@@ -449,7 +513,7 @@ class Task:
         now: datetime,
     ) -> None:
         attempt = self.find_attempt(attempt_id)
-        normalized_fingerprint = _require_text(result_fingerprint, "结果指纹")
+        normalized_fingerprint = _require_safe_fingerprint(result_fingerprint)
         if self.status is TaskStatus.SUCCEEDED and attempt.status is AttemptStatus.SUCCEEDED:
             self._assert_same_terminal_result(
                 attempt=attempt,
@@ -497,7 +561,7 @@ class Task:
         now: datetime,
     ) -> None:
         attempt = self.find_attempt(attempt_id)
-        normalized_fingerprint = _require_text(result_fingerprint, "结果指纹")
+        normalized_fingerprint = _require_safe_fingerprint(result_fingerprint)
         if (
             self.status in {TaskStatus.RETRY_WAIT, TaskStatus.FAILED}
             and attempt.status is AttemptStatus.FAILED
@@ -516,7 +580,7 @@ class Task:
             raise ValueError("失败分类无效。")
         self._assert_active_lease(attempt=attempt, lease_token=lease_token, now=now)
         normalized_now = _require_utc(now, "失败时间")
-        normalized_code = _require_text(failure_code, "失败码")
+        normalized_code = _require_safe_failure_code(failure_code)
         is_retryable = (
             failure_category is FailureCategory.TRANSIENT and self.attempt_count < self.max_attempts
         )

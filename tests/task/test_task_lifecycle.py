@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import fields
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -8,25 +9,27 @@ import pytest
 
 from app.platform.task.application import (
     CancelTaskCommand,
-    ClaimTaskCommand,
-    CompleteTaskCommand,
-    ConfirmCancellationCommand,
-    FailTaskCommand,
     RecoverTaskCommand,
-    RenewLeaseCommand,
     RequeueTaskCommand,
     RetryTaskCommand,
     SubmitTaskCommand,
     TaskLifecycleService,
 )
 from app.platform.task.application.contracts import TaskView
-from app.platform.task.application.in_memory_repository import InMemoryTaskRepository
+from app.platform.task.application.executor_contracts import (
+    ClaimTaskCommand,
+    CompleteTaskCommand,
+    ConfirmCancellationCommand,
+    FailTaskCommand,
+    RenewLeaseCommand,
+)
 from app.platform.task.domain import FailureCategory, TaskEvent, TaskEventType, TaskStatus
 from app.platform.task.errors import (
     TaskIdempotencyConflictError,
     TaskLeaseRejectedError,
     TaskStateTransitionError,
 )
+from tests.task.in_memory_repository import InMemoryTaskRepository
 
 
 class MutableClock:
@@ -182,6 +185,27 @@ def test_claim_and_success_submission_are_idempotent(
         TaskEventType.TASK_CLAIMED,
         TaskEventType.TASK_SUCCEEDED,
     ]
+
+
+def test_claim_event_is_the_single_execution_start_fact(
+    harness: tuple[TaskLifecycleService, InMemoryTaskRepository, MutableClock],
+) -> None:
+    service, repository, clock = harness
+    submitted = _submit(service)
+
+    _claim(service, submitted.id, clock)
+
+    task = repository.get(submitted.id)
+    assert task is not None
+    assert [event.event_type for event in task.events] == [
+        TaskEventType.TASK_CREATED,
+        TaskEventType.TASK_CLAIMED,
+    ]
+    assert task.events[-1].metadata == {
+        "attempt_number": 1,
+        "claim_id": "claim-1",
+        "worker_id": "worker-1",
+    }
 
 
 def test_running_cancellation_preserves_attempt_until_executor_confirms(
@@ -443,15 +467,74 @@ def test_terminal_state_rejects_new_command_without_writing_event(
     assert task.status is TaskStatus.SUCCEEDED
 
 
-def test_events_reject_sensitive_metadata() -> None:
+@pytest.mark.parametrize(
+    ("event_type", "metadata", "message"),
+    [
+        (TaskEventType.TASK_CREATED, {"lease_token": "do-not-store"}, "敏感"),
+        (TaskEventType.TASK_CREATED, {"unexpected": "value"}, "不允许"),
+        (TaskEventType.TASK_CLAIMED, {"attempt_number": math.nan}, "非有限"),
+        (
+            TaskEventType.TASK_FAILED,
+            {
+                "attempt_number": 1,
+                "failure_category": "permanent",
+                "failure_code": "Traceback from provider",
+            },
+            "安全分类",
+        ),
+    ],
+)
+def test_events_reject_unsafe_or_nonstandard_metadata(
+    event_type: TaskEventType,
+    metadata: dict[str, object],
+    message: str,
+) -> None:
     now = datetime(2026, 9, 18, 9, 0, tzinfo=timezone.utc)
 
-    with pytest.raises(ValueError, match="敏感"):
+    with pytest.raises(ValueError, match=message):
         TaskEvent(
             task_id=uuid4(),
             sequence=1,
             transition_id="transition-1",
-            event_type=TaskEventType.TASK_CREATED,
-            metadata={"lease_token": "do-not-store"},
+            event_type=event_type,
+            metadata=metadata,
             created_at=now,
         )
+
+
+def test_terminal_submissions_reject_unsafe_codes_and_fingerprints(
+    harness: tuple[TaskLifecycleService, InMemoryTaskRepository, MutableClock],
+) -> None:
+    service, repository, clock = harness
+    submitted = _submit(service)
+    claimed = _claim(service, submitted.id, clock)
+
+    with pytest.raises(ValueError, match="结果指纹"):
+        service.complete(
+            CompleteTaskCommand(
+                task_id=submitted.id,
+                attempt_id=claimed.lease.attempt_id,
+                lease_token=claimed.lease.lease_token,
+                result_fingerprint="raw provider response",
+                result_summary="不应写入。",
+            )
+        )
+    with pytest.raises(ValueError, match="失败码"):
+        service.fail(
+            FailTaskCommand(
+                task_id=submitted.id,
+                attempt_id=claimed.lease.attempt_id,
+                lease_token=claimed.lease.lease_token,
+                failure_category=FailureCategory.PERMANENT,
+                failure_code="Traceback from provider",
+                result_fingerprint="failure-sha-1",
+            )
+        )
+
+    task = repository.get(submitted.id)
+    assert task is not None
+    assert task.status is TaskStatus.RUNNING
+    assert [event.event_type for event in task.events] == [
+        TaskEventType.TASK_CREATED,
+        TaskEventType.TASK_CLAIMED,
+    ]

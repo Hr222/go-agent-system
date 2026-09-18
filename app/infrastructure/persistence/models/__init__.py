@@ -11,6 +11,12 @@ from app.infrastructure.persistence.models.policy_chunk import PolicyChunk
 from app.infrastructure.persistence.models.policy_document import PolicyDocument
 from app.infrastructure.persistence.models.policy_section import PolicySection
 from app.infrastructure.persistence.models.policy_version import PolicyVersion
+from app.infrastructure.persistence.models.task import (
+    TaskAttemptRecord,
+    TaskCommandReceiptRecord,
+    TaskEventRecord,
+    TaskRecord,
+)
 
 __all__ = [
     "ConversationMessageRecord",
@@ -22,4 +28,8 @@ __all__ = [
     "PolicyDocument",
     "PolicySection",
     "PolicyVersion",
+    "TaskAttemptRecord",
+    "TaskCommandReceiptRecord",
+    "TaskEventRecord",
+    "TaskRecord",
 ]

@@ -18,6 +18,7 @@ from app.infrastructure.persistence.repositories.knowledge_write_repository impo
 from app.infrastructure.persistence.repositories.platform_capability_repository import (
     PlatformCapabilityRepository,
 )
+from app.infrastructure.persistence.repositories.task_repository import PostgresTaskRepository
 
 __all__ = [
     "ConversationHistoryReadRepository",
@@ -26,6 +27,7 @@ __all__ = [
     "KnowledgeReadRepository",
     "KnowledgeWriteRepository",
     "PlatformCapabilityRepository",
+    "PostgresTaskRepository",
 ]
 from app.infrastructure.persistence.repositories.conversation_event_repository import (
     ConversationEventRepository,

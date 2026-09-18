@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 from pathlib import Path
 
 TASK_ROOT = Path("app/platform/task")
@@ -35,3 +36,12 @@ def test_task_domain_and_ports_do_not_depend_on_protocol_or_infrastructure_layer
             assert not imported.startswith(FORBIDDEN_IMPORT_PREFIXES), (
                 f"{path} 不能依赖协议、基础设施或具体业务层：{imported}"
             )
+
+
+def test_task_runtime_excludes_test_repository_and_executor_lease_exports() -> None:
+    application_package = importlib.import_module("app.platform.task.application")
+
+    assert not TASK_ROOT.joinpath("application", "in_memory_repository.py").exists()
+    assert not hasattr(application_package, "AttemptLease")
+    assert not hasattr(application_package, "ClaimTaskCommand")
+    assert not hasattr(application_package, "RenewLeaseCommand")

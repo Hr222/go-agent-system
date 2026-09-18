@@ -15,3 +15,7 @@ class TaskIdempotencyConflictError(ValueError):
 
 class TaskLeaseRejectedError(PermissionError):
     """Attempt 不再持有可写入任务状态的有效 lease。"""
+
+
+class TaskSchemaUnavailableError(RuntimeError):
+    """Task PostgreSQL 表结构尚未初始化。"""
