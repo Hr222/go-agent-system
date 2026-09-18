@@ -563,3 +563,14 @@ def test_architecture_baseline_describes_task_management_foundation_only() -> No
     )
     assert "独立 Worker、HTTP 管理接口" in architecture
     assert "app/platform/task" in architecture
+
+
+def test_trusted_task_submission_does_not_add_public_protocol_or_business_bypass() -> None:
+    route_paths = _literal_route_paths(APP_ROOT / "interfaces" / "http" / "routes")
+    protocol_imports = _imported_modules(APP_ROOT / "interfaces" / "agent")
+    business_imports = _imported_modules(APP_ROOT / "business")
+
+    assert not any("task" in route_path.lower() for route_path in route_paths)
+    assert not any(module.startswith("app.platform.task") for module in protocol_imports)
+    assert "app.platform.task.application.lifecycle_service" not in business_imports
+    assert "app.platform.task.application.contracts" not in business_imports

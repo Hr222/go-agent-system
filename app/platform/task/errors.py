@@ -19,3 +19,11 @@ class TaskLeaseRejectedError(PermissionError):
 
 class TaskSchemaUnavailableError(RuntimeError):
     """Task PostgreSQL 表结构尚未初始化。"""
+
+
+class TaskSubmissionPrincipalError(PermissionError):
+    """提交任务的主体不是可用于确定资源归属的可信主体。"""
+
+
+class TaskSubmissionPolicyError(ValueError):
+    """受信任提交不满足服务端固定的任务策略。"""

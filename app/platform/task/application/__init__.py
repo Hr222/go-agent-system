@@ -6,6 +6,11 @@ from app.platform.task.application.contracts import (
     SubmitTaskCommand,
 )
 from app.platform.task.application.lifecycle_service import TaskLifecycleService
+from app.platform.task.application.trusted_submission import (
+    TrustedTaskSubmissionCommand,
+    TrustedTaskSubmissionProfile,
+    TrustedTaskSubmissionService,
+)
 
 __all__ = [
     "CancelTaskCommand",
@@ -14,4 +19,7 @@ __all__ = [
     "RetryTaskCommand",
     "SubmitTaskCommand",
     "TaskLifecycleService",
+    "TrustedTaskSubmissionCommand",
+    "TrustedTaskSubmissionProfile",
+    "TrustedTaskSubmissionService",
 ]

@@ -17,14 +17,18 @@ from app.infrastructure.persistence.models.task import (
 from app.infrastructure.persistence.repositories.task_repository import (
     PostgresTaskRepository,
 )
+from app.platform.security.domain import RequestPrincipal
 from app.platform.task.application import (
     CancelTaskCommand,
     SubmitTaskCommand,
     TaskLifecycleService,
+    TrustedTaskSubmissionCommand,
+    TrustedTaskSubmissionProfile,
+    TrustedTaskSubmissionService,
 )
 from app.platform.task.application.executor_contracts import ClaimTaskCommand
 from app.platform.task.domain import TaskEvent, TaskEventType, TaskStatus
-from app.platform.task.errors import TaskSchemaUnavailableError
+from app.platform.task.errors import TaskSchemaUnavailableError, TaskSubmissionPrincipalError
 from tests.support.db_test_utils import SchemaHarness
 
 SQL_SCRIPT = Path(__file__).resolve().parents[2] / "sql" / "013_task_lifecycle.sql"
@@ -376,5 +380,57 @@ def test_missing_task_schema_has_actionable_error() -> None:
             assert session.is_active
         finally:
             session.close()
+    finally:
+        harness.drop_schema()
+
+
+def test_trusted_submission_replays_after_repository_restart_and_rejects_untrusted_input() -> None:
+    harness = SchemaHarness("task_trusted_submit")
+    harness.create_schema()
+    profile = TrustedTaskSubmissionProfile(
+        task_type="tender.generate",
+        max_attempts=2,
+        allow_manual_retry=False,
+        display_metadata_fields=("title",),
+    )
+    principal = RequestPrincipal(subject="owner-1", authenticated=True)
+    command = TrustedTaskSubmissionCommand(
+        idempotency_key="submit-1",
+        input_fingerprint="input-sha-1",
+        display_metadata={"title": "持久化任务"},
+    )
+    try:
+        session = harness.session_local()
+        try:
+            first = TrustedTaskSubmissionService(
+                TaskLifecycleService(PostgresTaskRepository(session), clock=MutableClock()),
+                profile,
+            ).submit(principal, command)
+        finally:
+            session.close()
+
+        replay_session = harness.session_local()
+        try:
+            replay = TrustedTaskSubmissionService(
+                TaskLifecycleService(PostgresTaskRepository(replay_session), clock=MutableClock()),
+                profile,
+            ).submit(principal, command)
+            restored = PostgresTaskRepository(replay_session).get(first.id)
+            assert replay.id == first.id
+            assert restored is not None
+            assert len(restored.events) == 1
+            with pytest.raises(TaskSubmissionPrincipalError):
+                TrustedTaskSubmissionService(
+                    TaskLifecycleService(
+                        PostgresTaskRepository(replay_session), clock=MutableClock()
+                    ),
+                    profile,
+                ).submit(
+                    RequestPrincipal.anonymous(),
+                    TrustedTaskSubmissionCommand("submit-2", "input-sha-2"),
+                )
+            assert PostgresTaskRepository(replay_session).get(first.id) is not None
+        finally:
+            replay_session.close()
     finally:
         harness.drop_schema()

@@ -38,6 +38,26 @@ def test_task_domain_and_ports_do_not_depend_on_protocol_or_infrastructure_layer
             )
 
 
+def test_task_application_does_not_depend_on_protocol_or_persistence_adapters() -> None:
+    source_files = TASK_ROOT.joinpath("application").glob("*.py")
+
+    for path in source_files:
+        for imported in _imports_from(path):
+            assert not imported.startswith(FORBIDDEN_IMPORT_PREFIXES), (
+                f"{path} 不能依赖协议或持久化适配器：{imported}"
+            )
+
+
+def test_trusted_submission_is_the_only_new_task_creation_boundary() -> None:
+    application_source = TASK_ROOT.joinpath("application", "trusted_submission.py").read_text(
+        encoding="utf-8"
+    )
+    composition_source = Path("app/composition/task.py").read_text(encoding="utf-8")
+
+    assert "class TrustedTaskSubmissionService" in application_source
+    assert "def build_trusted_task_submission_service" in composition_source
+
+
 def test_task_runtime_excludes_test_repository_and_executor_lease_exports() -> None:
     application_package = importlib.import_module("app.platform.task.application")
 
