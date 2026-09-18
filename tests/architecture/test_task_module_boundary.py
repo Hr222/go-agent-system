@@ -65,3 +65,30 @@ def test_task_runtime_excludes_test_repository_and_executor_lease_exports() -> N
     assert not hasattr(application_package, "AttemptLease")
     assert not hasattr(application_package, "ClaimTaskCommand")
     assert not hasattr(application_package, "RenewLeaseCommand")
+
+
+def test_task_worker_context_excludes_sensitive_input_fields() -> None:
+    from dataclasses import fields
+
+    from app.platform.task.ports.worker import TaskExecutionContext
+
+    field_names = {field.name for field in fields(TaskExecutionContext)}
+    assert "input_fingerprint" not in field_names
+    assert "lease_token" not in field_names
+    assert "renew_lease" in field_names
+
+
+def test_task_worker_ports_do_not_depend_on_protocol_or_infrastructure_layers() -> None:
+    worker_port = TASK_ROOT.joinpath("ports", "worker.py")
+    for imported in _imports_from(worker_port):
+        assert not imported.startswith(FORBIDDEN_IMPORT_PREFIXES), (
+            f"{worker_port} 不能依赖协议、基础设施或具体业务层：{imported}"
+        )
+
+
+def test_task_composition_exposes_only_fixed_worker_binding() -> None:
+    composition_source = Path("app/composition/task.py").read_text(encoding="utf-8")
+
+    assert "def build_task_worker" in composition_source
+    assert "MappingTaskExecutorRegistry" in composition_source
+    assert "register" not in composition_source

@@ -561,7 +561,7 @@ def test_architecture_baseline_describes_task_management_foundation_only() -> No
         "PostgreSQL Repository 将 Task、Attempt、Event 和命令回执在同一事务中保存"
         in architecture
     )
-    assert "独立 Worker、HTTP 管理接口" in architecture
+    assert "租约过期恢复、任务 HTTP、业务接入、前端、E2E 和 Workflow" in architecture
     assert "app/platform/task" in architecture
 
 

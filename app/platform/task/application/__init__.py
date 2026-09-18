@@ -11,6 +11,13 @@ from app.platform.task.application.trusted_submission import (
     TrustedTaskSubmissionProfile,
     TrustedTaskSubmissionService,
 )
+from app.platform.task.application.worker import (
+    MappingTaskExecutorRegistry,
+    SecureLeaseIssuer,
+    TaskWorker,
+    WorkerPollResult,
+    WorkerPollStatus,
+)
 
 __all__ = [
     "CancelTaskCommand",
@@ -22,4 +29,9 @@ __all__ = [
     "TrustedTaskSubmissionCommand",
     "TrustedTaskSubmissionProfile",
     "TrustedTaskSubmissionService",
+    "MappingTaskExecutorRegistry",
+    "SecureLeaseIssuer",
+    "TaskWorker",
+    "WorkerPollResult",
+    "WorkerPollStatus",
 ]

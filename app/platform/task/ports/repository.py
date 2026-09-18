@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -22,6 +23,8 @@ class TaskRepositoryPort(Protocol):
     def get(self, task_id: UUID) -> Task | None: ...
 
     def get_for_update(self, task_id: UUID) -> Task | None: ...
+
+    def get_next_queued_for_update(self, *, now: datetime) -> Task | None: ...
 
     def create_or_get_submission(self, task: Task) -> Task: ...
 

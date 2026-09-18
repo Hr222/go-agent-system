@@ -55,6 +55,39 @@ class PostgresTaskRepository(TaskRepositoryPort):
             self._translate_schema_error(exc)
             raise
 
+    def get_next_queued_for_update(self, *, now: datetime) -> Task | None:
+        """锁定一个到期排队任务，锁保持到后续聚合保存提交。"""
+
+        try:
+            statement = (
+                select(TaskRecord)
+                .where(
+                    TaskRecord.status == "queued",
+                    TaskRecord.available_at <= now,
+                )
+                .order_by(
+                    TaskRecord.available_at.asc(),
+                    TaskRecord.created_at.asc(),
+                    TaskRecord.id.asc(),
+                )
+                .with_for_update(skip_locked=True)
+                .limit(1)
+            )
+            record = self.session.scalar(statement)
+            if record is None:
+                self.session.rollback()
+                return None
+            return self._from_task_record(record)
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            self._translate_schema_error(exc)
+            raise
+
+    def release_claim_slot(self) -> None:
+        """释放尚未写入领取事实的候选锁。"""
+
+        self.session.rollback()
+
     def create_or_get_submission(self, task: Task) -> Task:
         try:
             record = task_to_record(task)

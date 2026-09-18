@@ -27,3 +27,7 @@ class TaskSubmissionPrincipalError(PermissionError):
 
 class TaskSubmissionPolicyError(ValueError):
     """受信任提交不满足服务端固定的任务策略。"""
+
+
+class TaskExecutorUnavailableError(RuntimeError):
+    """任务类型没有服务端注册的执行器。"""
