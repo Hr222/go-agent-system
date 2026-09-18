@@ -30,6 +30,7 @@ from app.platform.interaction.ports.proposal_store import PendingProposalStorePo
 from app.platform.knowledge.application.knowledge_base import KnowledgeBaseService
 from app.platform.knowledge.application.management_service import KnowledgeManagementService
 from app.platform.knowledge.application.publication_service import KnowledgePublicationService
+from app.platform.task.application import OwnedTaskApplication
 from app.shared.config import settings
 
 
@@ -110,6 +111,14 @@ def get_conversation_management_service(
     container: ApplicationContainer = Depends(get_application_container),
 ) -> ConversationManagementService:
     return container.conversation_management()
+
+
+def get_owned_task_application(
+    container: ApplicationContainer = Depends(get_application_container),
+) -> OwnedTaskApplication:
+    """提供主体隔离的 Task HTTP Application。"""
+
+    return container.owned_task_application()
 
 
 @lru_cache(maxsize=1)

@@ -106,3 +106,15 @@ def test_task_recovery_schedulers_use_application_and_ports_only() -> None:
     assert "TaskRepositoryPort" in source
     assert "Session" not in source
     assert "TaskRecord" not in source
+
+
+def test_task_http_routes_use_application_dependencies_only() -> None:
+    route_source = Path("app/interfaces/http/routes/tasks.py").read_text(encoding="utf-8")
+    schema_source = Path("app/interfaces/http/schemas/task.py").read_text(encoding="utf-8")
+
+    assert "OwnedTaskApplication" in route_source
+    assert "get_owned_task_application" in route_source
+    assert "Session" not in route_source
+    assert "TaskRecord" not in route_source
+    assert "lease_token" not in schema_source
+    assert "input_fingerprint" not in schema_source

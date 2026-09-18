@@ -9,6 +9,9 @@ from app.platform.task.ports import (
     DueRetryCandidate,
     ExpiredTaskCandidate,
     TaskCommandReceipt,
+    TaskEventPage,
+    TaskListCursor,
+    TaskListPage,
 )
 
 
@@ -67,6 +70,79 @@ class InMemoryTaskRepository:
             if task.status.value == "retry_wait" and task.available_at <= now
         ]
         return candidates[:limit]
+
+    def list_owned(
+        self,
+        *,
+        owner_subject: str,
+        limit: int,
+        cursor: TaskListCursor | None,
+    ) -> TaskListPage:
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("任务列表大小必须是正整数。")
+        tasks = [
+            task
+            for task in sorted(
+                self._tasks.values(), key=lambda item: (item.updated_at, item.id), reverse=True
+            )
+            if task.owner_subject == owner_subject
+        ]
+        if cursor is not None:
+            tasks = [
+                task
+                for task in tasks
+                if task.updated_at < cursor.updated_at
+                or (task.updated_at == cursor.updated_at and task.id < cursor.id)
+            ]
+        page = tasks[: limit + 1]
+        has_more = len(page) > limit
+        page_tasks = tuple(page[:limit])
+        return TaskListPage(
+            tasks=page_tasks,
+            has_more=has_more,
+            next_cursor=(
+                TaskListCursor(updated_at=page_tasks[-1].updated_at, id=page_tasks[-1].id)
+                if has_more
+                else None
+            ),
+        )
+
+    def get_owned(self, *, task_id: UUID, owner_subject: str) -> Task | None:
+        task = self._tasks.get(task_id)
+        return task if task is not None and task.owner_subject == owner_subject else None
+
+    def read_owned_events(
+        self,
+        *,
+        task_id: UUID,
+        owner_subject: str,
+        limit: int,
+        after_sequence: int | None,
+    ) -> TaskEventPage | None:
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("事件列表大小必须是正整数。")
+        if after_sequence is not None and (
+            isinstance(after_sequence, bool)
+            or not isinstance(after_sequence, int)
+            or after_sequence <= 0
+        ):
+            raise ValueError("事件游标必须是正整数。")
+        task = self.get_owned(task_id=task_id, owner_subject=owner_subject)
+        if task is None:
+            return None
+        events = [
+            event
+            for event in task.events
+            if after_sequence is None or event.sequence > after_sequence
+        ]
+        page = events[: limit + 1]
+        has_more = len(page) > limit
+        page_events = tuple(page[:limit])
+        return TaskEventPage(
+            events=page_events,
+            has_more=has_more,
+            next_after_sequence=page_events[-1].sequence if has_more else None,
+        )
 
     def create_or_get_submission(self, task: Task) -> Task:
         existing = self.find_by_submission(

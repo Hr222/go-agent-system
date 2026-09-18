@@ -7,6 +7,14 @@ from app.platform.task.application.contracts import (
     SubmitTaskCommand,
 )
 from app.platform.task.application.lifecycle_service import TaskLifecycleService
+from app.platform.task.application.owned import (
+    OwnedTaskApplication,
+    OwnedTaskCommand,
+    OwnedTaskCommandResult,
+    OwnedTaskEventsQuery,
+    OwnedTaskListQuery,
+    OwnedTaskQuery,
+)
 from app.platform.task.application.recovery import (
     CancellationCoordinator,
     ManualRetryCoordinator,
@@ -35,6 +43,12 @@ __all__ = [
     "RetryTaskCommand",
     "SubmitTaskCommand",
     "TaskLifecycleService",
+    "OwnedTaskApplication",
+    "OwnedTaskCommand",
+    "OwnedTaskCommandResult",
+    "OwnedTaskEventsQuery",
+    "OwnedTaskListQuery",
+    "OwnedTaskQuery",
     "CancellationCoordinator",
     "ManualRetryCoordinator",
     "RecoveryCoordinator",

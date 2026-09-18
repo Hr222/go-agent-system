@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from app.platform.task.domain import Task
+from app.platform.task.domain import Task, TaskEvent
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +34,28 @@ class DueRetryCandidate:
     available_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class TaskListCursor:
+    """按更新时间和 UUID 倒序列表的稳定游标。"""
+
+    updated_at: datetime
+    id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class TaskListPage:
+    tasks: tuple[Task, ...]
+    has_more: bool
+    next_cursor: TaskListCursor | None
+
+
+@dataclass(frozen=True, slots=True)
+class TaskEventPage:
+    events: tuple[TaskEvent, ...]
+    has_more: bool
+    next_after_sequence: int | None
+
+
 class TaskRepositoryPort(Protocol):
     """Task Application 依赖的原子聚合读写与命令回执边界。"""
 
@@ -50,6 +72,25 @@ class TaskRepositoryPort(Protocol):
     def get_due_retries_for_update(
         self, *, now: datetime, limit: int
     ) -> list[DueRetryCandidate]: ...
+
+    def list_owned(
+        self,
+        *,
+        owner_subject: str,
+        limit: int,
+        cursor: TaskListCursor | None,
+    ) -> TaskListPage: ...
+
+    def get_owned(self, *, task_id: UUID, owner_subject: str) -> Task | None: ...
+
+    def read_owned_events(
+        self,
+        *,
+        task_id: UUID,
+        owner_subject: str,
+        limit: int,
+        after_sequence: int | None,
+    ) -> TaskEventPage | None: ...
 
     def create_or_get_submission(self, task: Task) -> Task: ...
 

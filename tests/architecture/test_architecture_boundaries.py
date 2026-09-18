@@ -49,7 +49,8 @@ def _literal_route_paths(path: Path) -> set[str]:
     """读取路由声明中的字面量路径，避免仅按文件名判断接口边界。"""
 
     route_paths: set[str] = set()
-    for source_path in (path if path.is_dir() else path.parent).rglob("*.py"):
+    source_paths = [path] if path.is_file() else list(path.rglob("*.py"))
+    for source_path in source_paths:
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
@@ -551,7 +552,7 @@ def test_sensitive_ocr_outputs_are_not_kept_in_tests() -> None:
     assert "tests/ocr/output" not in ocr_source
 
 
-def test_architecture_baseline_describes_task_management_foundation_only() -> None:
+def test_architecture_baseline_describes_task_management_boundaries() -> None:
     architecture = (PROJECT_ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
 
     assert "Task Management 当前实现" in architecture
@@ -562,16 +563,27 @@ def test_architecture_baseline_describes_task_management_foundation_only() -> No
         in architecture
     )
     assert "RecoveryCoordinator、RetryScheduler 和 CancellationCoordinator" in architecture
-    assert "任务 HTTP、业务接入、前端、E2E 和 Workflow" in architecture
+    assert "主体隔离的 Task HTTP 查询与控制接口" in architecture
+    assert "Task HTTP 只允许已认证主体查询自己的 Task" in architecture
+    assert "Tender 接入、前端、E2E 和 Workflow" in architecture
+    assert "不提供创建、领取、续租、结果回写、恢复调度或 lease" in architecture
     assert "app/platform/task" in architecture
 
 
 def test_trusted_task_submission_does_not_add_public_protocol_or_business_bypass() -> None:
-    route_paths = _literal_route_paths(APP_ROOT / "interfaces" / "http" / "routes")
+    task_route_paths = _literal_route_paths(
+        APP_ROOT / "interfaces" / "http" / "routes" / "tasks.py"
+    )
     protocol_imports = _imported_modules(APP_ROOT / "interfaces" / "agent")
     business_imports = _imported_modules(APP_ROOT / "business")
 
-    assert not any("task" in route_path.lower() for route_path in route_paths)
+    assert task_route_paths == {
+        "",
+        "/{task_id}",
+        "/{task_id}/events",
+        "/{task_id}/cancel",
+        "/{task_id}/retry",
+    }
     assert not any(module.startswith("app.platform.task") for module in protocol_imports)
     assert "app.platform.task.application.lifecycle_service" not in business_imports
     assert "app.platform.task.application.contracts" not in business_imports

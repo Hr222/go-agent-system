@@ -79,6 +79,7 @@ from app.composition.online import (
     build_rag_facade,
     build_rule_retrieval_service,
 )
+from app.composition.task import build_owned_task_application
 from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
 from app.infrastructure.filesystem.policy_file_service import PolicyFileService
 from app.infrastructure.filesystem.upload_service import PolicyUploadService
@@ -151,6 +152,7 @@ from app.platform.knowledge.application.write_capability import KnowledgeBaseWri
 from app.platform.llm.application.chat import ChatApplication
 from app.platform.llm.application.streaming_chat import StreamingChatApplication
 from app.platform.llm.contracts import ChatLlmPort, StreamingChatLlmPort, StructuredLlmPort
+from app.platform.task.application import OwnedTaskApplication
 from app.shared.config import settings
 
 
@@ -215,6 +217,7 @@ class ApplicationContainer:
         self._streaming_interaction_chat_stream_application: (
             InteractionChatStreamApplication | None
         ) = None
+        self._owned_task_application: OwnedTaskApplication | None = None
         self._openai_client_factory = openai_client_factory
         self._persistence_gateway: PolicyPersistenceGateway | None = None
         self._write_repository: KnowledgeWriteRepository | None = None
@@ -396,6 +399,13 @@ class ApplicationContainer:
         if self._conversation_management is None:
             self._conversation_management = build_conversation_management_service(self.session)
         return self._conversation_management
+
+    def owned_task_application(self) -> OwnedTaskApplication:
+        if self.session is None:
+            raise RuntimeError("Task HTTP 管理需要数据库 session，但容器未提供。")
+        if self._owned_task_application is None:
+            self._owned_task_application = build_owned_task_application(self.session)
+        return self._owned_task_application
 
     def capability_candidate_retrieval(self) -> CapabilityCandidateRetrieval:
         if self._capability_candidate_retrieval is None:

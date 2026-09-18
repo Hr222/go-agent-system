@@ -31,3 +31,11 @@ class TaskSubmissionPolicyError(ValueError):
 
 class TaskExecutorUnavailableError(RuntimeError):
     """任务类型没有服务端注册的执行器。"""
+
+
+class TaskAccessDeniedError(PermissionError):
+    """请求主体不能访问 Task 管理能力。"""
+
+
+class TaskUnavailableError(LookupError):
+    """Task 不存在或不属于当前主体。"""

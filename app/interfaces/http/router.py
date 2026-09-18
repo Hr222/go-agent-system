@@ -13,6 +13,7 @@ from app.interfaces.http.routes import (
     policy_ingestion,
     policy_pipeline,
     retrieval,
+    tasks,
 )
 
 api_router = APIRouter()
@@ -36,3 +37,4 @@ api_router.include_router(policy_decision.router, prefix="/kb", tags=["policy-de
 api_router.include_router(policy_ingestion.router, prefix="/kb", tags=["policy-ingestion"])
 api_router.include_router(policy_pipeline.router, prefix="/kb", tags=["policy-pipeline"])
 api_router.include_router(retrieval.router, prefix="/kb", tags=["retrieval"])
+api_router.include_router(tasks.router, prefix="/tasks", tags=["tasks"])

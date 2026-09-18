@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 from uuid import UUID
 
 from app.platform.task.domain import Task, TaskStatus
+
+if TYPE_CHECKING:
+    from app.platform.task.ports import TaskListCursor
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,3 +84,27 @@ class TaskView:
             created_at=task.created_at,
             updated_at=task.updated_at,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class TaskEventView:
+    id: UUID
+    sequence: int
+    transition_id: str
+    event_type: str
+    metadata: Mapping[str, str | int]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class TaskListView:
+    tasks: tuple[TaskView, ...]
+    has_more: bool
+    next_cursor: TaskListCursor | None
+
+
+@dataclass(frozen=True, slots=True)
+class TaskEventListView:
+    events: tuple[TaskEventView, ...]
+    has_more: bool
+    next_after_sequence: int | None

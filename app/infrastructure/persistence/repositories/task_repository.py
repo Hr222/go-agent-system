@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.infrastructure.persistence.models.task import (
 )
 from app.infrastructure.persistence.task_mapper import (
     attempt_to_record,
+    event_from_record,
     event_to_record,
     task_from_records,
     task_to_record,
@@ -27,6 +28,9 @@ from app.platform.task.ports import (
     DueRetryCandidate,
     ExpiredTaskCandidate,
     TaskCommandReceipt,
+    TaskEventPage,
+    TaskListCursor,
+    TaskListPage,
     TaskRepositoryPort,
 )
 
@@ -151,6 +155,114 @@ class PostgresTaskRepository(TaskRepositoryPort):
                 DueRetryCandidate(task_id=task_id, available_at=available_at)
                 for task_id, available_at in rows
             ]
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            self._translate_schema_error(exc)
+            raise
+
+    def list_owned(
+        self,
+        *,
+        owner_subject: str,
+        limit: int,
+        cursor: TaskListCursor | None,
+    ) -> TaskListPage:
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("任务列表大小必须是正整数。")
+        try:
+            statement = select(TaskRecord).where(TaskRecord.owner_subject == owner_subject)
+            if cursor is not None:
+                statement = statement.where(
+                    or_(
+                        TaskRecord.updated_at < cursor.updated_at,
+                        and_(
+                            TaskRecord.updated_at == cursor.updated_at,
+                            TaskRecord.id < cursor.id,
+                        ),
+                    )
+                )
+            records = list(
+                self.session.scalars(
+                    statement.order_by(
+                        TaskRecord.updated_at.desc(), TaskRecord.id.desc()
+                    ).limit(limit + 1)
+                ).all()
+            )
+            has_more = len(records) > limit
+            page_records = records[:limit]
+            tasks = tuple(self._from_task_record(record) for record in page_records)
+            return TaskListPage(
+                tasks=tasks,
+                has_more=has_more,
+                next_cursor=(
+                    TaskListCursor(
+                        updated_at=tasks[-1].updated_at,
+                        id=tasks[-1].id,
+                    )
+                    if has_more
+                    else None
+                ),
+            )
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            self._translate_schema_error(exc)
+            raise
+
+    def get_owned(self, *, task_id: UUID, owner_subject: str) -> Task | None:
+        try:
+            record = self.session.scalar(
+                select(TaskRecord).where(
+                    TaskRecord.id == task_id,
+                    TaskRecord.owner_subject == owner_subject,
+                )
+            )
+            return self._from_task_record(record) if record is not None else None
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            self._translate_schema_error(exc)
+            raise
+
+    def read_owned_events(
+        self,
+        *,
+        task_id: UUID,
+        owner_subject: str,
+        limit: int,
+        after_sequence: int | None,
+    ) -> TaskEventPage | None:
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("事件列表大小必须是正整数。")
+        if after_sequence is not None and (
+            isinstance(after_sequence, bool)
+            or not isinstance(after_sequence, int)
+            or after_sequence <= 0
+        ):
+            raise ValueError("事件游标必须是正整数。")
+        try:
+            task_exists = self.session.scalar(
+                select(TaskRecord.id).where(
+                    TaskRecord.id == task_id,
+                    TaskRecord.owner_subject == owner_subject,
+                )
+            )
+            if task_exists is None:
+                return None
+            statement = select(TaskEventRecord).where(TaskEventRecord.task_id == task_id)
+            if after_sequence is not None:
+                statement = statement.where(TaskEventRecord.sequence > after_sequence)
+            records = list(
+                self.session.scalars(
+                    statement.order_by(TaskEventRecord.sequence.asc()).limit(limit + 1)
+                ).all()
+            )
+            has_more = len(records) > limit
+            page_records = records[:limit]
+            events = tuple(event_from_record(record) for record in page_records)
+            return TaskEventPage(
+                events=events,
+                has_more=has_more,
+                next_after_sequence=events[-1].sequence if has_more else None,
+            )
         except SQLAlchemyError as exc:
             self.session.rollback()
             self._translate_schema_error(exc)

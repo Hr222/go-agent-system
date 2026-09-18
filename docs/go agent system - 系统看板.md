@@ -10,7 +10,7 @@
 
 ## 2. 当前状态
 
-当前项目已完成上下文管理和 Task Management 的 TM-05 恢复、取消与重试调度能力。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；最近一组交互稳定性 Change 已完成实现、验证和归档。
+当前项目已完成上下文管理和 Task Management 的 TM-06 主体隔离 HTTP 管理能力。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；最近一组交互稳定性 Change 已完成实现、验证和归档。
 
 | 领域 | 状态 | 当前进度 |
 |---|---|---|
@@ -20,7 +20,7 @@
 | Interaction 与 Agent | 已完成基础链路 | 支持能力目录、候选识别、确认、受控分发和 Tender Agent 调用。 |
 | 附件与产物 | 已完成基础链路 | 支持上传、主体/会话访问绑定、Tender 输入解析和受控下载。 |
 | Conversation 与 Dialogue | 已完成当前交付 | 支持会话持久化、历史读取、列表管理、话题概括、主体隔离、轮次串行、Agent 异步执行、上下文管理和异步持久化。 |
-| Task Management | 当前阶段 | TM-01 状态机、TM-02 PostgreSQL 持久化、TM-03 受信任内部提交、TM-04 Worker 执行和 TM-05 恢复/取消/重试调度均已完成；HTTP 和业务接入仍待后续 Change。 |
+| Task Management | 当前阶段 | TM-01 状态机、TM-02 PostgreSQL 持久化、TM-03 受信任内部提交、TM-04 Worker 执行、TM-05 恢复/取消/重试调度和 TM-06 主体隔离 HTTP 管理均已完成；Tender、前端和 E2E 仍待后续 Change。 |
 | Workflow / Agent 平台 | 后续阶段 | 第三阶段，位于 Task Management 之后；当前前端仅有 Workflow mock，真实编排能力尚未实施。 |
 | 真实身份认证与用户模块 | 待规划 | 不作为当前验收项，具体边界以 `ARCHITECTURE.md` 的当前边界为准。 |
 
@@ -50,17 +50,18 @@
 | `fix-interaction-sync-boundaries-and-cancellation` | `21ae687` | 已完成并归档 |
 | `submit-trusted-tasks` | `f2a26c2` | 已完成并归档 |
 | `persist-task-lifecycle` | `14a8684` | 已完成并归档 |
-| `claim-task-worker-leases` | `5b8bd49` | 已完成、已归档；远程推送待网络恢复 |
-| `recover-cancel-and-retry-tasks` | `2fa78b7` | 已完成、已归档；远程推送待网络恢复 |
+| `claim-task-worker-leases` | `5b8bd49` | 已完成、已归档并推送远程 |
+| `recover-cancel-and-retry-tasks` | `44867c4` | 已完成、已归档并推送远程 |
+| `manage-owned-tasks-over-http` | 本 Change 提交 | 已完成、已归档并推送远程 |
 
-`persist-task-lifecycle` 已将 TM-01 的 Task、Attempt、Event 和命令回执持久化到 PostgreSQL；TM-04 已补充受信任 Worker 的原子领取、lease 续租、固定执行器和安全结果回写；TM-05 已补充过期 lease 恢复、协作取消、退避重入队和受策略约束的手动重试，但不实现 HTTP、业务接入或前端。TM-01“任务状态机与幂等”及其契约收紧均已完成并归档；同一时间只处理一个 Task Management Change。
+`persist-task-lifecycle` 已将 TM-01 的 Task、Attempt、Event 和命令回执持久化到 PostgreSQL；TM-04 已补充受信任 Worker 的原子领取、lease 续租、固定执行器和安全结果回写；TM-05 已补充过期 lease 恢复、协作取消、退避重入队和受策略约束的手动重试；TM-06 已补充主体隔离的 Task/事件查询、协作取消和手动重试 HTTP 契约，但不实现 Tender、前端或 E2E。TM-01“任务状态机与幂等”及其契约收紧均已完成并归档；同一时间只处理一个 Task Management Change。
 已完成 Change 的完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
 
 ## 5. 当前验证
 
 最近一组 Change 的后端验收结果：
 
-TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-05 完成后全量 `python -m pytest -q` 为 `750 passed`，另有 2 个既有弃用警告。Worker、恢复/取消/重试、PostgreSQL 并发和架构边界测试均通过；`ruff check app tests`、`python -m compileall -q app tests`、`git diff --check` 和 `openspec validate --all --strict` 均通过。外部 LLM、Embedding、OCR、MCP 和浏览器链路仍需使用项目现有诊断脚本或人工验收记录，不能只凭单元测试宣称外部服务验收完成。
+TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-05 完成后为 `750 passed`；TM-06 完成后为 `763 passed`，另有 2 个既有弃用警告。Worker、恢复/取消/重试、Task HTTP、PostgreSQL 并发和架构边界测试均通过；`ruff check app tests`、`python -m compileall -q app tests`、`git diff --check` 和 `openspec validate --all --strict` 均通过。外部 LLM、Embedding、OCR、MCP 和浏览器链路仍需使用项目现有诊断脚本或人工验收记录，不能只凭单元测试宣称外部服务验收完成。
 
 ## 6. 后续能力优先级
 
@@ -69,7 +70,7 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 | 优先级 | 能力 | 状态 |
 |---|---|---|
 | 1 | 上下文管理 | 已完成；会话历史、上下文窗口和多轮上下文链路已交付。 |
-| 2 | Task Management | TM-01～TM-05 已完成；下一步进入主体隔离的任务 HTTP Change。 |
+| 2 | Task Management | TM-01～TM-06 已完成；下一步进入 Tender 业务接入和前端联调 Change。 |
 | 3 | Workflow / Agent 平台 | 后续阶段；依赖 Task Management，尚未实施真实编排引擎。 |
 | 4 | 真实认证与用户模块 | 待规划；尚未创建 Change。 |
 
@@ -84,7 +85,7 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 | TM-03 | `submit-trusted-tasks` | TM-02 | 提供受信任业务提交契约，不开放浏览器通用创建入口。 | 已完成并归档为 `2026-09-18-submit-trusted-tasks`。 |
 | TM-04 | `claim-task-worker-leases` | TM-02 | 以原子领取、lease 和独立 Worker 执行任务。 | 已完成并归档，提交 `5b8bd49`；远程推送待网络恢复。 |
 | TM-05 | `recover-cancel-and-retry-tasks` | TM-03、TM-04 | 支持租约恢复、协作式取消与自动/手动重试。 | 已完成并归档，提交 `2fa78b7`；远程推送待网络恢复。 |
-| TM-06 | `manage-owned-tasks-over-http` | TM-05 | 提供主体隔离的查询、事件、取消和重试接口。 | 占位。 |
+| TM-06 | `manage-owned-tasks-over-http` | TM-05 | 提供主体隔离的查询、事件、取消和重试接口。 | 已完成并归档为 `2026-09-18-manage-owned-tasks-over-http`。 |
 | TM-07 | `run-tender-as-managed-task` | TM-06 | 将 Tender 以受信任提交者和注册执行器接入任务平台。 | 占位。 |
 | TM-08 | `connect-task-management-frontend` | TM-06、TM-07 | 以真实 Task API 替换任务页面 mock，支持查询、取消和重试。 | 占位。 |
 | TM-09 | `task-management-e2e-integration` | TM-07、TM-08 | 用合成执行器验证浏览器、API、Worker 和 PostgreSQL 的成功、取消、重试、隔离与恢复链路。 | 空目录占位；在 Workflow 前实施。 |
@@ -92,9 +93,8 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 
 ## 7. 当前待办
 
-1. 网络恢复后推送 TM-04 与 TM-05 的本地提交；不得与其他 Task Management Change 并行展开。
-2. TM-06 规划主体隔离的任务 HTTP 查询、事件、取消和重试接口。
-3. 根据实际代码和验证结果持续同步 OpenSpec 正式规格并归档已完成 Change。
+1. 按依赖顺序创建 Tender 接入和前端联调 Change；不得与其他 Task Management Change 并行展开。
+2. 根据实际代码和验证结果持续同步 OpenSpec 正式规格并归档已完成 Change。
 4. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。
 
 ## 8. 相关文档

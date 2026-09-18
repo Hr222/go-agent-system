@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.infrastructure.persistence.repositories.task_repository import PostgresTaskRepository
 from app.platform.task.application.lifecycle_service import TaskLifecycleService
+from app.platform.task.application.owned import OwnedTaskApplication
 from app.platform.task.application.recovery import (
     CancellationCoordinator,
     ManualRetryCoordinator,
@@ -115,6 +116,18 @@ def build_task_manual_retry_coordinator(session: Session) -> ManualRetryCoordina
     """组装受信任手动重试入口。"""
 
     return ManualRetryCoordinator(TaskLifecycleService(build_task_repository(session)))
+
+
+def build_owned_task_application(session: Session) -> OwnedTaskApplication:
+    """组装主体隔离的 Task HTTP Application，不向路由暴露 Repository。"""
+
+    repository = build_task_repository(session)
+    lifecycle = TaskLifecycleService(repository)
+    return OwnedTaskApplication(
+        repository,
+        CancellationCoordinator(lifecycle),
+        ManualRetryCoordinator(lifecycle),
+    )
 
 
 def _utc_now() -> datetime:
