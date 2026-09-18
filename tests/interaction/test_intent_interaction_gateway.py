@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from fastapi.testclient import TestClient
 
 from app.composition.interaction import build_controlled_dispatcher
-from app.interfaces.http.dependencies import get_intent_interaction_gateway
+from app.interfaces.http.dependencies import (
+    get_intent_interaction_gateway,
+    get_interaction_chat_stream_application,
+)
 from app.main import create_app
 from app.platform.agent.runtime import AgentRuntime
 from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
@@ -719,6 +722,11 @@ def test_http_gateway_does_not_expose_dispatch_key_or_complete_inputs() -> None:
 
 
 def test_http_confirmation_returns_cancelled_and_failed_states() -> None:
+    class UnboundDialogueConfirmationApplication:
+        async def confirm_agent(self, command):  # noqa: ANN001
+            del command
+            return None
+
     class ControlledGateway:
         def confirm(self, command: GatewayConfirmationCommand) -> GatewayResult:
             if command.action == "cancel":
@@ -730,21 +738,26 @@ def test_http_confirmation_returns_cancelled_and_failed_states() -> None:
             )
 
     application = create_app()
+    application.dependency_overrides[get_interaction_chat_stream_application] = (
+        UnboundDialogueConfirmationApplication
+    )
     application.dependency_overrides[get_intent_interaction_gateway] = ControlledGateway
     client = TestClient(application)
 
-    cancelled = client.post(
-        "/api/v1/interaction/proposals/proposal-1/confirmation",
-        json={"action": "cancel"},
-    )
-    failed = client.post(
-        "/api/v1/interaction/proposals/proposal-2/confirmation",
-        json={"action": "confirm"},
-    )
+    try:
+        cancelled = client.post(
+            "/api/v1/interaction/proposals/proposal-1/confirmation",
+            json={"action": "cancel"},
+        )
+        failed = client.post(
+            "/api/v1/interaction/proposals/proposal-2/confirmation",
+            json={"action": "confirm"},
+        )
+    finally:
+        application.dependency_overrides.clear()
 
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
     assert failed.status_code == 200
     assert failed.json()["status"] == "failed"
     assert failed.json()["error_code"] == "DISPATCH_EXECUTION_FAILED"
-    application.dependency_overrides.clear()

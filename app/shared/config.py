@@ -130,7 +130,7 @@ class Settings(BaseSettings):
     postgres_driver: str = "postgresql+psycopg"
     postgres_db: str = "go_agent_system"
     postgres_user: str = "admin"
-    postgres_password: str = "123456"
+    postgres_password: str | None = Field(default=None, alias="POSTGRES_PASSWORD")
     postgres_host: str = "127.0.0.1"
     postgres_port: int = 5432
     postgres_connect_timeout_seconds: int = Field(
@@ -468,9 +468,13 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """优先返回 `DATABASE_URL`，否则根据分项配置动态拼接连接串。"""
-        if self.database_url_override:
-            return self.database_url_override
+        """优先返回 `DATABASE_URL`，否则使用已显式配置的 PostgreSQL 密码。"""
+        if database_url := (self.database_url_override or "").strip():
+            return database_url
+        if not self.postgres_password or not self.postgres_password.strip():
+            raise ValueError(
+                "缺少数据库连接配置：请设置 DATABASE_URL 或 POSTGRES_PASSWORD。"
+            )
 
         return (
             f"{self.postgres_driver}://{self.postgres_user}:{self.postgres_password}"

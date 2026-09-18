@@ -77,6 +77,8 @@ Copy-Item .env.example .env
 - `REQUEST_PRINCIPAL_MODE`、`STATIC_PRINCIPAL_SUBJECT`、`STATIC_PRINCIPAL_PERMISSIONS`：本地请求主体
 - 腾讯 OCR 凭据：仅在需要真实 OCR 时配置
 
+若未使用 `DATABASE_URL`，必须在未跟踪的 `.env` 中设置 `POSTGRES_PASSWORD`。示例配置和 Docker Compose 不提供密码回退值；请为本地环境使用独立密码，并用同一配置启动 PostgreSQL 和后端。
+
 `.env.example` 中的静态主体仅适用于受控本地开发。密钥、数据库凭据、真实业务资料、OCR 原始响应和运行产物不得提交到 Git。
 
 ### 3. 启动 PostgreSQL
