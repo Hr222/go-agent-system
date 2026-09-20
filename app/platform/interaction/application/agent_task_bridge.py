@@ -72,6 +72,10 @@ class AgentTaskBridge(AgentExecutionStrategyPort):
         try:
             snapshot = self._snapshot_provider.snapshot(command.call, route.profile)
             _validate_snapshot(snapshot, route.profile)
+            submission_metadata = dict(snapshot.display_metadata)
+            if snapshot.snapshot_reference is not None:
+                # 快照引用只作为受信任执行上下文的白名单字段传递，不进入事件或公开投影。
+                submission_metadata["snapshot_reference"] = snapshot.snapshot_reference
             idempotency_key = _idempotency_key(
                 command.call.capability_code,
                 command.call.call_id,
@@ -93,7 +97,7 @@ class AgentTaskBridge(AgentExecutionStrategyPort):
                 TrustedTaskSubmissionCommand(
                     idempotency_key=idempotency_key,
                     input_fingerprint=snapshot.input_fingerprint,
-                    display_metadata=dict(snapshot.display_metadata),
+                    display_metadata=submission_metadata,
                 ),
             )
         except TaskIdempotencyConflictError:
@@ -206,6 +210,17 @@ def _validate_snapshot(
         for field_name in snapshot.display_metadata
     ):
         raise ValueError("快照展示字段超出服务端白名单。")
+    if (
+        snapshot.snapshot_reference is not None
+        and "snapshot_reference" not in profile.display_metadata_fields
+    ):
+        raise ValueError("快照引用未被服务端档案允许。")
+    if (
+        snapshot.snapshot_reference is not None
+        and snapshot.display_metadata.get("snapshot_reference")
+        not in (None, snapshot.snapshot_reference)
+    ):
+        raise ValueError("快照展示字段不能覆盖服务端快照引用。")
 
 
 def _idempotency_key(capability_code: str, call_id: str) -> str:

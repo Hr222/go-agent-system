@@ -8,6 +8,9 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.business.agents.tender.application.service import TenderApplication
+from app.business.agents.tender.application.task_execution import (
+    TenderTaskInputSnapshotProvider,
+)
 from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.business.online.application.data_acquisition import (
     ChecklistDataProviderRegistry,
@@ -80,7 +83,10 @@ from app.composition.online import (
     build_rag_facade,
     build_rule_retrieval_service,
 )
-from app.composition.task import build_owned_task_application
+from app.composition.task import (
+    build_owned_task_application,
+    build_trusted_task_submission_service,
+)
 from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
 from app.infrastructure.filesystem.policy_file_service import PolicyFileService
 from app.infrastructure.filesystem.upload_service import PolicyUploadService
@@ -144,6 +150,11 @@ from app.platform.interaction.application.chat_stream import (
 from app.platform.interaction.application.confirmation import ExplicitCapabilityConfirmation
 from app.platform.interaction.application.gateway import IntentInteractionGateway
 from app.platform.interaction.application.intent_recognition import StructuredIntentRecognition
+from app.platform.interaction.ports.agent_task_bridge import (
+    AgentTaskInputSnapshotPort,
+    AgentTaskProfile,
+    AgentTaskRoute,
+)
 from app.platform.interaction.ports.capability_catalog import CapabilityCatalogPort
 from app.platform.interaction.ports.mcp_dispatch import McpDispatchScope
 from app.platform.interaction.ports.proposal_store import PendingProposalStorePort
@@ -154,7 +165,10 @@ from app.platform.knowledge.application.write_capability import KnowledgeBaseWri
 from app.platform.llm.application.chat import ChatApplication
 from app.platform.llm.application.streaming_chat import StreamingChatApplication
 from app.platform.llm.contracts import ChatLlmPort, StreamingChatLlmPort, StructuredLlmPort
-from app.platform.task.application import OwnedTaskApplication
+from app.platform.task.application import (
+    OwnedTaskApplication,
+    TrustedTaskSubmissionProfile,
+)
 from app.shared.config import settings
 
 
@@ -330,10 +344,44 @@ class ApplicationContainer:
         """提供后续 Dialogue Runtime 使用的 V2 受控 Agent 分发服务。"""
 
         if self._agent_call_dispatcher is None:
+            task_routes: tuple[AgentTaskRoute, ...] = ()
+            snapshot_provider: AgentTaskInputSnapshotPort | None = None
+            if self.session is not None:
+                task_profile = TrustedTaskSubmissionProfile(
+                    task_type="tender.generate_bid_skeleton",
+                    max_attempts=2,
+                    allow_manual_retry=True,
+                    display_metadata_fields=(
+                        "snapshot_reference",
+                        "file_name",
+                        "media_type",
+                        "sha256",
+                        "user_focus",
+                        "conversation_id",
+                    ),
+                )
+                task_routes = (
+                    AgentTaskRoute(
+                        profile=AgentTaskProfile(
+                            capability_code="agent.tender.generate_bid_skeleton",
+                            task_type=task_profile.task_type,
+                            max_attempts=task_profile.max_attempts,
+                            allow_manual_retry=task_profile.allow_manual_retry,
+                            display_metadata_fields=task_profile.display_metadata_fields,
+                        ),
+                        submission=build_trusted_task_submission_service(
+                            self.session,
+                            task_profile,
+                        ),
+                    ),
+                )
+                snapshot_provider = TenderTaskInputSnapshotProvider()
             self._agent_call_dispatcher = build_agent_call_dispatcher(
                 self.platform_capability_catalog(),
                 agent_runtime=self.agent_runtime,
                 artifact_storage=self.attachment_storage(),
+                task_routes=task_routes,
+                snapshot_provider=snapshot_provider,
             )
         return self._agent_call_dispatcher
 

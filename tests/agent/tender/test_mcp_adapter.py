@@ -38,9 +38,16 @@ class RecordingDispatcher:
     storage: FilesystemAttachmentStorage
     calls: list[AgentCallDispatchCommand] = field(default_factory=list)
     error_code: str | None = None
+    accepted: bool = False
 
     def dispatch(self, command: AgentCallDispatchCommand) -> AgentCallDispatchResult:
         self.calls.append(command)
+        if self.accepted:
+            return AgentCallDispatchResult(
+                status="accepted",
+                call=command.call,
+                execution_reference="task:accepted-1",
+            )
         if self.error_code is not None:
             return AgentCallDispatchResult(
                 status="failed",
@@ -130,12 +137,22 @@ class ScopeProvider:
         )
 
 
-def _server(tmp_path: Path, *, resolver=None, error_code: str | None = None):  # noqa: ANN001
+def _server(
+    tmp_path: Path,
+    *,
+    resolver=None,  # noqa: ANN001
+    error_code: str | None = None,
+    accepted: bool = False,
+):  # noqa: ANN001
     storage = FilesystemAttachmentStorage(
         tmp_path,
         allowed_media_types=(_DOCX_MEDIA_TYPE,),
     )
-    dispatcher = RecordingDispatcher(storage=storage, error_code=error_code)
+    dispatcher = RecordingDispatcher(
+        storage=storage,
+        error_code=error_code,
+        accepted=accepted,
+    )
     provider = ScopeProvider(dispatcher=dispatcher, storage=storage)
     server = create_tender_mcp_server(
         provider,
@@ -210,6 +227,19 @@ def test_tender_mcp_routes_format_extraction_through_dispatcher(tmp_path: Path) 
     assert response.structuredContent["block_count"] == 2
     assert any(isinstance(block, EmbeddedResource) for block in response.content)
     assert dispatcher.calls[0].call.capability_code == "tender.extract_bid_format_section"
+
+
+def test_tender_mcp_preserves_input_attachment_for_accepted_async_task(tmp_path: Path) -> None:
+    server, _, _, storage = _server(tmp_path, accepted=True)
+
+    response = asyncio.run(server.call_tool(TENDER_MCP_TOOL_NAME, _source_arguments()))
+
+    assert response.isError is False
+    assert response.structuredContent == {
+        "status": "accepted",
+        "execution_reference": "task:accepted-1",
+    }
+    assert len(list(storage.attachment_root.iterdir())) == 1
 
 
 def test_tender_mcp_routes_boundary_verification_through_dispatcher(tmp_path: Path) -> None:

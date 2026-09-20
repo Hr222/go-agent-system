@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     policy_upload_max_size_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
     policy_upload_retention_seconds: int = Field(default=24 * 60 * 60, gt=0)
     attachment_storage_workspace: str = ".runtime/attachments"
+    tender_task_result_workspace: str = Field(
+        default=".runtime/tender_task_results",
+        alias="TENDER_TASK_RESULT_WORKSPACE",
+    )
     attachment_max_size_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
     attachment_retention_seconds: int = Field(default=24 * 60 * 60, gt=0)
     attachment_allowed_media_types: str = (

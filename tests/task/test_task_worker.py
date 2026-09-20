@@ -14,6 +14,7 @@ from app.platform.task.application import (
 from app.platform.task.domain import FailureCategory, TaskEventType, TaskStatus
 from app.platform.task.errors import TaskLeaseRejectedError
 from app.platform.task.ports.worker import (
+    TaskExecutionCancellation,
     TaskExecutionContext,
     TaskExecutionFailure,
     TaskExecutionSuccess,
@@ -60,6 +61,15 @@ class RenewalExecutor:
     def execute(self, context: TaskExecutionContext) -> TaskExecutionSuccess:
         context.renew_lease()
         return TaskExecutionSuccess("renewed-result", "不应提交")
+
+
+class CancellationExecutor:
+    def __init__(self, request_cancel) -> None:  # noqa: ANN001
+        self.request_cancel = request_cancel
+
+    def execute(self, context: TaskExecutionContext) -> TaskExecutionCancellation:
+        self.request_cancel(context.task_id)
+        return TaskExecutionCancellation()
 
 
 class RejectingRenewalIssuer(SecureLeaseIssuer):
@@ -116,6 +126,7 @@ def test_worker_polls_and_completes_task_without_exposing_input() -> None:
     assert len(executor.contexts) == 1
     context = executor.contexts[0]
     assert context.task_id == submitted.id
+    assert context.owner_subject == "owner-1"
     assert context.display_metadata == {"title": "合成任务"}
     assert context.lease.lease_token == "worker-lease-token"
     assert not hasattr(context, "input_fingerprint")
@@ -161,6 +172,31 @@ def test_worker_unknown_executor_fails_task_with_safe_code() -> None:
     task = repository.get(submitted.id)
     assert task is not None
     assert task.failure_code == "EXECUTOR_UNAVAILABLE"
+
+
+def test_worker_confirms_cooperative_cancellation() -> None:
+    repository = InMemoryTaskRepository()
+    clock = MutableClock()
+    service = TaskLifecycleService(repository, clock=clock)
+    submitted = _submit(service)
+    from app.platform.task.application.contracts import CancelTaskCommand
+
+    worker = _worker(
+        repository,
+        clock,
+        CancellationExecutor(
+            lambda task_id: service.cancel(
+                CancelTaskCommand(task_id=task_id, command_id="cancel-during-execution")
+            )
+        ),
+    )
+
+    result = worker.poll_once()
+
+    assert result.status is WorkerPollStatus.CANCELLED
+    assert result.task is not None
+    assert result.task.id == submitted.id
+    assert result.task.status is TaskStatus.CANCELLED
 
 
 def test_worker_converts_executor_exception_to_safe_failure() -> None:

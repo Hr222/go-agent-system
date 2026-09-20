@@ -75,6 +75,7 @@ def test_task_worker_context_excludes_sensitive_input_fields() -> None:
     field_names = {field.name for field in fields(TaskExecutionContext)}
     assert "input_fingerprint" not in field_names
     assert "lease_token" not in field_names
+    assert "owner_subject" in field_names
     assert "renew_lease" in field_names
 
 

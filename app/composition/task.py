@@ -2,11 +2,20 @@
 
 from collections.abc import Mapping
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Callable
 
 from sqlalchemy.orm import Session
 
+from app.business.agents.tender.application.service import TenderApplication
+from app.business.agents.tender.application.task_execution import TenderTaskExecutor
+from app.business.agents.tender.ports.task_port import (
+    AttachmentTenderTaskInputReader,
+    FilesystemTenderTaskResultStore,
+    TenderTaskResultStorePort,
+)
 from app.infrastructure.persistence.repositories.task_repository import PostgresTaskRepository
+from app.platform.attachment.ports.storage_port import AttachmentStoragePort
 from app.platform.task.application.lifecycle_service import TaskLifecycleService
 from app.platform.task.application.owned import OwnedTaskApplication
 from app.platform.task.application.recovery import (
@@ -25,6 +34,7 @@ from app.platform.task.application.worker import (
     TaskWorker,
 )
 from app.platform.task.ports.worker import LeaseIssuer, TaskExecutor
+from app.shared.config import settings
 
 
 def build_task_repository(session: Session) -> PostgresTaskRepository:
@@ -64,6 +74,34 @@ def build_task_worker(
         lease_issuer=lease_issuer or SecureLeaseIssuer(),
         worker_id=worker_id,
         clock=clock or _utc_now,
+    )
+
+
+def build_tender_task_worker(
+    session: Session,
+    *,
+    worker_id: str,
+    tender_application: TenderApplication,
+    attachment_storage: AttachmentStoragePort,
+    result_store: TenderTaskResultStorePort | None = None,
+    lease_issuer: LeaseIssuer | None = None,
+    clock: Callable[[], datetime] | None = None,
+) -> TaskWorker:
+    """固定绑定 Tender task type，不允许运行时从请求选择执行器。"""
+
+    executor = TenderTaskExecutor(
+        application=tender_application,
+        input_reader=AttachmentTenderTaskInputReader(attachment_storage),
+        result_store=result_store
+        or FilesystemTenderTaskResultStore(Path(settings.tender_task_result_workspace)),
+        clock=clock,
+    )
+    return build_task_worker(
+        session,
+        worker_id=worker_id,
+        executors={"tender.generate_bid_skeleton": executor},
+        lease_issuer=lease_issuer,
+        clock=clock,
     )
 
 

@@ -226,6 +226,7 @@ def _execute_mcp_call(
                 context=access_context,
             )
             try:
+                dispatched: AgentCallDispatchResult | None = None
                 internal_inputs = dict(inputs)
                 internal_inputs["source_document"] = ResolvedAttachment(
                     reference=reference,
@@ -240,11 +241,18 @@ def _execute_mcp_call(
                 dispatched = scope.dispatcher.dispatch(
                     AgentCallDispatchCommand(call=call, principal=scope.principal)
                 )
+                if dispatched.status == "accepted":
+                    return _accepted_result(dispatched)
                 if dispatched.status != "completed" or dispatched.result is None:
                     return _dispatch_error_result(dispatched)
                 return project(dispatched.result, scope)
             finally:
-                _discard_storage(scope.attachment_storage, scope.principal, reference.attachment_id)
+                if dispatched is None or dispatched.status != "accepted":
+                    _discard_storage(
+                        scope.attachment_storage,
+                        scope.principal,
+                        reference.attachment_id,
+                    )
     except _McpProjectionError:
         return _error_result("INTERNAL_ERROR", "Tender 输出资源暂时无法读取。")
     except ValueError as exc:
@@ -357,6 +365,19 @@ def _resource_result(
         *resources,
     ]
     return CallToolResult(content=content_blocks, structuredContent=structured)
+
+
+def _accepted_result(dispatched: AgentCallDispatchResult) -> CallToolResult:
+    """MCP 只返回受控引用；异步结果不在本协议内投影文件内容。"""
+
+    structured = {
+        "status": "accepted",
+        "execution_reference": dispatched.execution_reference,
+    }
+    return CallToolResult(
+        content=[TextContent(type="text", text=json.dumps(structured, ensure_ascii=False))],
+        structuredContent=structured,
+    )
 
 
 def _artifact_uri(file_name: str) -> str:

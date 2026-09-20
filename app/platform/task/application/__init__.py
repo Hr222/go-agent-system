@@ -34,6 +34,11 @@ from app.platform.task.application.worker import (
     WorkerPollResult,
     WorkerPollStatus,
 )
+from app.platform.task.ports.worker import (
+    TaskExecutionCancellation,
+    TaskExecutionFailure,
+    TaskExecutionSuccess,
+)
 
 __all__ = [
     "CancelTaskCommand",
@@ -62,4 +67,7 @@ __all__ = [
     "TaskWorker",
     "WorkerPollResult",
     "WorkerPollStatus",
+    "TaskExecutionCancellation",
+    "TaskExecutionFailure",
+    "TaskExecutionSuccess",
 ]

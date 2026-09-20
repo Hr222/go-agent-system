@@ -13,6 +13,15 @@ from app.business.agents.tender.ports.llm_port import (
     StructuredLlmResult,
 )
 from app.business.agents.tender.ports.renderer_port import TenderSkeletonRendererPort
+from app.business.agents.tender.ports.task_port import (
+    AttachmentTenderTaskInputReader,
+    FilesystemTenderTaskResultStore,
+    InMemoryTenderTaskResultStore,
+    TenderTaskInput,
+    TenderTaskInputReaderPort,
+    TenderTaskInputSnapshotPort,
+    TenderTaskResultStorePort,
+)
 
 __all__ = [
     "StructuredLlmPort",
@@ -24,4 +33,11 @@ __all__ = [
     "TenderAnalysisMergerPort",
     "TenderDocumentReaderPort",
     "TenderSkeletonRendererPort",
+    "AttachmentTenderTaskInputReader",
+    "FilesystemTenderTaskResultStore",
+    "InMemoryTenderTaskResultStore",
+    "TenderTaskInput",
+    "TenderTaskInputReaderPort",
+    "TenderTaskInputSnapshotPort",
+    "TenderTaskResultStorePort",
 ]

@@ -11,6 +11,7 @@ from app.platform.task.application.contracts import CancellationCheckCommand, Ta
 from app.platform.task.application.executor_contracts import (
     ClaimTaskCommand,
     CompleteTaskCommand,
+    ConfirmCancellationCommand,
     FailTaskCommand,
     RenewLeaseCommand,
 )
@@ -21,6 +22,7 @@ from app.platform.task.ports import TaskRepositoryPort
 from app.platform.task.ports.worker import (
     LeaseGrant,
     LeaseIssuer,
+    TaskExecutionCancellation,
     TaskExecutionContext,
     TaskExecutionFailure,
     TaskExecutionSuccess,
@@ -91,6 +93,7 @@ class WorkerPollStatus(StrEnum):
     IDLE = "idle"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    CANCELLED = "cancelled"
     REJECTED = "rejected"
 
 
@@ -161,6 +164,7 @@ class TaskWorker:
         context = TaskExecutionContext(
             task_id=candidate.id,
             task_type=candidate.task_type,
+            owner_subject=candidate.owner_subject,
             display_metadata=dict(candidate.display_metadata),
             lease=claimed.lease,
             renew_lease=self._renew_callback(
@@ -192,7 +196,10 @@ class TaskWorker:
                 failure_code="EXECUTOR_FAILED",
                 result_fingerprint="executor-failed",
             )
-        if not isinstance(outcome, (TaskExecutionSuccess, TaskExecutionFailure)):
+        if not isinstance(
+            outcome,
+            (TaskExecutionSuccess, TaskExecutionFailure, TaskExecutionCancellation),
+        ):
             outcome = TaskExecutionFailure(
                 failure_category=FailureCategory.PERMANENT,
                 failure_code="INVALID_EXECUTOR_RESULT",
@@ -208,6 +215,23 @@ class TaskWorker:
                 failure_code="INVALID_RETRY_SCHEDULE",
                 result_fingerprint="invalid-retry-schedule",
             )
+
+        if isinstance(outcome, TaskExecutionCancellation):
+            try:
+                task = self._lifecycle.confirm_cancellation(
+                    ConfirmCancellationCommand(
+                        task_id=claimed.task.id,
+                        attempt_id=claimed.lease.attempt_id,
+                        lease_token=claimed.lease.lease_token,
+                    )
+                )
+            except Exception:
+                return WorkerPollResult(
+                    status=WorkerPollStatus.REJECTED,
+                    task=None,
+                    error_code="CANCELLATION_COMMIT_REJECTED",
+                )
+            return WorkerPollResult(status=WorkerPollStatus.CANCELLED, task=task)
 
         if isinstance(outcome, TaskExecutionSuccess):
             try:

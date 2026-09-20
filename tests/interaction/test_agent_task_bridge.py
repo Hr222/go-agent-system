@@ -79,6 +79,7 @@ def _principal() -> RequestPrincipal:
 @dataclass
 class SnapshotProvider:
     fingerprints: list[str]
+    snapshot_reference: str | None = None
     calls: list[StructuredAgentCall] = field(default_factory=list)
 
     def snapshot(
@@ -89,6 +90,7 @@ class SnapshotProvider:
         self.calls.append(call)
         return AgentTaskInputSnapshot(
             input_fingerprint=self.fingerprints.pop(0),
+            snapshot_reference=self.snapshot_reference,
             display_metadata={"title": "合成异步任务"},
         )
 
@@ -111,7 +113,7 @@ def _bridge(
         task_type="agent.demo.async",
         max_attempts=2,
         allow_manual_retry=False,
-        display_metadata_fields=("title",),
+        display_metadata_fields=("title", "snapshot_reference"),
     )
     submission = TrustedTaskSubmissionService(
         TaskLifecycleService(
@@ -156,6 +158,22 @@ def test_bridge_submits_fixed_task_and_returns_opaque_reference() -> None:
     assert task.allow_manual_retry is False
     assert task.display_metadata == {"title": "合成异步任务"}
     assert task.idempotency_key == "agent:agent.demo.async:call-1"
+
+
+def test_bridge_passes_snapshot_reference_only_through_internal_task_metadata() -> None:
+    repository = InMemoryTaskRepository()
+    bridge, _ = _bridge(
+        repository,
+        SnapshotProvider(["fingerprint-1"], snapshot_reference="attachment-opaque-1"),
+    )
+
+    outcome = bridge.execute(_command())
+
+    assert outcome.status == "accepted"
+    task = next(iter(repository._tasks.values()))
+    assert task.display_metadata["snapshot_reference"] == "attachment-opaque-1"
+    assert "snapshot_reference" not in repr(task.events)
+    assert outcome.execution_reference == f"task:{task.id}"
 
 
 def test_bridge_replay_returns_same_task_without_new_event() -> None:

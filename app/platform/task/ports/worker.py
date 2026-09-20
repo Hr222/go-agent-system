@@ -25,6 +25,7 @@ class TaskExecutionContext:
 
     task_id: UUID
     task_type: str
+    owner_subject: str
     display_metadata: Mapping[str, str]
     lease: AttemptLease
     renew_lease: Callable[[], object]
@@ -45,7 +46,16 @@ class TaskExecutionFailure:
     retry_at: datetime | None = None
 
 
-TaskExecutionOutcome: TypeAlias = TaskExecutionSuccess | TaskExecutionFailure
+@dataclass(frozen=True, slots=True)
+class TaskExecutionCancellation:
+    """执行器在取消检查点确认停止，由 Worker 完成取消状态转换。"""
+
+    result_fingerprint: str = "cancelled"
+
+
+TaskExecutionOutcome: TypeAlias = (
+    TaskExecutionSuccess | TaskExecutionFailure | TaskExecutionCancellation
+)
 
 
 class TaskExecutor(Protocol):
@@ -78,6 +88,7 @@ __all__ = [
     "LeaseGrant",
     "LeaseIssuer",
     "TaskExecutionContext",
+    "TaskExecutionCancellation",
     "TaskExecutionFailure",
     "TaskExecutionOutcome",
     "TaskExecutionSuccess",

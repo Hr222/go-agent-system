@@ -32,6 +32,8 @@ class RenewLeaseCommand:
 
 @dataclass(frozen=True, slots=True)
 class ConfirmCancellationCommand:
+    """执行器在安全检查点确认协作式取消。"""
+
     task_id: UUID
     attempt_id: UUID
     lease_token: str

@@ -1,9 +1,7 @@
 ## Purpose
 
 定义经授权的 Agent Call 如何按服务端异步档案受控提交为 Task、保持幂等并返回不透明执行引用。
-
 ## Requirements
-
 ### Requirement: 只有已授权且登记异步档案的 Agent 能力可以桥接 Task
 
 系统 MUST 在既有目录、主体、输入和确认策略均通过后，重新读取当前能力条目，并仅允许服务端异步档案注册表中登记且与该条目一致的 `agent` 能力进入 Task 桥接。客户端、模型输出和协议适配器 MUST NOT 通过输入字段选择异步模式、Task 类型或执行器；业务输入中的同名字段不得被解释为 Task 控制字段。
@@ -34,7 +32,7 @@
 
 ### Requirement: Task 桥接必须使用服务端固定提交档案
 
-系统 MUST 通过既有受信任 Task 提交 Application 创建异步 Task。异步档案 MUST 固定 `task_type`、最大尝试次数、手动重试策略和展示字段白名单；调用方不得覆盖 owner、Task 策略、执行器地址或展示字段范围。
+系统 MUST 通过既有受信任 Task 提交 Application 创建异步 Task。异步档案 MUST 固定 `task_type`、最大尝试次数、手动重试策略和展示字段白名单；调用方不得覆盖 owner、Task 策略、执行器地址或展示字段范围。若输入快照事实包含 `snapshot_reference`，桥接 MUST 仅将其作为档案允许的内部执行元数据传递给受信任 Worker，且不得进入 TaskView、事件元数据或公开协议响应。
 
 #### Scenario: 桥接创建受控排队任务
 
@@ -42,6 +40,12 @@
 - **THEN** 系统以可信主体 subject 作为 owner，按档案固定策略提交一个 `queued` Task
 - **AND** 返回安全 Task 状态所需的 opaque execution reference
 - **AND** 返回值不包含输入指纹、原始输入、lease 或 Executor 对象
+
+#### Scenario: 快照引用只进入内部执行上下文
+
+- **WHEN** 快照事实包含服务端生成的 opaque `snapshot_reference`
+- **THEN** 桥接将引用交给受信任提交能力的白名单内部元数据
+- **AND** TaskView、生命周期事件和 Agent Dispatch 响应均不返回该引用
 
 #### Scenario: 调用输入不得覆盖档案字段
 
@@ -102,3 +106,4 @@
 - **WHEN** 已授权 Agent 能力没有异步档案并使用默认同步执行策略
 - **THEN** 系统返回既有 `completed` 或受控失败结果
 - **AND** 不创建 Task 或写入 Task 存储
+
