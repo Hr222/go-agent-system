@@ -476,11 +476,14 @@ def test_tender_application_and_ports_do_not_depend_on_protocol_or_adapters() ->
     )
 
 
-def test_tender_mcp_adapter_only_bridges_to_tender_application() -> None:
+def test_tender_mcp_adapter_only_bridges_to_controlled_dispatch() -> None:
     adapter_imports = _imported_modules(APP_ROOT / "interfaces" / "agent" / "tender_mcp.py")
 
     assert "mcp.server.fastmcp" in adapter_imports
-    assert "app.business.agents.tender.application.service" in adapter_imports
+    assert "app.platform.interaction.application.agent_dispatch" in adapter_imports
+    assert "app.platform.attachment" in adapter_imports
+    assert "app.platform.security" in adapter_imports
+    assert "app.business.agents.tender.application.service" not in adapter_imports
     assert not any(module.startswith("app.infrastructure") for module in adapter_imports)
     assert not any(module.startswith("app.platform.knowledge") for module in adapter_imports)
 

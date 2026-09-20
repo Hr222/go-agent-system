@@ -298,3 +298,18 @@ def test_chat_general_seed_and_migration_disable_confirmation() -> None:
     assert "UPDATE platform_capability" in migration
     assert "confirmation_policy = 'never'" in migration
     assert "IS DISTINCT FROM 'never'" in migration
+
+
+def test_tender_mcp_dispatch_migration_updates_all_protocol_capabilities() -> None:
+    migration = (
+        Path(__file__).resolve().parents[2] / "sql" / "014_tender_mcp_dispatch_input.sql"
+    ).read_text(encoding="utf-8")
+
+    for capability_code in (
+        "tender.extract_bid_format_section",
+        "tender.verify_extraction_boundary",
+    ):
+        assert f"code = '{capability_code}'" in migration
+    assert migration.count("IS DISTINCT FROM") >= 4
+    assert '"source_document"' in migration
+    assert '"content_base64"' not in migration

@@ -2,56 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from dataclasses import dataclass
 
 import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
-from app.business.agents.tender.contracts import (
-    GeneratedTenderArtifact,
-    TenderAnalysis,
-    TenderGenerateSkeletonResult,
-)
-from app.interfaces.agent.tender_mcp import (
-    TENDER_MCP_TOOL_NAME,
-    create_tender_mcp_server,
-)
+from app.interfaces.agent.tender_mcp import TENDER_MCP_TOOL_NAME
+from tests.agent.tender.test_mcp_adapter import _server
 
 
-@dataclass
-class FakeTenderApplication:
-    result: TenderGenerateSkeletonResult
-    calls: int = 0
-
-    def execute(self, command: object) -> TenderGenerateSkeletonResult:
-        self.calls += 1
-        return self.result
-
-
-def _result() -> TenderGenerateSkeletonResult:
-    return TenderGenerateSkeletonResult(
-        analysis=TenderAnalysis(
-            status="completed",
-            package_type="single_volume",
-            summary="protocol smoke",
-            outputs=[],
-        ),
-        artifacts=(
-            GeneratedTenderArtifact(
-                file_name="skeleton.docx",
-                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                content=b"docx-content",
-            ),
-        ),
-        model="fake-model",
-        prompt_version="tender-skeleton-v1",
-    )
-
-
-async def _protocol_call(arguments: dict[str, object]):
-    fake_application = FakeTenderApplication(_result())
-    server = create_tender_mcp_server(fake_application)
+async def _protocol_call(tmp_path, arguments: dict[str, object]):  # noqa: ANN001
+    server, provider, dispatcher, _ = _server(tmp_path)
     mcp_app = server.streamable_http_app()
     transport = httpx.ASGITransport(app=mcp_app)
 
@@ -67,29 +28,31 @@ async def _protocol_call(arguments: dict[str, object]):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
                     result = await session.call_tool(TENDER_MCP_TOOL_NAME, arguments)
-    return result, fake_application
+    return result, provider, dispatcher
 
 
-def test_streamable_http_protocol_lists_and_calls_v1_tool() -> None:
-    result, fake_application = asyncio.run(
+def test_streamable_http_protocol_lists_and_calls_v1_tool(tmp_path) -> None:  # noqa: ANN001
+    result, _, dispatcher = asyncio.run(
         _protocol_call(
+            tmp_path,
             {
                 "file_name": "source.docx",
                 "content_base64": base64.b64encode(b"source").decode("ascii"),
-            }
+            },
         )
     )
 
     assert result.isError is False
     assert result.structuredContent["artifacts"][0]["file_name"] == "skeleton.docx"
-    assert fake_application.calls == 1
+    assert len(dispatcher.calls) == 1
     assert any(item.type == "resource" for item in result.content)
 
 
-def test_streamable_http_protocol_returns_tool_error_for_invalid_arguments() -> None:
-    result, fake_application = asyncio.run(_protocol_call({}))
+def test_streamable_http_protocol_returns_tool_error_for_invalid_arguments(tmp_path) -> None:  # noqa: ANN001
+    result, provider, dispatcher = asyncio.run(_protocol_call(tmp_path, {}))
 
     assert result.isError is True
     assert "file_name" in result.content[0].text
     assert "content_base64" in result.content[0].text
-    assert fake_application.calls == 0
+    assert provider.calls == 0
+    assert dispatcher.calls == []

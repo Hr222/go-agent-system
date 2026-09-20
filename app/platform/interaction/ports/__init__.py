@@ -17,6 +17,7 @@ from app.platform.interaction.ports.chat_preparation import (
     InteractionChatPreparationWorkerFactoryPort,
     InteractionChatPreparationWorkerPort,
 )
+from app.platform.interaction.ports.mcp_dispatch import McpDispatchScope
 from app.platform.interaction.ports.proposal_store import PendingProposalStorePort
 
 __all__ = [
@@ -31,5 +32,6 @@ __all__ = [
     "AgentExecutionStatus",
     "AgentExecutionStrategyPort",
     "CapabilityAttachmentResolverPort",
+    "McpDispatchScope",
     "PendingProposalStorePort",
 ]

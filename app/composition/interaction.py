@@ -14,6 +14,12 @@ from app.business.agents.tender.contracts import (
     TenderGenerateSkeletonCommand,
     TenderVerifyExtractionBoundaryCommand,
 )
+from app.business.agents.tender.errors import (
+    TenderAnalysisError,
+    TenderDocumentParseError,
+    TenderInputError,
+    TenderRenderError,
+)
 from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.business.online.application.policy_decision import PolicyDecisionApplicationService
 from app.business.online.contracts import AskKnowledgeCommand
@@ -44,6 +50,7 @@ from app.platform.interaction.ports.capability_catalog import CapabilityCatalogP
 from app.platform.llm.application.chat import ChatApplication, ChatCommand
 from app.platform.llm.ports import TextEmbeddingPort
 from app.shared.config import settings
+from app.shared.exceptions import ServiceNotConfiguredError, UpstreamServiceError
 
 
 class SessionScopedCapabilityCatalog(CapabilityCatalogPort):
@@ -174,9 +181,51 @@ def build_agent_call_dispatcher(
     return AgentCallDispatcher(
         capability_catalog,
         AgentCallPolicyValidator(capability_catalog),
-        execution_strategy=SynchronousAgentRuntimeExecutionStrategy(agent_runtime()),
+        execution_strategy=SynchronousAgentRuntimeExecutionStrategy(
+            agent_runtime(),
+            error_mapper=_map_tender_execution_error,
+        ),
         artifact_storage=artifact_storage,
     )
+
+
+def _map_tender_execution_error(exc: Exception):  # noqa: ANN202
+    """把业务 Agent 的已知失败转换为平台执行策略的安全结果。"""
+
+    from app.platform.interaction.ports.agent_execution import AgentExecutionOutcome
+
+    if isinstance(exc, TenderInputError):
+        return AgentExecutionOutcome.failed(
+            error_code="INVALID_INPUT",
+            message="Tender 输入不符合要求。",
+        )
+    if isinstance(exc, TenderDocumentParseError):
+        return AgentExecutionOutcome.failed(
+            error_code="DOCUMENT_PARSE_FAILED",
+            message="招标 DOCX 解析失败。",
+        )
+    if isinstance(exc, ServiceNotConfiguredError):
+        return AgentExecutionOutcome.failed(
+            error_code="SERVICE_NOT_CONFIGURED",
+            message="Tender Agent 的模型服务尚未完成配置。",
+        )
+    if isinstance(exc, UpstreamServiceError):
+        return AgentExecutionOutcome.failed(
+            error_code="UPSTREAM_FAILED",
+            message="Tender Agent 的模型服务调用失败。",
+            retryable=True,
+        )
+    if isinstance(exc, TenderAnalysisError):
+        return AgentExecutionOutcome.failed(
+            error_code="ANALYSIS_FAILED",
+            message="招标文件结构化分析结果无效。",
+        )
+    if isinstance(exc, TenderRenderError):
+        return AgentExecutionOutcome.failed(
+            error_code="RENDER_FAILED",
+            message="投标骨架文件生成失败。",
+        )
+    raise exc
 
 
 def build_capability_candidate_retrieval(
@@ -267,10 +316,17 @@ def _extract_tender_format(
     application: TenderApplication,
     inputs: dict[str, object],
 ) -> object:
+    source_document = inputs.get("source_document")
+    if isinstance(source_document, ResolvedAttachment):
+        file_name = source_document.reference.file_name
+        content = source_document.content
+    else:
+        file_name = _required_string(inputs, "file_name")
+        content = _decode_tender_content(inputs)
     return application.extract_bid_format_section(
         TenderExtractFormatSectionCommand(
-            file_name=_required_string(inputs, "file_name"),
-            content=_decode_tender_content(inputs),
+            file_name=file_name,
+            content=content,
             start_block_id=_required_string(inputs, "start_block_id"),
             end_block_id=_required_string(inputs, "end_block_id"),
             output_name=_optional_string(inputs.get("output_name")),
@@ -282,10 +338,17 @@ def _verify_tender_boundary(
     application: TenderApplication,
     inputs: dict[str, object],
 ) -> object:
+    source_document = inputs.get("source_document")
+    if isinstance(source_document, ResolvedAttachment):
+        file_name = source_document.reference.file_name
+        content = source_document.content
+    else:
+        file_name = _required_string(inputs, "file_name")
+        content = _decode_tender_content(inputs)
     return application.verify_extraction_boundary(
         TenderVerifyExtractionBoundaryCommand(
-            file_name=_required_string(inputs, "file_name"),
-            content=_decode_tender_content(inputs),
+            file_name=file_name,
+            content=content,
             start_block_id=_required_string(inputs, "start_block_id"),
             end_block_id=_required_string(inputs, "end_block_id"),
             context_radius=_positive_integer(inputs.get("context_radius"), default=3),

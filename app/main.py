@@ -5,6 +5,7 @@ from time import perf_counter
 
 from fastapi import FastAPI, Request
 
+from app.composition import tender_mcp_dispatch_scope
 from app.composition.runtime import inspect_knowledge_base_schema
 from app.interfaces.agent.tender_mcp import (
     TENDER_MCP_MOUNT_PATH,
@@ -15,6 +16,7 @@ from app.interfaces.http.dependencies import (
     get_streaming_interaction_chat_stream_application,
 )
 from app.interfaces.http.router import api_router
+from app.interfaces.http.security import get_principal_resolver
 from app.shared.config import settings
 from app.shared.logging import configure_logging, get_logger
 
@@ -24,7 +26,8 @@ logger = get_logger("app.main")
 
 def create_app() -> FastAPI:
     tender_mcp_server = create_tender_mcp_server(
-        lambda: get_stateless_application_container().tender_application()
+        tender_mcp_dispatch_scope,
+        principal_resolver=get_principal_resolver(),
     )
     tender_mcp_http_app = tender_mcp_server.streamable_http_app()
     tender_mcp_session_manager = tender_mcp_server.session_manager

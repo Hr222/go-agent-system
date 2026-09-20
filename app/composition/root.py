@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -144,6 +145,7 @@ from app.platform.interaction.application.confirmation import ExplicitCapability
 from app.platform.interaction.application.gateway import IntentInteractionGateway
 from app.platform.interaction.application.intent_recognition import StructuredIntentRecognition
 from app.platform.interaction.ports.capability_catalog import CapabilityCatalogPort
+from app.platform.interaction.ports.mcp_dispatch import McpDispatchScope
 from app.platform.interaction.ports.proposal_store import PendingProposalStorePort
 from app.platform.knowledge import KnowledgeBaseQueryCapability, KnowledgePublicationService
 from app.platform.knowledge.application.knowledge_base import KnowledgeBaseService
@@ -164,6 +166,28 @@ def get_db_session() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+@contextmanager
+def tender_mcp_dispatch_scope(principal):  # noqa: ANN001
+    """为一次 MCP 工具调用组装并关闭数据库绑定的分发依赖。"""
+
+    session = SessionLocal()
+    container = ApplicationContainer(session)
+    try:
+        yield McpDispatchScope(
+            dispatcher=container.agent_call_dispatcher(),
+            attachment_storage=container.attachment_storage(),
+            principal=principal,
+        )
+    except BaseException:
+        session.rollback()
+        raise
+    finally:
+        try:
+            container.close()
+        finally:
+            session.close()
 
 
 class ApplicationContainer:

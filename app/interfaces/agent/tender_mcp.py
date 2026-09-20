@@ -3,48 +3,55 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager
 from pathlib import PurePosixPath
 from typing import Any
+from uuid import uuid4
 
-from mcp.server.fastmcp import FastMCP
-from mcp.types import (
-    BlobResourceContents,
-    CallToolResult,
-    EmbeddedResource,
-    TextContent,
-)
+from mcp.server.fastmcp import Context, FastMCP
+from mcp.types import BlobResourceContents, CallToolResult, EmbeddedResource, TextContent
 
-from app.business.agents.tender.application.service import TenderApplication
-from app.business.agents.tender.contracts import (
-    TenderExtractFormatSectionCommand,
-    TenderGenerateSkeletonCommand,
-    TenderVerifyExtractionBoundaryCommand,
+from app.platform.attachment import AttachmentAccessContext, AttachmentStoragePort
+from app.platform.interaction.application.agent_dispatch import (
+    AgentCallDispatchCommand,
+    AgentCallDispatchResult,
 )
-from app.business.agents.tender.errors import (
-    TenderAnalysisError,
-    TenderDocumentParseError,
-    TenderInputError,
-    TenderRenderError,
+from app.platform.interaction.domain.agent_call import AgentCallResult, StructuredAgentCall
+from app.platform.interaction.domain.attachment import ResolvedAttachment
+from app.platform.interaction.ports.mcp_dispatch import McpDispatchScope
+from app.platform.security import (
+    AnonymousPrincipalResolver,
+    PrincipalResolutionContext,
+    PrincipalResolverPort,
+    RequestPrincipal,
 )
 from app.shared.config import settings
-from app.shared.exceptions import ServiceNotConfiguredError, UpstreamServiceError
 
 TENDER_MCP_SERVER_NAME = "tender-agent"
 TENDER_MCP_TOOL_NAME = "tender.generate_bid_skeleton"
 TENDER_MCP_EXTRACT_TOOL_NAME = "tender.extract_bid_format_section"
 TENDER_MCP_VERIFY_TOOL_NAME = "tender.verify_extraction_boundary"
 TENDER_MCP_MOUNT_PATH = "/api/v1/mcp/tender"
+_DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+McpDispatchScopeProvider = Callable[
+    [RequestPrincipal], AbstractContextManager[McpDispatchScope]
+]
 
 
-TenderApplicationProvider = Callable[[], TenderApplication]
+class _McpProjectionError(ValueError):
+    """MCP 结果投影失败，不应被误报为客户端输入错误。"""
 
 
 def create_tender_mcp_server(
-    application: TenderApplication | TenderApplicationProvider,
+    scope_provider: McpDispatchScopeProvider,
+    *,
+    principal_resolver: PrincipalResolverPort | None = None,
 ) -> FastMCP:
     """创建只负责协议适配的 Tender MCP Server。"""
 
+    resolver = principal_resolver or AnonymousPrincipalResolver()
     server = FastMCP(
         TENDER_MCP_SERVER_NAME,
         instructions="提供招标文件分析和投标骨架生成能力。",
@@ -62,68 +69,35 @@ def create_tender_mcp_server(
         file_name: str,
         content_base64: str,
         user_focus: str | None = None,
+        ctx: Context | None = None,
     ) -> CallToolResult:
         try:
-            content = base64.b64decode(content_base64, validate=True)
-        except (binascii.Error, ValueError) as exc:
-            return _error_result("INVALID_INPUT", "文件内容不是有效的 Base64。", exc)
+            content = _decode_and_validate(file_name, content_base64)
+        except ValueError as exc:
+            return _error_result("INVALID_INPUT", str(exc))
 
-        try:
-            resolved_application = (
-                application() if callable(application) else application
+        def project(result: AgentCallResult, scope: McpDispatchScope) -> CallToolResult:
+            output = result.output
+            metadata, resources = _project_artifacts(
+                output.get("artifacts"),
+                storage=scope.attachment_storage,
+                principal=scope.principal,
             )
-            result = resolved_application.execute(
-                TenderGenerateSkeletonCommand(
-                    file_name=file_name,
-                    content=content,
-                    user_focus=user_focus,
-                )
-            )
-        except Exception as exc:  # noqa: BLE001 - 统一转换为 MCP 工具错误
-            return _error_result(*_map_error(exc))
-
-        metadata = [
-            {
-                "file_name": artifact.file_name,
-                "media_type": artifact.media_type,
-                "size_bytes": len(artifact.content),
-                "resource_uri": _artifact_uri(artifact.file_name),
-            }
-            for artifact in result.artifacts
-        ]
-        content_blocks: list[Any] = [
-            TextContent(
-                type="text",
-                text=json.dumps(
-                    {
-                        "analysis": result.analysis.model_dump(mode="json"),
-                        "artifacts": metadata,
-                        "model": result.model,
-                        "prompt_version": result.prompt_version,
-                    },
-                    ensure_ascii=False,
-                ),
-            )
-        ]
-        for artifact in result.artifacts:
-            content_blocks.append(
-                EmbeddedResource(
-                    type="resource",
-                    resource=BlobResourceContents(
-                        uri=_artifact_uri(artifact.file_name),
-                        mimeType=artifact.media_type,
-                        blob=base64.b64encode(artifact.content).decode("ascii"),
-                    ),
-                )
-            )
-        return CallToolResult(
-            content=content_blocks,
-            structuredContent={
-                "analysis": result.analysis.model_dump(mode="json"),
+            structured = {
+                "analysis": output.get("analysis", {}),
                 "artifacts": metadata,
-                "model": result.model,
-                "prompt_version": result.prompt_version,
-            },
+                "model": output.get("model"),
+                "prompt_version": output.get("prompt_version"),
+            }
+            return _resource_result(structured, resources)
+
+        return _execute_mcp_call(
+            scope_provider,
+            resolver,
+            ctx,
+            capability_code="tender.generate_bid_skeleton",
+            inputs={"source_document": (file_name, content), "user_focus": user_focus},
+            project=project,
         )
 
     @server.tool(
@@ -137,45 +111,40 @@ def create_tender_mcp_server(
         start_block_id: str,
         end_block_id: str,
         output_name: str | None = None,
+        ctx: Context | None = None,
     ) -> CallToolResult:
         try:
-            content = _decode_base64(content_base64)
-        except (binascii.Error, ValueError) as exc:
-            return _error_result("INVALID_INPUT", "File content is not valid Base64.", exc)
+            content = _decode_and_validate(file_name, content_base64)
+        except ValueError as exc:
+            return _error_result("INVALID_INPUT", str(exc))
 
-        try:
-            resolved_application = application() if callable(application) else application
-            result = resolved_application.extract_bid_format_section(
-                TenderExtractFormatSectionCommand(
-                    file_name=file_name,
-                    content=content,
-                    start_block_id=start_block_id,
-                    end_block_id=end_block_id,
-                    output_name=output_name,
-                )
+        def project(result: AgentCallResult, scope: McpDispatchScope) -> CallToolResult:
+            structured = {
+                "start_block_id": result.output.get("start_block_id"),
+                "end_block_id": result.output.get("end_block_id"),
+                "block_count": result.output.get("block_count"),
+                "table_count": result.output.get("table_count"),
+            }
+            artifact, resources = _project_artifact(
+                result.output.get("artifact"),
+                storage=scope.attachment_storage,
+                principal=scope.principal,
             )
-        except Exception as exc:  # noqa: BLE001 - stable MCP tool error boundary
-            return _error_result(*_map_error(exc))
+            structured["artifact"] = artifact
+            return _resource_result(structured, [resources])
 
-        artifact = result.artifact
-        metadata = {
-            "file_name": artifact.file_name,
-            "media_type": artifact.media_type,
-            "size_bytes": len(artifact.content),
-            "resource_uri": _artifact_uri(artifact.file_name),
-        }
-        structured = {
-            "start_block_id": result.start_block_id,
-            "end_block_id": result.end_block_id,
-            "block_count": result.block_count,
-            "table_count": result.table_count,
-            "artifact": metadata,
-        }
-        return _artifact_result(
-            artifact.content,
-            artifact.media_type,
-            artifact.file_name,
-            structured,
+        return _execute_mcp_call(
+            scope_provider,
+            resolver,
+            ctx,
+            capability_code="tender.extract_bid_format_section",
+            inputs={
+                "source_document": (file_name, content),
+                "start_block_id": start_block_id,
+                "end_block_id": end_block_id,
+                "output_name": output_name,
+            },
+            project=project,
         )
 
     @server.tool(
@@ -191,77 +160,203 @@ def create_tender_mcp_server(
         start_block_id: str,
         end_block_id: str,
         context_radius: int = 3,
+        ctx: Context | None = None,
     ) -> CallToolResult:
         try:
-            content = _decode_base64(content_base64)
-        except (binascii.Error, ValueError) as exc:
-            return _error_result("INVALID_INPUT", "File content is not valid Base64.", exc)
+            content = _decode_and_validate(file_name, content_base64)
+        except ValueError as exc:
+            return _error_result("INVALID_INPUT", str(exc))
 
-        try:
-            resolved_application = application() if callable(application) else application
-            result = resolved_application.verify_extraction_boundary(
-                TenderVerifyExtractionBoundaryCommand(
-                    file_name=file_name,
-                    content=content,
-                    start_block_id=start_block_id,
-                    end_block_id=end_block_id,
-                    context_radius=context_radius,
-                )
+        def project(result: AgentCallResult, scope: McpDispatchScope) -> CallToolResult:
+            del scope
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=json.dumps(result.output, ensure_ascii=False))
+                ],
+                structuredContent=result.output,
             )
-        except Exception as exc:  # noqa: BLE001 - stable MCP tool error boundary
-            return _error_result(*_map_error(exc))
 
-        structured = {
-            "start_block_id": result.start_block_id,
-            "end_block_id": result.end_block_id,
-            "start_position": result.start_position,
-            "end_position": result.end_position,
-            "context": [
-                {
-                    "block_id": block.block_id,
-                    "kind": block.kind,
-                    "text": block.text,
-                    "order": block.order,
-                    "position": block.position,
-                    "heading_path": list(block.heading_path),
-                }
-                for block in result.context
-            ],
-        }
-        return CallToolResult(
-            content=[TextContent(type="text", text=json.dumps(structured, ensure_ascii=False))],
-            structuredContent=structured,
+        return _execute_mcp_call(
+            scope_provider,
+            resolver,
+            ctx,
+            capability_code="tender.verify_extraction_boundary",
+            inputs={
+                "source_document": (file_name, content),
+                "start_block_id": start_block_id,
+                "end_block_id": end_block_id,
+                "context_radius": context_radius,
+            },
+            project=project,
         )
 
     return server
 
 
-def _decode_base64(value: str) -> bytes:
-    return base64.b64decode(value, validate=True)
-
-
-def _artifact_result(
-    content: bytes,
-    media_type: str,
-    file_name: str,
-    structured: dict[str, Any],
+def _execute_mcp_call(
+    scope_provider: McpDispatchScopeProvider,
+    resolver: PrincipalResolverPort,
+    ctx: Context | None,
+    *,
+    capability_code: str,
+    inputs: dict[str, object],
+    project: Callable[[AgentCallResult, McpDispatchScope], CallToolResult],
 ) -> CallToolResult:
-    resource_uri = _artifact_uri(file_name)
-    content_blocks: list[Any] = [
-        TextContent(type="text", text=json.dumps(structured, ensure_ascii=False)),
-        EmbeddedResource(
+    try:
+        principal = resolver.resolve(
+            PrincipalResolutionContext(headers=_context_headers(ctx))
+        )
+    except Exception:  # noqa: BLE001 - protocol boundary must not leak resolver details
+        return _error_result("AUTHENTICATION_REQUIRED", "MCP 请求主体不可用。")
+
+    if not principal.authenticated or not principal.subject:
+        return _error_result("AUTHENTICATION_REQUIRED", "MCP 请求需要可信主体。")
+
+    access_context = AttachmentAccessContext(subject=principal.subject)
+    try:
+        with scope_provider(principal) as scope:
+            source_document = inputs.get("source_document")
+            if not isinstance(source_document, tuple) or len(source_document) != 2:
+                return _error_result("INVALID_INPUT", "招标文件输入无效。")
+            file_name, content = source_document
+            reference = scope.attachment_storage.stage_attachment(
+                file_name=file_name,
+                media_type=_DOCX_MEDIA_TYPE,
+                file_stream=_bytes_stream(content),
+                context=access_context,
+            )
+            try:
+                internal_inputs = dict(inputs)
+                internal_inputs["source_document"] = ResolvedAttachment(
+                    reference=reference,
+                    content=content,
+                )
+                call = StructuredAgentCall(
+                    call_id=uuid4().hex,
+                    capability_code=capability_code,
+                    run_id=uuid4().hex,
+                    inputs=internal_inputs,
+                )
+                dispatched = scope.dispatcher.dispatch(
+                    AgentCallDispatchCommand(call=call, principal=scope.principal)
+                )
+                if dispatched.status != "completed" or dispatched.result is None:
+                    return _dispatch_error_result(dispatched)
+                return project(dispatched.result, scope)
+            finally:
+                _discard_storage(scope.attachment_storage, scope.principal, reference.attachment_id)
+    except _McpProjectionError:
+        return _error_result("INTERNAL_ERROR", "Tender 输出资源暂时无法读取。")
+    except ValueError as exc:
+        return _error_result("INVALID_INPUT", str(exc))
+    except Exception:  # noqa: BLE001 - protocol boundary must not leak internals
+        return _error_result("INTERNAL_ERROR", "Tender Agent 处理失败。")
+
+
+def _decode_and_validate(file_name: str, value: str) -> bytes:
+    if not isinstance(file_name, str) or not file_name.strip():
+        raise ValueError("招标文件名称不能为空。")
+    if not file_name.lower().endswith(".docx"):
+        raise ValueError("Tender 只接受 DOCX 招标文件。")
+    try:
+        content = base64.b64decode(value, validate=True)
+    except (binascii.Error, TypeError, ValueError) as exc:
+        raise ValueError("文件内容不是有效的 Base64。") from exc
+    if not content:
+        raise ValueError("招标文件不能为空。")
+    if len(content) > settings.tender_upload_max_size_bytes:
+        raise ValueError("招标文件超过统一入口大小限制。")
+    return content
+
+
+def _bytes_stream(content: bytes):  # noqa: ANN202
+    from io import BytesIO
+
+    return BytesIO(content)
+
+
+def _context_headers(ctx: Context | None) -> dict[str, str]:
+    if ctx is None:
+        return {}
+    try:
+        request = ctx.request_context.request
+        headers = getattr(request, "headers", None)
+        return {str(key): str(value) for key, value in headers.items()} if headers else {}
+    except Exception:  # noqa: BLE001 - absent framework request context is anonymous
+        return {}
+
+
+def _project_artifacts(
+    value: object,
+    *,
+    storage: AttachmentStoragePort,
+    principal: RequestPrincipal,
+) -> tuple[list[dict[str, object]], list[EmbeddedResource]]:
+    if not isinstance(value, list):
+        raise _McpProjectionError("Tender 输出文件列表无效。")
+    metadata: list[dict[str, object]] = []
+    resources: list[EmbeddedResource] = []
+    for item in value:
+        item_metadata, resource = _project_artifact(
+            item,
+            storage=storage,
+            principal=principal,
+        )
+        metadata.append(item_metadata)
+        resources.append(resource)
+    return metadata, resources
+
+
+def _project_artifact(
+    value: object,
+    *,
+    storage: AttachmentStoragePort,
+    principal: RequestPrincipal,
+) -> tuple[dict[str, object], EmbeddedResource]:
+    if not isinstance(value, Mapping):
+        raise _McpProjectionError("Tender 输出文件无效。")
+    resource_id = value.get("resource_id")
+    file_name = value.get("file_name")
+    media_type = value.get("media_type")
+    if not isinstance(resource_id, str) or not isinstance(file_name, str):
+        raise _McpProjectionError("Tender 输出资源引用无效。")
+    if not isinstance(media_type, str) or not media_type.strip():
+        raise _McpProjectionError("Tender 输出媒体类型无效。")
+    read_result = storage.read(
+        resource_id,
+        context=AttachmentAccessContext(subject=principal.subject or ""),
+    )
+    try:
+        if read_result.status != "available" or read_result.content is None:
+            raise _McpProjectionError("Tender 输出资源暂时不可用。")
+        metadata = {
+            "file_name": file_name,
+            "media_type": media_type,
+            "size_bytes": len(read_result.content),
+            "resource_uri": _artifact_uri(file_name),
+        }
+        resource = EmbeddedResource(
             type="resource",
             resource=BlobResourceContents(
-                uri=resource_uri,
+                uri=_artifact_uri(file_name),
                 mimeType=media_type,
-                blob=base64.b64encode(content).decode("ascii"),
+                blob=base64.b64encode(read_result.content).decode("ascii"),
             ),
-        ),
+        )
+        return metadata, resource
+    finally:
+        _discard_storage(storage, principal, resource_id)
+
+
+def _resource_result(
+    structured: dict[str, object],
+    resources: list[EmbeddedResource],
+) -> CallToolResult:
+    content_blocks: list[Any] = [
+        TextContent(type="text", text=json.dumps(structured, ensure_ascii=False)),
+        *resources,
     ]
-    return CallToolResult(
-        content=content_blocks,
-        structuredContent=structured,
-    )
+    return CallToolResult(content=content_blocks, structuredContent=structured)
 
 
 def _artifact_uri(file_name: str) -> str:
@@ -269,26 +364,70 @@ def _artifact_uri(file_name: str) -> str:
     return f"tender://artifacts/{safe_name}"
 
 
-def _map_error(exc: Exception) -> tuple[str, str, Exception]:
-    if isinstance(exc, TenderInputError):
-        return "INVALID_INPUT", str(exc), exc
-    if isinstance(exc, TenderDocumentParseError):
-        return "DOCUMENT_PARSE_FAILED", "招标 DOCX 解析失败。", exc
-    if isinstance(exc, ServiceNotConfiguredError):
-        return "SERVICE_NOT_CONFIGURED", "Tender Agent 的模型服务尚未完成配置。", exc
-    if isinstance(exc, UpstreamServiceError):
-        return "UPSTREAM_FAILED", "Tender Agent 的模型服务调用失败。", exc
-    if isinstance(exc, TenderAnalysisError):
-        return "ANALYSIS_FAILED", "招标文件结构化分析结果无效。", exc
-    if isinstance(exc, TenderRenderError):
-        return "RENDER_FAILED", "投标骨架文件生成失败。", exc
-    return "INTERNAL_ERROR", "Tender Agent 处理失败。", exc
+def _dispatch_error_result(dispatched: AgentCallDispatchResult) -> CallToolResult:
+    error = dispatched.error
+    code = error.error_code if error else "INTERNAL_ERROR"
+    message = error.message if error else "Tender Agent 处理失败。"
+    mapped_code, mapped_message = _map_dispatch_error(code, message)
+    return _error_result(mapped_code, mapped_message)
 
 
-def _error_result(code: str, message: str, cause: Exception) -> CallToolResult:
-    del cause
+def _map_dispatch_error(code: str, message: str) -> tuple[str, str]:
+    del message
+    known = {
+        "INVALID_INPUT": ("INVALID_INPUT", "输入不符合 Tender 工具要求。"),
+        "DOCUMENT_PARSE_FAILED": ("DOCUMENT_PARSE_FAILED", "招标 DOCX 解析失败。"),
+        "SERVICE_NOT_CONFIGURED": (
+            "SERVICE_NOT_CONFIGURED",
+            "Tender Agent 的模型服务尚未完成配置。",
+        ),
+        "UPSTREAM_FAILED": ("UPSTREAM_FAILED", "Tender Agent 的模型服务调用失败。"),
+        "ANALYSIS_FAILED": ("ANALYSIS_FAILED", "招标文件结构化分析结果无效。"),
+        "RENDER_FAILED": ("RENDER_FAILED", "投标骨架文件生成失败。"),
+        "INPUT_VALIDATION_FAILED": ("INVALID_INPUT", "输入不符合当前 Tender 能力契约。"),
+        "DISPATCH_INPUT_INVALID": ("INVALID_INPUT", "输入不符合当前 Tender 能力契约。"),
+        "CAPABILITY_UNAVAILABLE": ("CAPABILITY_UNAVAILABLE", "Tender 能力当前不可用。"),
+        "CAPABILITY_CATALOG_UNAVAILABLE": (
+            "CAPABILITY_UNAVAILABLE",
+            "Tender 能力目录当前不可用。",
+        ),
+        "CAPABILITY_TYPE_NOT_AGENT": ("CAPABILITY_UNAVAILABLE", "Tender 能力当前不可用。"),
+        "AUTHENTICATION_REQUIRED": ("AUTHENTICATION_REQUIRED", "MCP 请求需要可信主体。"),
+        "AGENT_ARTIFACT_STORE_FAILED": (
+            "INTERNAL_ERROR",
+            "Tender 输出文件暂时无法保存。",
+        ),
+    }
+    return known.get(code, ("INTERNAL_ERROR", "Tender Agent 处理失败。"))
+
+
+def _error_result(code: str, message: str) -> CallToolResult:
     return CallToolResult(
         content=[TextContent(type="text", text=f"{code}: {message}")],
         structuredContent={"error_code": code, "message": message},
         isError=True,
     )
+
+
+def _discard_storage(
+    storage: AttachmentStoragePort,
+    principal: RequestPrincipal,
+    attachment_id: str,
+) -> None:
+    try:
+        storage.discard(
+            attachment_id,
+            context=AttachmentAccessContext(subject=principal.subject or ""),
+        )
+    except Exception:  # noqa: BLE001 - cleanup must not change the protocol result
+        pass
+
+
+__all__ = [
+    "TENDER_MCP_EXTRACT_TOOL_NAME",
+    "TENDER_MCP_MOUNT_PATH",
+    "TENDER_MCP_SERVER_NAME",
+    "TENDER_MCP_TOOL_NAME",
+    "TENDER_MCP_VERIFY_TOOL_NAME",
+    "create_tender_mcp_server",
+]

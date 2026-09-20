@@ -2,100 +2,161 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from io import BytesIO
+from pathlib import Path
 
-from docx import Document
 from mcp.types import CallToolResult, EmbeddedResource
 
-from app.business.agents.tender.application.service import TenderApplication
-from app.business.agents.tender.contracts import (
-    GeneratedTenderArtifact,
-    TenderAnalysis,
-    TenderBoundaryContextBlock,
-    TenderExtractFormatSectionResult,
-    TenderGenerateSkeletonResult,
-    TenderOutputPlan,
-    TenderSourceEvidence,
-    TenderVerifyExtractionBoundaryResult,
-)
-from app.infrastructure.documents.tender_docx import (
-    TenderDocxReader,
-    TenderDocxSkeletonRenderer,
-)
+from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
 from app.interfaces.agent.tender_mcp import (
     TENDER_MCP_EXTRACT_TOOL_NAME,
     TENDER_MCP_TOOL_NAME,
     TENDER_MCP_VERIFY_TOOL_NAME,
     create_tender_mcp_server,
 )
-from app.platform.llm.contracts import StructuredLlmResult
+from app.platform.attachment import AttachmentAccessContext
+from app.platform.interaction.application.agent_dispatch import (
+    AgentCallDispatchCommand,
+    AgentCallDispatchResult,
+)
+from app.platform.interaction.domain.agent_call import (
+    AgentCallError,
+    AgentCallResult,
+    StructuredAgentCall,
+)
+from app.platform.interaction.domain.attachment import ResolvedAttachment
+from app.platform.interaction.ports.mcp_dispatch import McpDispatchScope
+from app.platform.security import AnonymousPrincipalResolver, StaticPrincipalResolver
+
+_DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 @dataclass
-class FakeTenderApplication:
-    result: TenderGenerateSkeletonResult
-    received: object | None = None
-    extracted: object | None = None
-    verified: object | None = None
+class RecordingDispatcher:
+    storage: FilesystemAttachmentStorage
+    calls: list[AgentCallDispatchCommand] = field(default_factory=list)
+    error_code: str | None = None
 
-    def execute(self, command: object) -> TenderGenerateSkeletonResult:
-        self.received = command
-        return self.result
-
-    def extract_bid_format_section(self, command: object) -> TenderExtractFormatSectionResult:
-        self.extracted = command
-        artifact = self.result.artifacts[0]
-        return TenderExtractFormatSectionResult(
-            artifact=artifact,
-            start_block_id=command.start_block_id,
-            end_block_id=command.end_block_id,
-            block_count=2,
-            table_count=1,
-        )
-
-    def verify_extraction_boundary(self, command: object) -> TenderVerifyExtractionBoundaryResult:
-        self.verified = command
-        return TenderVerifyExtractionBoundaryResult(
-            start_block_id=command.start_block_id,
-            end_block_id=command.end_block_id,
-            start_position=1,
-            end_position=2,
-            context=(
-                TenderBoundaryContextBlock(
-                    block_id=command.start_block_id,
-                    kind="paragraph",
-                    text="format start",
-                    order=2,
-                    position=1,
-                    heading_path=("Bid format",),
+    def dispatch(self, command: AgentCallDispatchCommand) -> AgentCallDispatchResult:
+        self.calls.append(command)
+        if self.error_code is not None:
+            return AgentCallDispatchResult(
+                status="failed",
+                call=command.call,
+                error=AgentCallError(
+                    **command.call.model_dump(mode="python", exclude={"inputs"}),
+                    error_code=self.error_code,
+                    message="private implementation detail",
                 ),
+            )
+
+        output = self._output(command.call, command.principal.subject or "")
+        return AgentCallDispatchResult(
+            status="completed",
+            call=command.call,
+            result=AgentCallResult(
+                **command.call.model_dump(mode="python", exclude={"inputs"}),
+                output=output,
             ),
         )
 
+    def _output(self, call: StructuredAgentCall, subject: str) -> dict[str, object]:
+        source = call.inputs["source_document"]
+        assert isinstance(source, ResolvedAttachment)
+        assert source.content == b"source"
+        assert "content_base64" not in call.inputs
+        if call.capability_code == "tender.generate_bid_skeleton":
+            return {
+                "analysis": {"status": "completed", "summary": "test"},
+                "artifacts": [self._artifact("skeleton.docx", subject)],
+                "model": "fake-model",
+                "prompt_version": "tender-skeleton-v1",
+            }
+        if call.capability_code == "tender.extract_bid_format_section":
+            return {
+                "start_block_id": call.inputs["start_block_id"],
+                "end_block_id": call.inputs["end_block_id"],
+                "block_count": 2,
+                "table_count": 1,
+                "artifact": self._artifact("format.docx", subject),
+            }
+        return {
+            "start_block_id": call.inputs["start_block_id"],
+            "end_block_id": call.inputs["end_block_id"],
+            "start_position": 1,
+            "end_position": 2,
+            "context": [
+                {
+                    "block_id": call.inputs["start_block_id"],
+                    "kind": "paragraph",
+                    "text": "format start",
+                    "order": 2,
+                    "position": 1,
+                    "heading_path": ["Bid format"],
+                }
+            ],
+        }
 
-def _result() -> TenderGenerateSkeletonResult:
-    return TenderGenerateSkeletonResult(
-        analysis=TenderAnalysis(
-            status="completed",
-            package_type="single_volume",
-            summary="生成一份投标文件。",
-            outputs=[],
-        ),
-        artifacts=(
-            GeneratedTenderArtifact(
-                file_name="投标文件.docx",
-                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                content=b"docx-content",
-            ),
-        ),
-        model="fake-model",
-        prompt_version="tender-skeleton-v1",
+    def _artifact(self, file_name: str, subject: str) -> dict[str, object]:
+        reference = self.storage.stage_attachment(
+            file_name=file_name,
+            media_type=_DOCX_MEDIA_TYPE,
+            file_stream=BytesIO(b"docx-content"),
+            context=AttachmentAccessContext(subject=subject),
+        )
+        return {
+            "file_name": reference.file_name,
+            "media_type": reference.media_type,
+            "size": reference.size_bytes,
+            "resource_id": reference.attachment_id,
+        }
+
+
+@dataclass
+class ScopeProvider:
+    dispatcher: RecordingDispatcher
+    storage: FilesystemAttachmentStorage
+    calls: int = 0
+
+    @contextmanager
+    def __call__(self, principal):  # noqa: ANN001
+        self.calls += 1
+        yield McpDispatchScope(
+            dispatcher=self.dispatcher,  # type: ignore[arg-type]
+            attachment_storage=self.storage,
+            principal=principal,
+        )
+
+
+def _server(tmp_path: Path, *, resolver=None, error_code: str | None = None):  # noqa: ANN001
+    storage = FilesystemAttachmentStorage(
+        tmp_path,
+        allowed_media_types=(_DOCX_MEDIA_TYPE,),
     )
+    dispatcher = RecordingDispatcher(storage=storage, error_code=error_code)
+    provider = ScopeProvider(dispatcher=dispatcher, storage=storage)
+    server = create_tender_mcp_server(
+        provider,
+        principal_resolver=resolver
+        or StaticPrincipalResolver(
+            subject="mcp-user",
+            permissions=("agent:tender:execute",),
+        ),
+    )
+    return server, provider, dispatcher, storage
 
 
-def test_tender_mcp_lists_only_v1_tools() -> None:
-    server = create_tender_mcp_server(FakeTenderApplication(_result()))
+def _source_arguments() -> dict[str, object]:
+    return {
+        "file_name": "source.docx",
+        "content_base64": base64.b64encode(b"source").decode("ascii"),
+    }
+
+
+def test_tender_mcp_lists_only_v1_tools(tmp_path: Path) -> None:
+    server, _, _, _ = _server(tmp_path)
 
     tools = asyncio.run(server.list_tools())
 
@@ -110,58 +171,35 @@ def test_tender_mcp_lists_only_v1_tools() -> None:
     assert "tender.fill_bid_content" not in [tool.name for tool in tools]
 
 
-def test_tender_mcp_calls_application_and_returns_structured_resource() -> None:
-    application = FakeTenderApplication(_result())
-    server = create_tender_mcp_server(application)
+def test_tender_mcp_routes_skeleton_through_dispatcher_and_returns_resource(tmp_path: Path) -> None:
+    server, _, dispatcher, storage = _server(tmp_path)
 
-    response = asyncio.run(
-        server.call_tool(
-            TENDER_MCP_TOOL_NAME,
-            {
-                "file_name": "招标文件.docx",
-                "content_base64": base64.b64encode(b"source").decode("ascii"),
-                "user_focus": "关注投标文件分线",
-            },
-        )
-    )
+    response = asyncio.run(server.call_tool(TENDER_MCP_TOOL_NAME, _source_arguments()))
 
     assert isinstance(response, CallToolResult)
     assert response.isError is False
-    assert response.structuredContent["artifacts"][0]["file_name"] == "投标文件.docx"
+    assert response.structuredContent["artifacts"][0]["file_name"] == "skeleton.docx"
+    assert "resource_id" not in response.structuredContent["artifacts"][0]
     assert any(isinstance(block, EmbeddedResource) for block in response.content)
-    assert application.received is not None
-    assert application.received.content == b"source"
-    assert application.received.user_focus == "关注投标文件分线"
+    assert [call.call.capability_code for call in dispatcher.calls] == [
+        "tender.generate_bid_skeleton"
+    ]
+    call = dispatcher.calls[0].call
+    assert call.call_id and call.run_id
+    assert call.conversation_id is None
+    assert call.turn_id is None
+    assert call.parent_run_id is None
+    assert list(storage.attachment_root.iterdir()) == []
 
 
-def test_tender_mcp_returns_stable_error_for_invalid_base64() -> None:
-    server = create_tender_mcp_server(FakeTenderApplication(_result()))
-
-    response = asyncio.run(
-        server.call_tool(
-            TENDER_MCP_TOOL_NAME,
-            {"file_name": "招标文件.docx", "content_base64": "not-base64"},
-        )
-    )
-
-    assert isinstance(response, CallToolResult)
-    assert response.isError is True
-    assert response.structuredContent == {
-        "error_code": "INVALID_INPUT",
-        "message": "文件内容不是有效的 Base64。",
-    }
-
-
-def test_tender_mcp_calls_format_extraction_and_returns_resource() -> None:
-    application = FakeTenderApplication(_result())
-    server = create_tender_mcp_server(application)
+def test_tender_mcp_routes_format_extraction_through_dispatcher(tmp_path: Path) -> None:
+    server, _, dispatcher, _ = _server(tmp_path)
 
     response = asyncio.run(
         server.call_tool(
             TENDER_MCP_EXTRACT_TOOL_NAME,
             {
-                "file_name": "source.docx",
-                "content_base64": base64.b64encode(b"source").decode("ascii"),
+                **_source_arguments(),
                 "start_block_id": "evidence-2",
                 "end_block_id": "evidence-4",
             },
@@ -171,19 +209,17 @@ def test_tender_mcp_calls_format_extraction_and_returns_resource() -> None:
     assert response.isError is False
     assert response.structuredContent["block_count"] == 2
     assert any(isinstance(block, EmbeddedResource) for block in response.content)
-    assert application.extracted.content == b"source"
+    assert dispatcher.calls[0].call.capability_code == "tender.extract_bid_format_section"
 
 
-def test_tender_mcp_returns_boundary_context_without_llm_decision() -> None:
-    application = FakeTenderApplication(_result())
-    server = create_tender_mcp_server(application)
+def test_tender_mcp_routes_boundary_verification_through_dispatcher(tmp_path: Path) -> None:
+    server, _, dispatcher, _ = _server(tmp_path)
 
     response = asyncio.run(
         server.call_tool(
             TENDER_MCP_VERIFY_TOOL_NAME,
             {
-                "file_name": "source.docx",
-                "content_base64": base64.b64encode(b"source").decode("ascii"),
+                **_source_arguments(),
                 "start_block_id": "evidence-2",
                 "end_block_id": "evidence-4",
             },
@@ -192,86 +228,53 @@ def test_tender_mcp_returns_boundary_context_without_llm_decision() -> None:
 
     assert response.isError is False
     assert response.structuredContent["context"][0]["block_id"] == "evidence-2"
-    assert application.verified.content == b"source"
+    assert dispatcher.calls[0].call.capability_code == "tender.verify_extraction_boundary"
 
 
-def test_tender_mcp_exposes_streamable_http_app() -> None:
-    server = create_tender_mcp_server(FakeTenderApplication(_result()))
-
-    application = server.streamable_http_app()
-
-    assert application is not None
-
-
-def test_tender_mcp_runs_real_application_and_returns_openable_docx() -> None:
-    source_document = Document()
-    source_document.add_heading("投标文件格式", level=1)
-    source_document.add_paragraph("投标函")
-    source_buffer = BytesIO()
-    source_document.save(source_buffer)
-    source_content = source_buffer.getvalue()
-
-    source = TenderDocxReader().read(
-        file_name="招标文件.docx",
-        content=source_content,
-    )
-    analysis = TenderAnalysis(
-        status="completed",
-        package_type="single_volume",
-        summary="生成一份骨架。",
-        evidence=[
-            TenderSourceEvidence(
-                evidence_id=source.blocks[0].block_id,
-                location="投标文件格式",
-                quote="投标文件格式",
-            ),
-            TenderSourceEvidence(
-                evidence_id=source.blocks[-1].block_id,
-                location="投标函",
-                quote="投标函",
-            ),
-        ],
-        outputs=[
-            TenderOutputPlan(
-                name="投标文件",
-                slug="bid",
-                document_label="投标文件",
-                evidence_refs=[block.block_id for block in source.blocks],
-                source_start_block_id=source.blocks[0].block_id,
-                source_end_block_id=source.blocks[-1].block_id,
-            )
-        ],
+def test_tender_mcp_rejects_anonymous_principal_before_scope_or_dispatch(tmp_path: Path) -> None:
+    server, provider, dispatcher, _ = _server(
+        tmp_path,
+        resolver=AnonymousPrincipalResolver(),
     )
 
-    class FakeStructuredLlm:
-        def invoke(self, request: object, output_schema: object) -> StructuredLlmResult:
-            return StructuredLlmResult(
-                value=analysis,
-                model="fake-model",
-                prompt_version="fake-prompt",
-            )
+    response = asyncio.run(server.call_tool(TENDER_MCP_TOOL_NAME, _source_arguments()))
 
-    application = TenderApplication(
-        llm=FakeStructuredLlm(),
-        reader=TenderDocxReader(),
-        renderer=TenderDocxSkeletonRenderer(),
-    )
-    server = create_tender_mcp_server(application)
+    assert response.isError is True
+    assert response.structuredContent["error_code"] == "AUTHENTICATION_REQUIRED"
+    assert provider.calls == 0
+    assert dispatcher.calls == []
+
+
+def test_tender_mcp_rejects_invalid_base64_before_scope_or_dispatch(tmp_path: Path) -> None:
+    server, provider, dispatcher, _ = _server(tmp_path)
 
     response = asyncio.run(
         server.call_tool(
             TENDER_MCP_TOOL_NAME,
-            {
-                "file_name": "招标文件.docx",
-                "content_base64": base64.b64encode(source_content).decode("ascii"),
-            },
+            {"file_name": "source.docx", "content_base64": "not-base64"},
         )
     )
 
-    assert response.isError is False
-    resource_block = next(
-        block for block in response.content if isinstance(block, EmbeddedResource)
-    )
-    rendered_content = base64.b64decode(resource_block.resource.blob)
-    rendered = Document(BytesIO(rendered_content))
-    assert "投标函" in [paragraph.text for paragraph in rendered.paragraphs]
+    assert response.isError is True
+    assert response.structuredContent["error_code"] == "INVALID_INPUT"
+    assert provider.calls == 0
+    assert dispatcher.calls == []
+
+
+def test_tender_mcp_maps_dispatcher_errors_without_internal_details(tmp_path: Path) -> None:
+    server, _, _, _ = _server(tmp_path, error_code="DOCUMENT_PARSE_FAILED")
+
+    response = asyncio.run(server.call_tool(TENDER_MCP_TOOL_NAME, _source_arguments()))
+
+    assert response.isError is True
+    assert response.structuredContent == {
+        "error_code": "DOCUMENT_PARSE_FAILED",
+        "message": "招标 DOCX 解析失败。",
+    }
+    assert "private implementation detail" not in response.content[0].text
+
+
+def test_tender_mcp_exposes_streamable_http_app(tmp_path: Path) -> None:
+    server, _, _, _ = _server(tmp_path)
+
+    assert server.streamable_http_app() is not None

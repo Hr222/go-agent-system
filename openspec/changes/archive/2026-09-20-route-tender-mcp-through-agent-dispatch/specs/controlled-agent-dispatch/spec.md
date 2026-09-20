@@ -1,8 +1,5 @@
-# controlled-agent-dispatch Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change controlled-agent-dispatch. Update Purpose after archive.
-## Requirements
 ### Requirement: 只有策略授权的结构化 Agent 调用才能执行
 
 系统 MUST 在执行 `StructuredAgentCall` 前调用 Agent Call 策略校验。MCP、对话或其他
