@@ -39,3 +39,7 @@ class TaskAccessDeniedError(PermissionError):
 
 class TaskUnavailableError(LookupError):
     """Task 不存在或不属于当前主体。"""
+
+
+class TaskResultResourceUnavailableError(LookupError):
+    """Task 结果资源不存在、过期或不属于当前主体和会话。"""

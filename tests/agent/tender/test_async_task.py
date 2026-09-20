@@ -17,6 +17,7 @@ from app.business.agents.tender.contracts import (
 from app.business.agents.tender.ports.task_port import (
     AttachmentTenderTaskInputReader,
     InMemoryTenderTaskResultStore,
+    TenderResultResourceStoreError,
 )
 from app.platform.attachment.contracts import (
     AttachmentAccessContext,
@@ -72,6 +73,12 @@ class FakeTenderApplication:
         if self.error is not None:
             raise self.error
         return self.result
+
+
+class FailingResultStore:
+    def save(self, **kwargs):  # noqa: ANN003 - test double matches the result-store Port
+        del kwargs
+        raise TenderResultResourceStoreError("resource staging failed")
 
 
 def _reference(content: bytes = b"docx") -> AttachmentRef:
@@ -254,6 +261,22 @@ def test_executor_rejects_snapshot_read_for_different_owner() -> None:
 
     assert isinstance(outcome, TaskExecutionFailure)
     assert outcome.failure_code == "TENDER_INPUT_SNAPSHOT_UNAVAILABLE"
+
+
+def test_executor_maps_result_resource_failure_to_safe_permanent_error() -> None:
+    content = b"docx"
+    reference = _reference(content)
+    executor = TenderTaskExecutor(
+        application=FakeTenderApplication(_result()),
+        input_reader=AttachmentTenderTaskInputReader(FakeAttachmentStorage(content, reference)),
+        result_store=FailingResultStore(),
+    )
+
+    outcome = executor.execute(_context(reference))
+
+    assert isinstance(outcome, TaskExecutionFailure)
+    assert outcome.failure_category is FailureCategory.PERMANENT
+    assert outcome.failure_code == "TENDER_RESULT_RESOURCE_STORE_FAILED"
 
 
 def test_result_store_is_idempotent_by_task_id(tmp_path) -> None:  # noqa: ANN001

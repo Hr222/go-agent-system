@@ -10,7 +10,7 @@
 
 ## 2. 当前状态
 
-当前项目已完成上下文管理和 Task Management 的 TM-06 主体隔离 HTTP 管理能力。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；最近一组交互稳定性 Change 已完成实现、验证和归档。
+当前项目已完成上下文管理和 Task Management 的 TM-07.4 Tender 异步 Consumer。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；TM-07.5 正在补齐有 Conversation 绑定 Task 的结果资源桥。
 
 | 领域 | 状态 | 当前进度 |
 |---|---|---|
@@ -20,7 +20,7 @@
 | Interaction 与 Agent | 已完成基础链路 | 支持能力目录、候选识别、确认、受控分发和 Tender Agent 调用。 |
 | 附件与产物 | 已完成基础链路 | 支持上传、主体/会话访问绑定、Tender 输入解析和受控下载。 |
 | Conversation 与 Dialogue | 已完成当前交付 | 支持会话持久化、历史读取、列表管理、话题概括、主体隔离、轮次串行、Agent 异步执行、上下文管理和异步持久化。 |
-| Task Management | 当前阶段 | TM-01～TM-07.3 已完成并归档；TM-07.4 已创建 proposal 并进入实现，当前覆盖 Tender 异步快照、固定 Executor、Worker 取消/重试和主体隔离；结果资源、前端和 E2E 仍待后续 Change。 |
+| Task Management | 当前阶段 | TM-01～TM-07.5 已完成并归档；Task 结果可安全映射为 Attachment 资源。前端和 E2E 仍待后续 Change。 |
 | Workflow / Agent 平台 | 后续阶段 | 第三阶段，位于 Task Management 之后；当前前端仅有 Workflow mock，真实编排能力尚未实施。 |
 | 真实身份认证与用户模块 | 待规划 | 不作为当前验收项，具体边界以 `ARCHITECTURE.md` 的当前边界为准。 |
 
@@ -55,6 +55,8 @@
 | `manage-owned-tasks-over-http` | 本 Change 提交 | 已完成、已归档并推送远程 |
 | `define-agent-call-extension-seam` | `62cb96e` | 已完成并归档；远程推送待网络恢复 |
 | `route-tender-mcp-through-agent-dispatch` | `d134d31` | 已完成并归档；远程推送待网络恢复 |
+| `run-tender-agent-as-async-task` | `e06c81c` | 已完成并归档；远程推送待网络恢复 |
+| `bridge-task-result-resources` | 本 Change 提交 | 已完成并归档；远程推送待网络恢复 |
 
 `persist-task-lifecycle` 已将 TM-01 的 Task、Attempt、Event 和命令回执持久化到 PostgreSQL；TM-04 已补充受信任 Worker 的原子领取、lease 续租、固定执行器和安全结果回写；TM-05 已补充过期 lease 恢复、协作取消、退避重入队和受策略约束的手动重试；TM-06 已补充主体隔离的 Task/事件查询、协作取消和手动重试 HTTP 契约，但不实现 Tender、前端或 E2E。TM-01“任务状态机与幂等”及其契约收紧均已完成并归档；同一时间只处理一个 Task Management Change。
 已完成 Change 的完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
@@ -63,7 +65,7 @@
 
 最近一组 Change 的后端验收结果：
 
-TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-05 完成后为 `750 passed`；TM-06 完成后为 `763 passed`；TM-07.2 完成后为 `769 passed`；TM-07.3 完成后为 `781 passed`，另有 2 个既有弃用警告。Worker、恢复/取消/重试、Task HTTP、PostgreSQL 并发、Agent 分发和架构边界测试均通过；`ruff check app tests`、`python -m compileall -q app tests`、`git diff --check` 和对应 Change 的严格 OpenSpec 校验均通过。外部 LLM、Embedding、OCR、MCP 和浏览器链路仍需使用项目现有诊断脚本或人工验收记录，不能只凭单元测试宣称外部服务验收完成。
+TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-05 完成后为 `750 passed`；TM-06 完成后为 `763 passed`；TM-07.2 完成后为 `769 passed`；TM-07.3 完成后为 `781 passed`；TM-07.4 完成后为 `793 passed`；TM-07.5 完成后为 `804 passed`，另有 2 个既有弃用警告。Worker、恢复/取消/重试、Task HTTP、PostgreSQL 并发、Agent 分发和架构边界测试均通过；`ruff check app tests`、`python -m compileall -q app tests`、`git diff --check` 和对应 Change 的严格 OpenSpec 校验均通过。外部 LLM、Embedding、OCR、MCP 和浏览器链路仍需使用项目现有诊断脚本或人工验收记录，不能只凭单元测试宣称外部服务验收完成。
 
 ## 6. 后续能力优先级
 
@@ -72,13 +74,13 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 | 优先级 | 能力 | 状态 |
 |---|---|---|
 | 1 | 上下文管理 | 已完成；会话历史、上下文窗口和多轮上下文链路已交付。 |
-| 2 | Task Management | TM-01～TM-07.3 已完成；TM-07.4 正在实现和验证，完成后再逐个审阅和归档；之后进入结果资源、前端联调和 E2E。 |
+| 2 | Task Management | TM-01～TM-07.5 已完成；后续按已提交 Change 逐个审阅，再进入前端联调和 E2E。 |
 | 3 | Workflow / Agent 平台 | 后续阶段；依赖 Task Management，尚未实施真实编排引擎。 |
 | 4 | 真实认证与用户模块 | 待规划；尚未创建 Change。 |
 
 ### Task Management Change 顺序（占位）
 
-以下只记录实施顺序、依赖和验收目标。TM-07 已拆成五个边界清晰的 Change：TM-07.1～TM-07.3 已完成并归档，TM-07.4 已创建并正在实施；TM-07.5 仍仅作为路线占位和说明。必须在前置 Change 完成、验证和归档后，才逐个创建下一个 Change。
+以下只记录实施顺序、依赖和验收目标。TM-07 已拆成五个边界清晰的 Change，TM-07.1～TM-07.5 均已完成并归档。必须在前置 Change 完成、验证和归档后，才逐个创建下一个 Change。
 
 | 顺序 | 占位 Change | 依赖 | 本阶段验收目标 | 状态 |
 |---|---|---|---|---|
@@ -90,9 +92,9 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 | TM-06 | `manage-owned-tasks-over-http` | TM-05 | 提供主体隔离的查询、事件、取消和重试接口。 | 已完成并归档为 `2026-09-18-manage-owned-tasks-over-http`。 |
 | TM-07.1 | `define-agent-call-extension-seam` | TM-06 | 为 AgentCallDispatcher 增加可替换执行策略插口，默认保持同步 AgentRuntime 行为。 | 已完成并归档为 `2026-09-20-define-agent-call-extension-seam`，提交 `62cb96e`；远程推送待网络恢复。 |
 | TM-07.2 | `route-tender-mcp-through-agent-dispatch` | TM-07.1 | 将 Tender MCP 三个工具迁移到统一 Agent 分发边界，保持协议兼容并补齐外部主体映射。 | 已完成并归档为 `2026-09-20-route-tender-mcp-through-agent-dispatch`，提交 `d134d31`；远程推送待网络恢复。 |
-| TM-07.3 | `bridge-agent-calls-to-tasks` | TM-07.2 | 定义目录能力到异步 Task 的受控桥接、幂等和执行引用，不开放通用 Task 创建。 | 已归档并提交 `44a802b`；`781 passed`、lint、编译和严格 OpenSpec 校验通过；远程推送待网络恢复，不进入 TM-07.4。 |
-| TM-07.4 | `run-tender-agent-as-async-task` | TM-07.3 | 为 Tender 的指定能力配置异步档案、输入快照和固定 Executor，接入 Worker、取消、重试和主体隔离。 | 实施中；已完成桥接扩展、Tender 快照/结果端口、固定 Executor、MCP accepted 保留快照和相关单元测试；待全量验证、归档和提交。 |
-| TM-07.5 | `bridge-task-result-resources` | TM-07.4 | 将 Task 结果安全映射到 Attachment 资源；若现有 Attachment 已覆盖，则并入 TM-07.4。 | 仅占位；是否独立待前置 Change 评估。 |
+| TM-07.3 | `bridge-agent-calls-to-tasks` | TM-07.2 | 定义目录能力到异步 Task 的受控桥接、幂等和执行引用，不开放通用 Task 创建。 | 已归档并提交 `0be9951`；`781 passed`、lint、编译和严格 OpenSpec 校验通过；远程推送待网络恢复。 |
+| TM-07.4 | `run-tender-agent-as-async-task` | TM-07.3 | 为 Tender 的指定能力配置异步档案、输入快照和固定 Executor，接入 Worker、取消、重试和主体隔离。 | 已归档并提交 `e06c81c`；全量 `793 passed`、lint、编译和严格 OpenSpec 校验通过；远程推送待网络恢复。 |
+| TM-07.5 | `bridge-task-result-resources` | TM-07.4 | 将有 Conversation 绑定的 Task 结果安全映射到 Attachment 资源，并提供主体/会话隔离的资源元数据查询。 | 已完成并归档；全量 `804 passed`、lint、编译和严格 OpenSpec 校验通过；无 Conversation 的既有 MCP Task 保持内部结果保存。 |
 | TM-08 | `connect-task-management-frontend` | TM-07.4、TM-07.5 | 以真实受控提交和 Task API 替换任务页面 mock，支持查询、取消、重试和结果下载。 | 占位。 |
 | TM-09 | `task-management-e2e-integration` | TM-07.4、TM-08 | 用合成执行器验证浏览器、API、Worker 和 PostgreSQL 的成功、取消、重试、隔离与恢复链路。 | 空目录占位；在 Workflow 前实施。 |
 | TM-10 | `orchestrate-task-workflows` | TM-09 | 基于已验证的单任务能力设计多任务编排。 | 占位。 |
@@ -103,11 +105,11 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 - **TM-07.2 Tender MCP 统一分发**：Tender 仍是一个具体业务 Agent，MCP 适配器只做 Base64、协议结果和错误映射，执行统一交给 AgentCallDispatcher；不把 Tender 变成平台基板。
 - **TM-07.3 Agent 到 Task 桥接**：只定义哪些目录能力允许异步以及如何创建受控提交，不直接绑定 Tender，也不暴露通用 Task 创建接口。
 - **TM-07.4 Tender 异步 Consumer**：这是第一个真正使用 Task 的业务 Agent Change，复用 TenderApplication 和既有 Task 状态机，不向 Tender 业务层注入 Repository、Session 或 LangGraph。
-- **TM-07.5 结果资源桥**：先检查 Attachment 是否已经能覆盖 owner-scoped 结果引用、下载和补偿；只有存在独立缺口时才单独创建 Change，避免重复造资源层。
+- **TM-07.5 结果资源桥**：Attachment 已具备 owner/conversation 下载边界，但 TM-07.4 的异步结果仍只有内部文件，因此独立实现 Task 到 Attachment 的幂等资源清单、查询和失败清理；不做前端、E2E 或无 Conversation 的 MCP 下载协议。
 
 ## 7. 当前待办
 
-1. 完成 TM-07.4 全量验证，确认任务清单和 OpenSpec 规格一致后归档并提交；随后按 TM-07.1～TM-07.4 顺序人工审阅已提交代码。
+1. 按 TM-07.1～TM-07.5 顺序人工审阅已提交代码；后续再独立创建 TM-08 前端联调 Change。
 2. 根据实际代码和验证结果持续同步 OpenSpec 正式规格并归档已完成 Change。
 3. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。
 

@@ -7,6 +7,10 @@ from app.platform.task.ports.repository import (
     TaskListPage,
     TaskRepositoryPort,
 )
+from app.platform.task.ports.result_resource import (
+    TaskResultResource,
+    TaskResultResourceReaderPort,
+)
 
 __all__ = [
     "DueRetryCandidate",
@@ -16,4 +20,6 @@ __all__ = [
     "TaskListCursor",
     "TaskListPage",
     "TaskRepositoryPort",
+    "TaskResultResource",
+    "TaskResultResourceReaderPort",
 ]

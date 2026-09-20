@@ -11,6 +11,7 @@ from app.business.agents.tender.application.service import TenderApplication
 from app.business.agents.tender.application.task_execution import (
     TenderTaskInputSnapshotProvider,
 )
+from app.business.agents.tender.ports.task_port import FilesystemTenderTaskResultStore
 from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.business.online.application.data_acquisition import (
     ChecklistDataProviderRegistry,
@@ -85,6 +86,7 @@ from app.composition.online import (
 )
 from app.composition.task import (
     build_owned_task_application,
+    build_task_result_resource_application,
     build_trusted_task_submission_service,
 )
 from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
@@ -167,6 +169,7 @@ from app.platform.llm.application.streaming_chat import StreamingChatApplication
 from app.platform.llm.contracts import ChatLlmPort, StreamingChatLlmPort, StructuredLlmPort
 from app.platform.task.application import (
     OwnedTaskApplication,
+    TaskResultResourceApplication,
     TrustedTaskSubmissionProfile,
 )
 from app.shared.config import settings
@@ -256,6 +259,8 @@ class ApplicationContainer:
             InteractionChatStreamApplication | None
         ) = None
         self._owned_task_application: OwnedTaskApplication | None = None
+        self._task_result_resource_application: TaskResultResourceApplication | None = None
+        self._tender_task_result_store: FilesystemTenderTaskResultStore | None = None
         self._openai_client_factory = openai_client_factory
         self._persistence_gateway: PolicyPersistenceGateway | None = None
         self._write_repository: KnowledgeWriteRepository | None = None
@@ -478,6 +483,26 @@ class ApplicationContainer:
         if self._owned_task_application is None:
             self._owned_task_application = build_owned_task_application(self.session)
         return self._owned_task_application
+
+    def tender_task_result_store(self) -> FilesystemTenderTaskResultStore:
+        """提供固定的 Tender 结果资源清单读取适配器。"""
+
+        if self._tender_task_result_store is None:
+            self._tender_task_result_store = FilesystemTenderTaskResultStore(
+                Path(settings.tender_task_result_workspace),
+                attachment_storage=self.attachment_storage(),
+            )
+        return self._tender_task_result_store
+
+    def task_result_resource_application(self) -> TaskResultResourceApplication:
+        if self.session is None:
+            raise RuntimeError("Task 结果资源查询需要数据库 session，但容器未提供。")
+        if self._task_result_resource_application is None:
+            self._task_result_resource_application = build_task_result_resource_application(
+                self.session,
+                self.tender_task_result_store(),
+            )
+        return self._task_result_resource_application
 
     def capability_candidate_retrieval(self) -> CapabilityCandidateRetrieval:
         if self._capability_candidate_retrieval is None:

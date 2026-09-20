@@ -41,7 +41,7 @@ shared 提供配置、日志、异常等不携带领域职责的共享基础能�
 
 依赖方向由内向外保持稳定：接口层依赖应用契约，应用层依赖本模块 Domain 与 Ports，基础设施实现 Ports。Domain 不依赖 HTTP、ORM、数据库、模型 SDK 或具体 Agent 框架。应用模块不把路由、Schema、SQL 和 Provider 调用混在同一职责中。
 
-Task Management 当前实现 `app/platform/task` 的状态机、Attempt/Event 生命周期、命令幂等基础、PostgreSQL 生命周期持久化、受信任服务端生产者提交能力、独立 Worker 执行边界、恢复/取消/重试调度以及主体隔离的 Task HTTP 查询与控制接口。一次合法领取以单条 `TASK_CLAIMED` 事件同时记录领取和开始执行；安全 `TaskView` 不含 lease 或输入指纹，含 lease 的契约仅供受信任执行器内部消费。受信任提交从已认证主体确定 owner，并由 Composition 固定 task type、尝试限制、重试策略和展示字段白名单；它不是公开 HTTP 或浏览器创建入口。Task HTTP 只允许已认证主体查询自己的 Task、读取脱敏事件、协作取消和按策略手动重试；路由通过 Application/Port 执行 owner admission，不暴露创建、领取、续租、结果回写、恢复调度或 lease。PostgreSQL Repository 将 Task、Attempt、Event 和命令回执在同一事务中保存，并以唯一约束、外键、行锁、`SKIP LOCKED` 候选选择和 active Attempt/lease 到期索引保护持久化不变量。Worker 通过固定 task type 执行器绑定轮询、续租和安全结果回写；RecoveryCoordinator、RetryScheduler 和 CancellationCoordinator 只通过 Application/Port 触发过期恢复、退避重入队、协作取消和受策略约束的手动重试；内存仓储仅存在于 `tests/task/` 作为验证替身。Tender 接入、前端、E2E 和 Workflow 仍未实现，必须按独立 Change 继续交付。
+Task Management 当前实现 `app/platform/task` 的状态机、Attempt/Event 生命周期、命令幂等基础、PostgreSQL 生命周期持久化、受信任服务端生产者提交能力、独立 Worker 执行边界、恢复/取消/重试调度以及主体隔离的 Task HTTP 查询与控制接口。一次合法领取以单条 `TASK_CLAIMED` 事件同时记录领取和开始执行；安全 `TaskView` 不含 lease 或输入指纹，含 lease 的契约仅供受信任执行器内部消费。受信任提交从已认证主体确定 owner，并由 Composition 固定 task type、尝试限制、重试策略和展示字段白名单；它不是公开 HTTP 或浏览器创建入口。Task HTTP 只允许已认证主体查询自己的 Task、读取脱敏事件、协作取消、按策略手动重试，以及读取已完成且 Conversation 匹配的 Tender 结果资源元数据；文件仍通过既有 Attachment 下载接口读取。路由通过 Application/Port 执行 owner admission，不暴露创建、领取、续租、结果回写、恢复调度或 lease。PostgreSQL Repository 将 Task、Attempt、Event 和命令回执在同一事务中保存，并以唯一约束、外键、行锁、`SKIP LOCKED` 候选选择和 active Attempt/lease 到期索引保护持久化不变量。Worker 通过固定 task type 执行器绑定轮询、续租和安全结果回写；RecoveryCoordinator、RetryScheduler 和 CancellationCoordinator 只通过 Application/Port 触发过期恢复、退避重入队、协作取消和受策略约束的手动重试；内存仓储仅存在于 `tests/task/` 作为验证替身。Tender 异步 Consumer 已将有 Conversation 的生成结果保存为主体/会话绑定的 Attachment 资源；无 Conversation 的 MCP Task 仍仅保留内部结果，直到独立 MCP 结果协议交付。前端、E2E 和 Workflow 仍未实现，必须按独立 Change 继续交付。
 
 ### 2.3 请求入口
 
@@ -245,10 +245,10 @@ Agent Management 是平台对 Agent 能力进行登记、发现、授权和运�
 - `Platform Capability Catalog`：统一记录可用能力的类型、输入契约、权限、确认策略和分发键。
 - `Agent Call Policy`：结合当前主体、目录条目、输入和批准信息判断是否允许调用。
 - `AgentCallDispatcher`：执行策略通过且仍与服务端目录一致的 Agent 调用，并将已授权调用交给 Composition Root 注入的执行策略。
-- `Agent Execution Strategy`：Agent 调用的协议无关执行插口；当前由同步策略适配现有 Runtime，TM-07.3 增加了由 Composition 固定配置的异步档案路由和 Agent→Task 桥接，TM-07.4 为 Tender 的 `generate_bid_skeleton` 增加主体绑定快照和固定 Task Executor。后续 SubAgent 或 Workflow 仍只能在该边界后扩展，不改变目录和授权流程。
+- `Agent Execution Strategy`：Agent 调用的协议无关执行插口；当前由同步策略适配现有 Runtime，TM-07.3 增加了由 Composition 固定配置的异步档案路由和 Agent→Task 桥接，TM-07.4 为 Tender 的 `generate_bid_skeleton` 增加主体绑定快照和固定 Task Executor，TM-07.5 将有 Conversation 绑定的完成结果映射为受控 Attachment 资源。后续 SubAgent 或 Workflow 仍只能在该边界后扩展，不改变目录和授权流程。
 - `Agent Runtime`：根据目录中的固定分发绑定调用业务 Agent，不维护第二份注册表。
 
-执行策略是 Agent Management 内部边界，不是客户端可选参数。策略只能接收服务端重新读取的能力条目、固定 `dispatch_key`、标准化输入和可信主体上下文。未登记异步档案的能力继续由同步策略处理；已登记能力由 Agent→Task 桥接通过既有受信任 Task 提交 Application 创建固定策略的 Task，并返回不透明执行引用。桥接只保存输入指纹和安全展示摘要，不保存原始输入、凭据或 lease；它不提供通用 HTTP、MCP 或浏览器 Task 创建入口。TM-07.4 的 Tender Consumer 通过主体绑定的 Attachment 快照读取器消费 `tender.generate_bid_skeleton`，使用固定 Executor、lease 续租和协作取消；结果资源公开映射仍属于后续独立 Change。
+执行策略是 Agent Management 内部边界，不是客户端可选参数。策略只能接收服务端重新读取的能力条目、固定 `dispatch_key`、标准化输入和可信主体上下文。未登记异步档案的能力继续由同步策略处理；已登记能力由 Agent→Task 桥接通过既有受信任 Task 提交 Application 创建固定策略的 Task，并返回不透明执行引用。桥接只保存输入指纹和安全展示摘要，不保存原始输入、凭据或 lease；它不提供通用 HTTP、MCP 或浏览器 Task 创建入口。Tender Consumer 通过主体绑定的 Attachment 快照读取器消费 `tender.generate_bid_skeleton`，使用固定 Executor、lease 续租和协作取消；有 Conversation 绑定的完成结果通过固定结果保存端口映射为 Attachment 资源，并只能由相同主体和 Conversation 通过 Task 资源查询及既有下载接口访问。MCP 调用没有 Conversation 时保持内部结果保存，不伪造浏览器资源。
 
 自然语言 Agent 调用链路如下：
 
@@ -299,7 +299,7 @@ Security 通过 `PrincipalResolverPort` 将服务端可信上下文解析为 `Re
 
 ### 4.10 Task Management
 
-Task Management 是平台级的任务生命周期能力。`app/platform/task` 提供 Task、Attempt、Event 的领域状态机、合法转换和命令幂等契约；合法领取以唯一 `TASK_CLAIMED` 事件同时形成执行开始事实。受信任服务端生产者通过固定提交档案和已认证主体创建 Task，不能覆盖 owner、task type、尝试策略或展示字段白名单；该能力保持为内部 Application 契约，不新增公开创建协议。`app/infrastructure/persistence` 中的 PostgreSQL Repository 负责聚合恢复、过期 active Attempt 与到期 `retry_wait` 候选的 `SKIP LOCKED` 锁定、行锁、事务内状态/Event/命令回执写入以及数据库关系约束；事件元数据仍只接受按事件类型白名单化的标准 JSON 安全数据。受信任 Worker 通过固定 task type 执行器绑定进行单次轮询、lease 续租和安全结果回写；RecoveryCoordinator、RetryScheduler、CancellationCoordinator 和 ManualRetryCoordinator 通过 Application/Port 触发恢复、退避重入队、协作取消和手动重试，不强杀执行器或 Provider。TM-07.4 的 Tender Executor 只通过 Worker 上下文读取 owner、opaque Attachment 快照引用和取消/续租回调，调用既有 TenderApplication，并以安全结果摘要和指纹回写；原始文件、输入指纹、Prompt、lease 和 Provider 响应不进入公开投影或生命周期事件。主体隔离的 Task HTTP 位于 `app/interfaces/http`，只提供安全 Task/事件查询、协作取消和受策略约束的手动重试；它不提供创建、领取、续租、结果回写、恢复调度或 lease token。`TaskView` 是不含输入指纹和 lease 的安全投影，含 lease 的命令与结果只允许受信任执行器内部消费。内存验证替身位于 `tests/task/`，不属于运行时适配器。Domain、Application 和 Ports 不依赖 HTTP、ORM 或数据库。Tender 接入、结果资源映射、前端页面和 Workflow 必须以此领域契约为边界，不能反向把基础设施或业务规则放入 Domain。
+Task Management 是平台级的任务生命周期能力。`app/platform/task` 提供 Task、Attempt、Event 的领域状态机、合法转换和命令幂等契约；合法领取以唯一 `TASK_CLAIMED` 事件同时形成执行开始事实。受信任服务端生产者通过固定提交档案和已认证主体创建 Task，不能覆盖 owner、task type、尝试策略或展示字段白名单；该能力保持为内部 Application 契约，不新增公开创建协议。`app/infrastructure/persistence` 中的 PostgreSQL Repository 负责聚合恢复、过期 active Attempt 与到期 `retry_wait` 候选的 `SKIP LOCKED` 锁定、行锁、事务内状态/Event/命令回执写入以及数据库关系约束；事件元数据仍只接受按事件类型白名单化的标准 JSON 安全数据。受信任 Worker 通过固定 task type 执行器绑定进行单次轮询、lease 续租和安全结果回写；RecoveryCoordinator、RetryScheduler、CancellationCoordinator 和 ManualRetryCoordinator 通过 Application/Port 触发恢复、退避重入队、协作取消和手动重试，不强杀执行器或 Provider。Tender Executor 只通过 Worker 上下文读取 owner、opaque Attachment 快照引用和取消/续租回调，调用既有 TenderApplication；具有 Conversation 绑定的成功结果由固定端口以 Task ID 幂等写入 Attachment 资源清单，清单和下载均重新校验 owner、Conversation、文件元数据和 sha256。原始文件、输入指纹、Prompt、lease 和 Provider 响应不进入公开投影或生命周期事件；结果资源查询只返回资源 ID、文件名、媒体类型、大小、摘要和既有下载地址。主体隔离的 Task HTTP 位于 `app/interfaces/http`，只提供安全 Task/事件查询、协作取消、受策略约束的手动重试和已完成结果资源读取。Task HTTP 不提供创建、领取、续租、结果回写、恢复调度或 lease token。`TaskView` 是不含输入指纹和 lease 的安全投影，含 lease 的命令与结果只允许受信任执行器内部消费。内存验证替身位于 `tests/task/`，不属于运行时适配器。Domain、Application 和 Ports 不依赖 HTTP、ORM 或数据库。前端页面、E2E 和 Workflow 必须以此领域契约为边界，不能反向把基础设施或业务规则放入 Domain。
 
 ## 5. 业务应用
 

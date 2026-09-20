@@ -568,7 +568,11 @@ def test_architecture_baseline_describes_task_management_boundaries() -> None:
     assert "RecoveryCoordinator、RetryScheduler 和 CancellationCoordinator" in architecture
     assert "主体隔离的 Task HTTP 查询与控制接口" in architecture
     assert "Task HTTP 只允许已认证主体查询自己的 Task" in architecture
-    assert "Tender 接入、前端、E2E 和 Workflow" in architecture
+    assert (
+        "Tender 异步 Consumer 已将有 Conversation 的生成结果保存为主体/会话绑定的 "
+        "Attachment 资源"
+    ) in architecture
+    assert "无 Conversation 的 MCP Task 仍仅保留内部结果" in architecture
     assert "不提供创建、领取、续租、结果回写、恢复调度或 lease" in architecture
     assert "app/platform/task" in architecture
 
@@ -583,6 +587,7 @@ def test_trusted_task_submission_does_not_add_public_protocol_or_business_bypass
     assert task_route_paths == {
         "",
         "/{task_id}",
+        "/{task_id}/resources",
         "/{task_id}/events",
         "/{task_id}/cancel",
         "/{task_id}/retry",
