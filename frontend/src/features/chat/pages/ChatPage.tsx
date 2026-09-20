@@ -58,6 +58,7 @@ type ChatMessageStatus =
   | "needs_clarification"
   | "unrecognized"
   | "completed"
+  | "accepted"
   | "cancelled"
   | "rejected"
   | "failed";
@@ -1012,6 +1013,7 @@ function statusLabel(status: ChatMessage["status"]): string {
   if (status === "awaiting_confirmation") return "等待批准";
   if (status === "confirming") return "正在执行";
   if (status === "cancelling") return "正在取消";
+  if (status === "accepted") return "已接收，等待处理";
   if (status === "needs_clarification") return "需要补充";
   if (status === "unrecognized") return "未能理解";
   if (status === "cancelled") return "已取消";

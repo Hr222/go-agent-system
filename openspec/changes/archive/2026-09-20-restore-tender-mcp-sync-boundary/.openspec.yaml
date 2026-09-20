@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-09-20
+goal: 外部 Tender MCP 保持同步结果协议，内部异步 Task 路由不影响 MCP 调用

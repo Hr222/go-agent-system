@@ -11,7 +11,6 @@ from app.business.agents.tender.application.service import TenderApplication
 from app.business.agents.tender.application.task_execution import (
     TenderTaskInputSnapshotProvider,
 )
-from app.business.agents.tender.ports.task_port import FilesystemTenderTaskResultStore
 from app.business.online.application.ask_knowledge import AskKnowledgeUseCase
 from app.business.online.application.data_acquisition import (
     ChecklistDataProviderRegistry,
@@ -86,7 +85,6 @@ from app.composition.online import (
 )
 from app.composition.task import (
     build_owned_task_application,
-    build_task_result_resource_application,
     build_trusted_task_submission_service,
 )
 from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
@@ -169,7 +167,6 @@ from app.platform.llm.application.streaming_chat import StreamingChatApplication
 from app.platform.llm.contracts import ChatLlmPort, StreamingChatLlmPort, StructuredLlmPort
 from app.platform.task.application import (
     OwnedTaskApplication,
-    TaskResultResourceApplication,
     TrustedTaskSubmissionProfile,
 )
 from app.shared.config import settings
@@ -187,13 +184,14 @@ def get_db_session() -> Generator[Session, None, None]:
 
 @contextmanager
 def tender_mcp_dispatch_scope(principal):  # noqa: ANN001
-    """为一次 MCP 工具调用组装并关闭数据库绑定的分发依赖。"""
+    """为一次外部 MCP 调用组装同步分发依赖。"""
 
     session = SessionLocal()
     container = ApplicationContainer(session)
     try:
         yield McpDispatchScope(
-            dispatcher=container.agent_call_dispatcher(),
+            # MCP V1 必须在请求内返回文件资源，不能继承内部 Dialogue 的异步 Task 路由。
+            dispatcher=container.agent_call_dispatcher(use_async_task_routes=False),
             attachment_storage=container.attachment_storage(),
             principal=principal,
         )
@@ -259,8 +257,6 @@ class ApplicationContainer:
             InteractionChatStreamApplication | None
         ) = None
         self._owned_task_application: OwnedTaskApplication | None = None
-        self._task_result_resource_application: TaskResultResourceApplication | None = None
-        self._tender_task_result_store: FilesystemTenderTaskResultStore | None = None
         self._openai_client_factory = openai_client_factory
         self._persistence_gateway: PolicyPersistenceGateway | None = None
         self._write_repository: KnowledgeWriteRepository | None = None
@@ -291,6 +287,7 @@ class ApplicationContainer:
         self._capability_dispatch_registry = None
         self._agent_runtime: AgentRuntime | None = None
         self._agent_call_dispatcher: AgentCallDispatcher | None = None
+        self._synchronous_agent_call_dispatcher: AgentCallDispatcher | None = None
         self._dialogue_agent_invocation: DialogueAgentInvocationService | None = None
         self._dialogue_agent_continuation: DialogueAgentContinuationService | None = None
         self._dialogue_agent_turn_worker: DialogueAgentTurnWorker | None = None
@@ -345,8 +342,22 @@ class ApplicationContainer:
             )
         return self._agent_runtime
 
-    def agent_call_dispatcher(self) -> AgentCallDispatcher:
-        """提供后续 Dialogue Runtime 使用的 V2 受控 Agent 分发服务。"""
+    def agent_call_dispatcher(
+        self,
+        *,
+        use_async_task_routes: bool = True,
+    ) -> AgentCallDispatcher:
+        """按内部异步或外部同步语义组装受控 Agent 分发服务。"""
+
+        if not use_async_task_routes:
+            if self._synchronous_agent_call_dispatcher is None:
+                self._synchronous_agent_call_dispatcher = build_agent_call_dispatcher(
+                    self.platform_capability_catalog(),
+                    agent_runtime=self.agent_runtime,
+                    artifact_storage=self.attachment_storage(),
+                    task_routes=(),
+                )
+            return self._synchronous_agent_call_dispatcher
 
         if self._agent_call_dispatcher is None:
             task_routes: tuple[AgentTaskRoute, ...] = ()
@@ -483,26 +494,6 @@ class ApplicationContainer:
         if self._owned_task_application is None:
             self._owned_task_application = build_owned_task_application(self.session)
         return self._owned_task_application
-
-    def tender_task_result_store(self) -> FilesystemTenderTaskResultStore:
-        """提供固定的 Tender 结果资源清单读取适配器。"""
-
-        if self._tender_task_result_store is None:
-            self._tender_task_result_store = FilesystemTenderTaskResultStore(
-                Path(settings.tender_task_result_workspace),
-                attachment_storage=self.attachment_storage(),
-            )
-        return self._tender_task_result_store
-
-    def task_result_resource_application(self) -> TaskResultResourceApplication:
-        if self.session is None:
-            raise RuntimeError("Task 结果资源查询需要数据库 session，但容器未提供。")
-        if self._task_result_resource_application is None:
-            self._task_result_resource_application = build_task_result_resource_application(
-                self.session,
-                self.tender_task_result_store(),
-            )
-        return self._task_result_resource_application
 
     def capability_candidate_retrieval(self) -> CapabilityCandidateRetrieval:
         if self._capability_candidate_retrieval is None:

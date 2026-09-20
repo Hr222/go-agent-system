@@ -1,0 +1,6 @@
+- [x] 1.1（对应 `tender-mcp-agent-dispatch`：外部同步协议）为 `ApplicationContainer` 增加显式 Dispatcher 模式，并让 `tender_mcp_dispatch_scope` 禁用异步 Task Route；完成条件：MCP Scope 构造的 Dispatcher 不包含任何异步档案。
+- [x] 1.2（对应 `tender-async-task-execution`：内部异步边界）保持默认 Dialogue Dispatcher 注册 `agent.tender.generate_bid_skeleton` 异步档案；完成条件：内部调用路径仍可返回 `accepted` execution reference。
+- [x] 1.3（对应本 Change 范围）撤回 TM-07.5 的 Task 结果资源存储、资源 HTTP 路由、正式规格、归档工件和测试；完成条件：当前代码不再提供 Task 结果下载协议，TM-07.4 仅保存内部结果副本。
+- [x] 2.1（对应两个修改需求）增加组合测试，覆盖 MCP 同步 Dispatcher 与内部异步 Dispatcher 的路由隔离；完成条件：测试能在异步档案存在时证明 MCP 不创建 Task。
+- [x] 2.2（对应 `tender-mcp-agent-dispatch`）运行 Tender MCP、Agent Task Bridge、异步 Tender 和架构边界测试；完成条件：相关测试通过且没有修改 MCP 输入输出协议。
+- [x] 3.1（对应本 Change 范围）同步架构和进度文档，移除 TM-07.5 下载桥和依赖它的 TM-08 浏览器任务工作台；完成条件：文档与当前实现一致，`git diff --check` 通过。

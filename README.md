@@ -25,10 +25,23 @@ Go Agent System 是一个面向 Agent 开发的平台型应用。它将 LLM、Kn
 - 通用资料处理 Pipeline：文件读取、格式解析、OCR、清洗、结构提取、分块、Embedding 和 Knowledge 写入。
 - Knowledge/RAG：向量检索、关键词检索、结果融合、排序、版本发布、引用和证据不足处理。
 - LLM：文本 Chat、流式 Chat、结构化输出、Embedding、Provider 适配、重试和请求治理。
-- Conversation 与 Dialogue：会话创建、历史读写、事件记录、多轮上下文、流式回答和 Agent 结果续写。
+- Conversation 与 Dialogue：会话创建、历史读写、事件记录、多轮上下文、流式回答和同步 Agent 结果续写；内部异步 Agent 会返回 `accepted` 与安全执行引用，不自动生成终态会话消息。
 - Interaction Gateway：自然语言能力识别、输入复核、权限校验、确认提议和受控分发。
 - Agent Management：平台能力目录、Agent 调用策略、固定分发和 Agent Runtime。
-- Attachment：上传、访问绑定、读取、存储和业务结果下载。
+- Attachment：上传、访问绑定、读取和存储；当前 Tender 外部 MCP 在请求内返回资源，Task 结果下载与任务工作台尚未实现。
+
+### Tender 与 Task 运行边界
+
+- 外部 Tender MCP 保持同步：由同步 Dispatcher 在当前请求内返回 `EmbeddedResource`。
+- 内部 Dialogue 的 Tender 调用可提交既有受信任 Task；Chat 只显示 `accepted` 和安全 `execution_reference`。
+- Tender Task Worker 是独立进程，不嵌入 HTTP 生命周期：
+
+  ```powershell
+  python -m app.run_tender_task_worker
+  ```
+
+  Worker 固定运行恢复、重试和 Tender Executor 阶段；通过 `TASK_WORKER_ID`、`TASK_WORKER_POLL_INTERVAL_SECONDS` 与 `TASK_WORKER_BATCH_SIZE` 配置运行参数，不能从命令行选择任意执行器。
+- Task 终态回传 Conversation、Task 结果下载、Workflow 和多 Agent 编排不属于当前 Change。
 
 ### 业务应用
 

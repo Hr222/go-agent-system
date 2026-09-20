@@ -3,11 +3,11 @@
 ## Purpose
 TBD - created by archiving change route-tender-mcp-through-agent-dispatch. Update Purpose after archive.
 ## Requirements
-### Requirement: Tender MCP 工具必须通过统一 Agent 分发执行
+### Requirement: Tender MCP 工具必须通过统一 Agent 分发执行并保持同步结果协议
 
 三个 Tender MCP 工具 MUST 将协议输入组装为 `StructuredAgentCall`，并通过
 `AgentCallDispatcher` 执行。MCP Adapter MUST NOT 直接取得或调用 `TenderApplication`，也
-不得绕过能力目录、主体权限、输入契约或固定分发键。
+不得绕过能力目录、主体权限、输入契约或固定分发键。外部 MCP Dispatcher MUST 使用同步执行策略，不得注册或选择内部异步 Task 档案。
 
 #### Scenario: 合法主体调用骨架生成工具
 
@@ -16,6 +16,13 @@ TBD - created by archiving change route-tender-mcp-through-agent-dispatch. Updat
 - **THEN** MCP Adapter 使用服务端固定能力代码构造一次结构化调用
 - **AND** `AgentCallDispatcher` 完成目录、权限、输入和运行时校验后执行 Tender Agent
 - **AND** MCP 返回同步的结构化分析和生成文件资源
+- **AND** 不创建 Task、Attempt、Task Event 或 Task 结果资源清单
+
+#### Scenario: 内部异步档案不得污染 MCP
+
+- **WHEN** Composition 同时为内部 Dialogue 注册了 `agent.tender.generate_bid_skeleton` 异步档案
+- **THEN** MCP Scope 仍使用同步 Dispatcher
+- **AND** MCP 不返回 `accepted`、`execution_reference` 或浏览器下载 URL
 
 #### Scenario: MCP 调用没有受保护权限
 

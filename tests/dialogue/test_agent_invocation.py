@@ -173,6 +173,45 @@ def test_invocation_writes_call_and_result_without_assistant_message() -> None:
     assert len(dispatcher.calls) == 1
 
 
+def test_accepted_invocation_writes_only_safe_call_reference() -> None:
+    service, conversation, write, events, dispatcher = _service(
+        AgentCallDispatchResult(
+            status="accepted",
+            call=_call(str(uuid4())),
+            execution_reference="task:execution-1",
+        )
+    )
+    call = _call(str(conversation.id))
+    dispatcher.result = AgentCallDispatchResult(
+        status="accepted",
+        call=call,
+        execution_reference="task:execution-1",
+    )
+
+    response = service.invoke(
+        DialogueAgentInvocationCommand(
+            conversation_id=conversation.id,
+            capability_code=call.capability_code,
+            inputs=dict(call.inputs),
+            principal=_principal(),
+            call=call,
+        )
+    )
+
+    assert response.status == "accepted"
+    assert response.execution_reference == "task:execution-1"
+    assert response.output is None
+    assert write.messages == []
+    assert [event.event_type for event in events.events] == ["agent_call"]
+    assert events.events[0].payload == {
+        "status": "accepted",
+        "input_fields": ["file_name"],
+        "execution_reference": "task:execution-1",
+    }
+    assert "lease" not in repr(events.events[0].payload)
+    assert "招标.docx" not in repr(events.events[0].payload)
+
+
 def test_confirmation_required_does_not_execute_and_returns_controlled_state() -> None:
     call = _call(str(uuid4()))
     result = AgentCallDispatchResult(

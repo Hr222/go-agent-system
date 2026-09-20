@@ -22,13 +22,7 @@ from app.platform.task.application.recovery import (
     RetryScheduler,
     SchedulingResult,
 )
-from app.platform.task.application.result_resources import (
-    TaskResultResource,
-    TaskResultResourceApplication,
-    TaskResultResourceReaderPort,
-    TaskResultResourcesQuery,
-    TaskResultResourcesView,
-)
+from app.platform.task.application.runner import ManagedWorkerStage, TaskWorkerRunner
 from app.platform.task.application.trusted_submission import (
     TrustedTaskSubmissionCommand,
     TrustedTaskSubmissionProfile,
@@ -66,11 +60,8 @@ __all__ = [
     "RecoveryCoordinator",
     "RetryScheduler",
     "SchedulingResult",
-    "TaskResultResource",
-    "TaskResultResourceApplication",
-    "TaskResultResourceReaderPort",
-    "TaskResultResourcesQuery",
-    "TaskResultResourcesView",
+    "ManagedWorkerStage",
+    "TaskWorkerRunner",
     "TrustedTaskSubmissionCommand",
     "TrustedTaskSubmissionProfile",
     "TrustedTaskSubmissionService",

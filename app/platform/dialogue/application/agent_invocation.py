@@ -109,14 +109,17 @@ class DialogueAgentInvocationService:
             )
         )
         if command.persist_call_event:
+            event_payload: dict[str, object] = {
+                "status": dispatched.status,
+                "input_fields": sorted(call.inputs),
+            }
+            if dispatched.status == "accepted" and dispatched.execution_reference is not None:
+                event_payload["execution_reference"] = dispatched.execution_reference
             self._append_event(
                 conversation_id=conversation_id,
                 call=call,
                 event_type="agent_call",
-                payload={
-                    "status": dispatched.status,
-                    "input_fields": sorted(call.inputs),
-                },
+                payload=event_payload,
             )
         return self._finish(conversation_id, call, dispatched)
 

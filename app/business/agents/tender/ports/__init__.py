@@ -17,11 +17,9 @@ from app.business.agents.tender.ports.task_port import (
     AttachmentTenderTaskInputReader,
     FilesystemTenderTaskResultStore,
     InMemoryTenderTaskResultStore,
-    TenderResultResourceStoreError,
     TenderTaskInput,
     TenderTaskInputReaderPort,
     TenderTaskInputSnapshotPort,
-    TenderTaskResourceStorePort,
     TenderTaskResultStorePort,
 )
 
@@ -38,10 +36,8 @@ __all__ = [
     "AttachmentTenderTaskInputReader",
     "FilesystemTenderTaskResultStore",
     "InMemoryTenderTaskResultStore",
-    "TenderResultResourceStoreError",
     "TenderTaskInput",
     "TenderTaskInputReaderPort",
     "TenderTaskInputSnapshotPort",
-    "TenderTaskResourceStorePort",
     "TenderTaskResultStorePort",
 ]

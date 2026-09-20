@@ -24,7 +24,6 @@ from app.platform.task.application.recovery import (
     RecoveryCoordinator,
     RetryScheduler,
 )
-from app.platform.task.application.result_resources import TaskResultResourceApplication
 from app.platform.task.application.trusted_submission import (
     TrustedTaskSubmissionProfile,
     TrustedTaskSubmissionService,
@@ -90,14 +89,11 @@ def build_tender_task_worker(
 ) -> TaskWorker:
     """固定绑定 Tender task type，不允许运行时从请求选择执行器。"""
 
-    configured_result_store = result_store or FilesystemTenderTaskResultStore(
-        Path(settings.tender_task_result_workspace),
-        attachment_storage=attachment_storage,
-    )
     executor = TenderTaskExecutor(
         application=tender_application,
         input_reader=AttachmentTenderTaskInputReader(attachment_storage),
-        result_store=configured_result_store,
+        result_store=result_store
+        or FilesystemTenderTaskResultStore(Path(settings.tender_task_result_workspace)),
         clock=clock,
     )
     return build_task_worker(
@@ -169,18 +165,6 @@ def build_owned_task_application(session: Session) -> OwnedTaskApplication:
         repository,
         CancellationCoordinator(lifecycle),
         ManualRetryCoordinator(lifecycle),
-    )
-
-
-def build_task_result_resource_application(
-    session: Session,
-    resource_reader,
-) -> TaskResultResourceApplication:  # noqa: ANN001 - protocol adapter is injected by composition
-    """组装主体隔离的 Task 结果资源查询用例。"""
-
-    return TaskResultResourceApplication(
-        build_task_repository(session),
-        resource_reader,
     )
 
 

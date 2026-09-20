@@ -30,10 +30,7 @@ from app.platform.interaction.ports.proposal_store import PendingProposalStorePo
 from app.platform.knowledge.application.knowledge_base import KnowledgeBaseService
 from app.platform.knowledge.application.management_service import KnowledgeManagementService
 from app.platform.knowledge.application.publication_service import KnowledgePublicationService
-from app.platform.task.application import (
-    OwnedTaskApplication,
-    TaskResultResourceApplication,
-)
+from app.platform.task.application import OwnedTaskApplication
 from app.shared.config import settings
 
 
@@ -122,14 +119,6 @@ def get_owned_task_application(
     """提供主体隔离的 Task HTTP Application。"""
 
     return container.owned_task_application()
-
-
-def get_task_result_resource_application(
-    container: ApplicationContainer = Depends(get_application_container),
-) -> TaskResultResourceApplication:
-    """提供主体和会话双重隔离的 Task 结果资源查询用例。"""
-
-    return container.task_result_resource_application()
 
 
 @lru_cache(maxsize=1)

@@ -90,6 +90,13 @@ class Settings(BaseSettings):
         default=".runtime/tender_task_results",
         alias="TENDER_TASK_RESULT_WORKSPACE",
     )
+    task_worker_id: str = Field(default="tender-worker", alias="TASK_WORKER_ID")
+    task_worker_poll_interval_seconds: float = Field(
+        default=1.0,
+        gt=0,
+        alias="TASK_WORKER_POLL_INTERVAL_SECONDS",
+    )
+    task_worker_batch_size: int = Field(default=50, gt=0, alias="TASK_WORKER_BATCH_SIZE")
     attachment_max_size_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
     attachment_retention_seconds: int = Field(default=24 * 60 * 60, gt=0)
     attachment_allowed_media_types: str = (
