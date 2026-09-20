@@ -34,6 +34,7 @@ GatewayStatus = Literal[
     "pending",
     "cancelled",
     "completed",
+    "accepted",
     "rejected",
     "failed",
 ]

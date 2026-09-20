@@ -5,7 +5,7 @@ TBD - created by archiving change run-tender-agent-as-async-task. Update Purpose
 ## Requirements
 ### Requirement: Tender 指定能力必须按固定档案进入异步 Task
 
-系统 MUST 只为服务端登记的 `agent.tender.generate_bid_skeleton` 能力配置异步档案，并使用固定的 `tender.generate_bid_skeleton` Task 类型、尝试策略和元数据白名单。客户端输入、模型输出和协议适配器 MUST NOT 选择其他 Task 类型或执行器；未登记的 Tender 能力继续使用同步策略。
+系统 MUST 只为内部受控 Agent 调用登记 `agent.tender.generate_bid_skeleton` 异步档案，并使用固定的 `tender.generate_bid_skeleton` Task 类型、尝试策略和元数据白名单。客户端输入、模型输出和协议适配器 MUST NOT 选择其他 Task 类型或执行器；未登记的 Tender 能力继续使用同步策略。外部 Tender MCP 即使调用同一能力代码，也 MUST 使用同步 Dispatcher，不得因共享 Composition Root 而进入 Task Worker。
 
 #### Scenario: Tender 生成能力被受控接收
 
@@ -18,6 +18,12 @@ TBD - created by archiving change run-tender-agent-as-async-task. Update Purpose
 - **WHEN** 主体调用 `extract_bid_format_section` 或 `verify_extraction_boundary`
 - **THEN** 系统继续使用同步 Agent Runtime
 - **AND** 不创建 Task、Attempt 或 Task Event
+
+#### Scenario: 外部 MCP 调用保持同步
+
+- **WHEN** 外部 Tender MCP 调用 `tender.generate_bid_skeleton`
+- **THEN** 系统使用同步 Dispatcher 在当前请求内完成调用
+- **AND** MCP 返回既有结构化文件结果，不创建 Task 或返回 `execution_reference`
 
 ### Requirement: 异步 Tender 输入必须形成主体绑定的安全快照
 
@@ -116,4 +122,3 @@ TBD - created by archiving change run-tender-agent-as-async-task. Update Purpose
 - **WHEN** Tender 异步路由未配置或快照依赖不可用
 - **THEN** 未登记异步能力继续同步执行，登记能力返回受控不可用错误
 - **AND** 不发生隐式同步降级或公开 Task 创建
-

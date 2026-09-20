@@ -90,6 +90,81 @@ def test_application_container_composes_tender_application_without_database() ->
     assert application.llm is fake_llm
 
 
+def test_application_container_separates_mcp_sync_and_internal_task_dispatchers(
+    monkeypatch,
+) -> None:  # noqa: ANN001
+    captured_routes: list[tuple[object, ...]] = []
+
+    class Submission:
+        def __init__(self, profile) -> None:  # noqa: ANN001
+            self.profile = profile
+
+        def submit(self, *_args) -> None:  # noqa: ANN002
+            return None
+
+    def build_dispatcher(_catalog, **kwargs):  # noqa: ANN001
+        routes = kwargs["task_routes"]
+        captured_routes.append(routes)
+        return routes
+
+    monkeypatch.setattr(composition_root, "build_agent_call_dispatcher", build_dispatcher)
+    monkeypatch.setattr(
+        composition_root,
+        "build_trusted_task_submission_service",
+        lambda _session, profile: Submission(profile),
+    )
+
+    container = ApplicationContainer(
+        session=object(),
+        capability_catalog=object(),
+        attachment_storage=object(),
+    )
+
+    mcp_dispatcher = container.agent_call_dispatcher(use_async_task_routes=False)
+    internal_dispatcher = container.agent_call_dispatcher()
+
+    assert mcp_dispatcher == ()
+    assert len(internal_dispatcher) == 1
+    assert internal_dispatcher[0].profile.capability_code == "agent.tender.generate_bid_skeleton"
+    assert captured_routes == [(), internal_dispatcher]
+
+
+def test_tender_mcp_scope_uses_synchronous_dispatcher(monkeypatch) -> None:  # noqa: ANN001
+    calls: list[bool] = []
+
+    class Session:
+        def rollback(self) -> None:
+            raise AssertionError("正常 MCP 调用不应回滚会话")
+
+        def close(self) -> None:
+            return None
+
+    class Container:
+        def __init__(self, session) -> None:  # noqa: ANN001
+            assert isinstance(session, Session)
+
+        def agent_call_dispatcher(self, *, use_async_task_routes: bool = True) -> str:
+            calls.append(use_async_task_routes)
+            return "synchronous-dispatcher"
+
+        @staticmethod
+        def attachment_storage() -> str:
+            return "attachment-storage"
+
+        @staticmethod
+        def close() -> None:
+            return None
+
+    monkeypatch.setattr(composition_root, "SessionLocal", Session)
+    monkeypatch.setattr(composition_root, "ApplicationContainer", Container)
+
+    with composition_root.tender_mcp_dispatch_scope(object()) as scope:
+        assert scope.dispatcher == "synchronous-dispatcher"
+        assert scope.attachment_storage == "attachment-storage"
+
+    assert calls == [False]
+
+
 def test_application_container_shares_openai_client_factory_with_rag() -> None:
     factory = OpenAICompatibleClientFactory(
         configuration=Settings(

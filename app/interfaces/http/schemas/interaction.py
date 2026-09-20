@@ -65,6 +65,7 @@ class InteractionGatewayResponse(BaseModel):
         "pending",
         "cancelled",
         "completed",
+        "accepted",
         "rejected",
         "failed",
     ]

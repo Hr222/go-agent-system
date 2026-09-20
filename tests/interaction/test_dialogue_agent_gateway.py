@@ -129,6 +129,18 @@ class RecordingDialogueInvocation:
         )
 
 
+class AcceptedDialogueInvocation(RecordingDialogueInvocation):
+    def invoke(self, command):  # noqa: ANN001
+        self.invoke_commands.append(command)
+        return DialogueAgentInvocationResult(
+            status="accepted",
+            conversation_id=self.conversation_id,
+            call=self.call,
+            message="Agent 调用已接收，等待后续执行结果。",
+            execution_reference="task:execution-1",
+        )
+
+
 class RecordingDialogueContinuation:
     def __init__(self, conversation_id) -> None:  # noqa: ANN001
         self.conversation_id = conversation_id
@@ -262,6 +274,36 @@ def test_chat_agent_confirmation_runs_only_after_gateway_returns_approval() -> N
     assert len(dialogue.invoke_commands) == 1
     assert dialogue.invoke_commands[0].approved_dispatch is not None
     assert dialogue.invoke_commands[0].persist_call_event is False
+
+
+def test_chat_agent_confirmation_returns_accepted_reference_without_continuation() -> None:
+    gateway = PendingAgentGateway()
+    dialogue = AcceptedDialogueInvocation()
+    application = InteractionChatStreamApplication(
+        gateway,  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        dialogue_agent_invocation=dialogue,  # type: ignore[arg-type]
+        pending_agent_invocations=InMemoryPendingAgentInvocationStore(),
+        dialogue_agent_turn_executor=_turn_executor(dialogue),
+    )
+    principal = _principal()
+    application.prepare(
+        InteractionChatStreamCommand(
+            user_input="请生成投标骨架",
+            principal=principal,
+            provided_inputs={},
+        )
+    )
+
+    result = asyncio.run(
+        application.confirm_agent(
+            GatewayConfirmationCommand("proposal-agent-1", "confirm", principal)
+        )
+    )
+
+    assert result is not None
+    assert result.status == "accepted"
+    assert result.execution_result == {"execution_reference": "task:execution-1"}
 
 
 def test_chat_agent_confirmation_continues_once_after_single_agent_execution() -> None:

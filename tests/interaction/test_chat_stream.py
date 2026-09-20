@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -785,6 +785,40 @@ def test_http_confirmation_uses_dialogue_agent_result_when_context_is_bound() ->
         "agent_result": {"artifact": {"file_name": "骨架.docx", "size": 42}},
     }
     assert dialogue_application.commands[0].proposal_id == "proposal-agent-1"
+
+
+def test_http_confirmation_returns_accepted_execution_reference() -> None:
+    class DialogueConfirmationApplication:
+        async def confirm_agent(self, command):  # noqa: ANN001
+            del command
+            return GatewayResult(
+                status="accepted",
+                message="Agent 调用已接收，等待后续执行结果。",
+                conversation_id=uuid4(),
+                execution_result={"execution_reference": "task:execution-1"},
+            )
+
+    class UnexpectedGateway:
+        def confirm(self, command):  # noqa: ANN001
+            raise AssertionError("已绑定的对话 Agent 不应进入通用分发确认路径")
+
+    application = create_app()
+    application.dependency_overrides[get_interaction_chat_stream_application] = (
+        DialogueConfirmationApplication
+    )
+    application.dependency_overrides[get_intent_interaction_gateway] = UnexpectedGateway
+    try:
+        response = TestClient(application).post(
+            "/api/v1/interaction/proposals/proposal-agent-1/confirmation",
+            json={"action": "confirm"},
+        )
+    finally:
+        application.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "accepted"
+    assert body["execution_result"] == {"execution_reference": "task:execution-1"}
 
 
 def test_http_confirmation_keeps_agent_result_when_continuation_fails() -> None:

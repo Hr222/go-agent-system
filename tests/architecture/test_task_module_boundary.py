@@ -121,21 +121,6 @@ def test_task_http_routes_use_application_dependencies_only() -> None:
     assert "input_fingerprint" not in schema_source
 
 
-def test_task_result_resource_query_keeps_storage_out_of_http_and_task_application() -> None:
-    route_source = Path("app/interfaces/http/routes/tasks.py").read_text(encoding="utf-8")
-    application_source = TASK_ROOT.joinpath("application", "result_resources.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert "TaskResultResourceApplication" in route_source
-    assert "get_task_result_resource_application" in route_source
-    assert "FilesystemTenderTaskResultStore" not in route_source
-    assert "AttachmentStoragePort" not in route_source
-    assert "app.business" not in application_source
-    assert "app.interfaces" not in application_source
-    assert "app.infrastructure" not in application_source
-
-
 def test_agent_task_bridge_uses_trusted_submission_without_task_repository() -> None:
     bridge_source = Path(
         "app/platform/interaction/application/agent_task_bridge.py"

@@ -24,7 +24,7 @@ from app.platform.interaction.domain.confirmation import ApprovedCapabilityDispa
 from app.platform.security.domain.principal import RequestPrincipal
 from app.shared.async_task import await_shielded_task
 
-DialogueAgentTurnStatus = Literal["completed", "cancelled", "rejected", "failed"]
+DialogueAgentTurnStatus = Literal["completed", "accepted", "cancelled", "rejected", "failed"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,11 +130,14 @@ class DialogueAgentTurnWorker(DialogueAgentTurnWorkerPort):
             )
 
         if invocation.status != "completed":
+            execution_result = invocation.output
+            if invocation.status == "accepted":
+                execution_result = {"execution_reference": invocation.execution_reference}
             return DialogueAgentTurnResult(
                 status=_terminal_status(invocation.status),
                 message=invocation.message,
                 conversation_id=invocation.conversation_id,
-                execution_result=invocation.output,
+                execution_result=execution_result,
                 error_code=invocation.error_code,
             )
 
@@ -292,6 +295,8 @@ def _terminal_status(status: str) -> DialogueAgentTurnStatus:
         return "rejected"
     if status == "completed":
         return "completed"
+    if status == "accepted":
+        return "accepted"
     return "failed"
 
 

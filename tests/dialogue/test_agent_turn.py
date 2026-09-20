@@ -18,11 +18,13 @@ from app.platform.conversation.ports import (
 )
 from app.platform.dialogue.application import (
     ConversationTurnCoordinator,
+    DialogueAgentInvocationResult,
     DialogueAgentTurnCommand,
     DialogueAgentTurnExecutor,
     DialogueAgentTurnPreparation,
     DialogueAgentTurnRequest,
     DialogueAgentTurnResult,
+    DialogueAgentTurnWorker,
     StreamingConversationCommand,
     StreamingConversationRuntime,
 )
@@ -337,6 +339,35 @@ def test_blocking_agent_turn_serializes_same_conversation_but_not_another() -> N
         ("assistant", "Agent 已完成。")
     ]
     assert coordinator.tracked_conversation_count == 0
+
+
+def test_agent_turn_preserves_accepted_reference_without_continuation() -> None:
+    conversation_id = uuid4()
+    request = _agent_turn_request(conversation_id)
+    preparation = request.confirm()
+    assert preparation.command is not None
+
+    class AcceptedInvocation:
+        def invoke(self, command):  # noqa: ANN001
+            return DialogueAgentInvocationResult(
+                status="accepted",
+                conversation_id=conversation_id,
+                call=command.call,
+                message="Agent 调用已接收，等待后续执行结果。",
+                execution_reference="task:execution-1",
+            )
+
+    class UnexpectedContinuation:
+        def execute(self, command):  # noqa: ANN001
+            raise AssertionError("accepted 调用不得触发 continuation")
+
+    result = DialogueAgentTurnWorker(
+        invocation=AcceptedInvocation(),  # type: ignore[arg-type]
+        continuation=UnexpectedContinuation(),  # type: ignore[arg-type]
+    ).execute(preparation.command)
+
+    assert result.status == "accepted"
+    assert result.execution_result == {"execution_reference": "task:execution-1"}
 
 
 def test_cancelling_started_agent_turn_keeps_lease_until_worker_finishes() -> None:

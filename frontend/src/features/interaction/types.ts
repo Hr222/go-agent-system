@@ -4,6 +4,7 @@ export type InteractionStatus =
   | "pending"
   | "cancelled"
   | "completed"
+  | "accepted"
   | "rejected"
   | "failed";
 

@@ -15,7 +15,6 @@ from app.business.agents.tender.errors import (
     TenderRenderError,
 )
 from app.business.agents.tender.ports.task_port import (
-    TenderResultResourceStoreError,
     TenderTaskInput,
     TenderTaskInputReaderPort,
     TenderTaskResultStorePort,
@@ -135,7 +134,6 @@ class TenderTaskExecutor:
                 task_id=context.task_id,
                 owner_subject=context.owner_subject,
                 result=result,
-                conversation_id=snapshot.conversation_id,
             )
             fingerprint = _result_fingerprint(result)
             return TaskExecutionSuccess(
@@ -153,8 +151,6 @@ class TenderTaskExecutor:
                 result_fingerprint="tender-upstream-failed",
                 retry_at=self._clock().astimezone(UTC) + self.retry_delay,
             )
-        except TenderResultResourceStoreError:
-            return _permanent_failure("TENDER_RESULT_RESOURCE_STORE_FAILED")
         except ValueError:
             return _permanent_failure("TENDER_INPUT_SNAPSHOT_UNAVAILABLE")
         except Exception:  # noqa: BLE001 - worker boundary must not leak details
