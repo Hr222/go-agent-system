@@ -118,3 +118,45 @@ def test_task_http_routes_use_application_dependencies_only() -> None:
     assert "TaskRecord" not in route_source
     assert "lease_token" not in schema_source
     assert "input_fingerprint" not in schema_source
+
+
+def test_agent_task_bridge_uses_trusted_submission_without_task_repository() -> None:
+    bridge_source = Path(
+        "app/platform/interaction/application/agent_task_bridge.py"
+    ).read_text(encoding="utf-8")
+    port_source = Path(
+        "app/platform/interaction/ports/agent_task_bridge.py"
+    ).read_text(encoding="utf-8")
+
+    assert "TaskRepositoryPort" not in bridge_source
+    assert "TaskLifecycleService" not in bridge_source
+    assert "PostgresTaskRepository" not in bridge_source
+    assert "TrustedTaskSubmissionCommand" in bridge_source
+    assert "TaskRepositoryPort" not in port_source
+    assert "TaskLifecycleService" not in port_source
+
+
+def test_agent_protocol_and_business_agent_do_not_import_task_write_internals() -> None:
+    forbidden_prefixes = (
+        "app.platform.task.ports.repository",
+        "app.platform.task.application.lifecycle_service",
+    )
+    source_files = [
+        *Path("app/interfaces/agent").rglob("*.py"),
+        *Path("app/business/agents").rglob("*.py"),
+        Path("app/platform/interaction/application/agent_execution.py"),
+    ]
+
+    for path in source_files:
+        for imported in _imports_from(path):
+            assert not imported.startswith(forbidden_prefixes), (
+                f"{path} 不能直接依赖 Task Repository 或生命周期服务：{imported}"
+            )
+
+
+def test_task_http_has_no_generic_task_creation_route() -> None:
+    route_source = Path("app/interfaces/http/routes/tasks.py").read_text(encoding="utf-8")
+    assert '"/tasks"' not in route_source
+    assert '@router.post("/{task_id}/cancel"' in route_source
+    assert '@router.post("/{task_id}/retry"' in route_source
+    assert 'def create_task' not in route_source

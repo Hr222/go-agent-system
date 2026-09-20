@@ -80,6 +80,12 @@ class TrustedTaskSubmissionService:
         self._lifecycle_service = lifecycle_service
         self._profile = profile
 
+    @property
+    def profile(self) -> TrustedTaskSubmissionProfile:
+        """只读暴露固定档案，供服务端 Composition 校验跨能力绑定。"""
+
+        return self._profile
+
     def submit(
         self,
         principal: RequestPrincipal,

@@ -7,6 +7,14 @@ from app.platform.interaction.ports.agent_execution import (
     AgentExecutionStrategyPort,
 )
 from app.platform.interaction.ports.agent_runtime import AgentRuntimePort
+from app.platform.interaction.ports.agent_task_bridge import (
+    AgentTaskInputSnapshot,
+    AgentTaskInputSnapshotPort,
+    AgentTaskProfile,
+    AgentTaskProfileRegistryPort,
+    AgentTaskRoute,
+    AgentTaskSubmissionPort,
+)
 from app.platform.interaction.ports.attachment_resolver import CapabilityAttachmentResolverPort
 from app.platform.interaction.ports.capability_catalog import (
     CapabilityCatalogPort,
@@ -27,6 +35,12 @@ __all__ = [
     "InteractionChatPreparationWorkerFactoryPort",
     "InteractionChatPreparationWorkerPort",
     "AgentRuntimePort",
+    "AgentTaskInputSnapshot",
+    "AgentTaskInputSnapshotPort",
+    "AgentTaskProfile",
+    "AgentTaskProfileRegistryPort",
+    "AgentTaskRoute",
+    "AgentTaskSubmissionPort",
     "AgentExecutionCommand",
     "AgentExecutionOutcome",
     "AgentExecutionStatus",

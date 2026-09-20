@@ -34,6 +34,12 @@ from app.platform.interaction.application.agent_dispatch import AgentCallDispatc
 from app.platform.interaction.application.agent_execution import (
     SynchronousAgentRuntimeExecutionStrategy,
 )
+from app.platform.interaction.application.agent_task_bridge import (
+    AgentTaskBridge,
+    AgentTaskExecutionStrategyRouter,
+    AgentTaskProfileRegistry,
+    UnconfiguredAgentTaskInputSnapshotProvider,
+)
 from app.platform.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
 from app.platform.interaction.application.catalog import PlatformCapabilityCatalog
 from app.platform.interaction.application.dispatch import (
@@ -46,6 +52,10 @@ from app.platform.interaction.application.gateway import (
 )
 from app.platform.interaction.domain.attachment import ResolvedAttachment
 from app.platform.interaction.domain.capability import PlatformCapability
+from app.platform.interaction.ports.agent_task_bridge import (
+    AgentTaskInputSnapshotPort,
+    AgentTaskRoute,
+)
 from app.platform.interaction.ports.capability_catalog import CapabilityCatalogPort
 from app.platform.llm.application.chat import ChatApplication, ChatCommand
 from app.platform.llm.ports import TextEmbeddingPort
@@ -175,15 +185,28 @@ def build_agent_call_dispatcher(
     *,
     agent_runtime: Callable[[], AgentRuntime],
     artifact_storage: AttachmentStoragePort | None = None,
+    task_routes: tuple[AgentTaskRoute, ...] = (),
+    snapshot_provider: AgentTaskInputSnapshotPort | None = None,
 ) -> AgentCallDispatcher:
-    """组装 V2 结构化 Agent 调用的策略后分发边界。"""
+    """组装 V2 分发边界；异步档案只能由 Composition 显式固定绑定。"""
+
+    synchronous_strategy = SynchronousAgentRuntimeExecutionStrategy(
+        agent_runtime(),
+        error_mapper=_map_tender_execution_error,
+    )
+    profile_registry = AgentTaskProfileRegistry(task_routes)
+    task_bridge = AgentTaskBridge(
+        profile_registry,
+        snapshot_provider or UnconfiguredAgentTaskInputSnapshotProvider(),
+    )
 
     return AgentCallDispatcher(
         capability_catalog,
         AgentCallPolicyValidator(capability_catalog),
-        execution_strategy=SynchronousAgentRuntimeExecutionStrategy(
-            agent_runtime(),
-            error_mapper=_map_tender_execution_error,
+        execution_strategy=AgentTaskExecutionStrategyRouter(
+            profile_registry,
+            synchronous_strategy,
+            task_bridge,
         ),
         artifact_storage=artifact_storage,
     )

@@ -15,6 +15,13 @@ from app.platform.interaction.application.agent_dispatch import (
 from app.platform.interaction.application.agent_execution import (
     SynchronousAgentRuntimeExecutionStrategy,
 )
+from app.platform.interaction.application.agent_task_bridge import (
+    AgentTaskBridge,
+    AgentTaskExecutionStrategyRouter,
+    AgentTaskProfileRegistry,
+    CanonicalAgentTaskInputSnapshotProvider,
+    UnconfiguredAgentTaskInputSnapshotProvider,
+)
 from app.platform.interaction.application.attachment_resolution import (
     CapabilityAttachmentResolver,
 )
@@ -59,6 +66,11 @@ __all__ = [
     "AgentCallDispatchResult",
     "AgentDispatchStatus",
     "SynchronousAgentRuntimeExecutionStrategy",
+    "AgentTaskBridge",
+    "AgentTaskExecutionStrategyRouter",
+    "AgentTaskProfileRegistry",
+    "CanonicalAgentTaskInputSnapshotProvider",
+    "UnconfiguredAgentTaskInputSnapshotProvider",
     "AgentRuntimePort",
     "CapabilityDispatchBinding",
     "CapabilityDispatchRegistry",
