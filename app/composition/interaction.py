@@ -25,6 +25,9 @@ from app.platform.agent.runtime import AgentRuntime
 from app.platform.attachment.ports.storage_port import AttachmentStoragePort
 from app.platform.interaction.application.agent_call_policy import AgentCallPolicyValidator
 from app.platform.interaction.application.agent_dispatch import AgentCallDispatcher
+from app.platform.interaction.application.agent_execution import (
+    SynchronousAgentRuntimeExecutionStrategy,
+)
 from app.platform.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
 from app.platform.interaction.application.catalog import PlatformCapabilityCatalog
 from app.platform.interaction.application.dispatch import (
@@ -171,7 +174,7 @@ def build_agent_call_dispatcher(
     return AgentCallDispatcher(
         capability_catalog,
         AgentCallPolicyValidator(capability_catalog),
-        agent_runtime(),
+        execution_strategy=SynchronousAgentRuntimeExecutionStrategy(agent_runtime()),
         artifact_storage=artifact_storage,
     )
 

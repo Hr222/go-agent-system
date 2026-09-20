@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
 from pydantic import BaseModel
 
 from app.composition.interaction import build_agent_call_dispatcher
@@ -17,6 +18,10 @@ from app.platform.interaction.application.agent_dispatch import (
 from app.platform.interaction.domain.agent_call import StructuredAgentCall
 from app.platform.interaction.domain.capability import PlatformCapability
 from app.platform.interaction.domain.confirmation import ApprovedCapabilityDispatch
+from app.platform.interaction.ports.agent_execution import (
+    AgentExecutionCommand,
+    AgentExecutionOutcome,
+)
 from app.platform.security.domain.principal import RequestPrincipal
 
 
@@ -115,6 +120,16 @@ class RecordingRuntime:
         )
         if isinstance(self.outcome, Exception):
             raise self.outcome
+        return self.outcome
+
+
+@dataclass
+class RecordingExecutionStrategy:
+    outcome: AgentExecutionOutcome
+    calls: list[AgentExecutionCommand] = field(default_factory=list)
+
+    def execute(self, command: AgentExecutionCommand) -> AgentExecutionOutcome:
+        self.calls.append(command)
         return self.outcome
 
 
@@ -377,3 +392,72 @@ def test_composition_can_inject_agent_runtime_for_v2_dispatcher() -> None:
 
     assert result.status == "completed"
     assert len(runtime.calls) == 1
+
+
+def test_dispatch_accepts_an_explicit_execution_strategy_and_preserves_context() -> None:
+    capability = _capability()
+    catalog = SequenceCatalog([capability, capability])
+    strategy = RecordingExecutionStrategy(
+        AgentExecutionOutcome.completed({"answer": "已生成"})
+    )
+    dispatcher = AgentCallDispatcher(
+        catalog,  # type: ignore[arg-type]
+        AgentCallPolicyValidator(catalog),  # type: ignore[arg-type]
+        execution_strategy=strategy,
+    )
+
+    result = dispatcher.dispatch(
+        AgentCallDispatchCommand(call=_call(), principal=_principal())
+    )
+
+    assert result.status == "completed"
+    assert result.result is not None
+    assert result.result.output == {"answer": "已生成"}
+    assert len(strategy.calls) == 1
+    assert strategy.calls[0].call.call_id == "call-1"
+    assert strategy.calls[0].capability.dispatch_key == capability.dispatch_key
+
+
+def test_dispatch_does_not_call_injected_strategy_when_policy_rejects() -> None:
+    capability = _capability(confirmation_policy="always")
+    catalog = SequenceCatalog([capability])
+    strategy = RecordingExecutionStrategy(AgentExecutionOutcome.completed({}))
+    dispatcher = AgentCallDispatcher(
+        catalog,  # type: ignore[arg-type]
+        AgentCallPolicyValidator(catalog),  # type: ignore[arg-type]
+        execution_strategy=strategy,
+    )
+
+    result = dispatcher.dispatch(
+        AgentCallDispatchCommand(call=_call(), principal=_principal())
+    )
+
+    assert result.status == "confirmation_required"
+    assert strategy.calls == []
+
+
+def test_dispatch_returns_accepted_execution_reference_without_creating_a_task() -> None:
+    capability = _capability()
+    catalog = SequenceCatalog([capability, capability])
+    strategy = RecordingExecutionStrategy(AgentExecutionOutcome.accepted("exec-1"))
+    dispatcher = AgentCallDispatcher(
+        catalog,  # type: ignore[arg-type]
+        AgentCallPolicyValidator(catalog),  # type: ignore[arg-type]
+        execution_strategy=strategy,
+    )
+
+    result = dispatcher.dispatch(
+        AgentCallDispatchCommand(call=_call(), principal=_principal())
+    )
+
+    assert result.status == "accepted"
+    assert result.execution_reference == "exec-1"
+    assert result.result is None
+    assert result.error is None
+
+
+def test_execution_outcome_rejects_invalid_accepted_and_failed_shapes() -> None:
+    with pytest.raises(ValueError, match="执行引用"):
+        AgentExecutionOutcome(status="accepted")
+    with pytest.raises(ValueError, match="失败结果"):
+        AgentExecutionOutcome(status="failed", error_code="FAILED")

@@ -12,6 +12,9 @@ from app.platform.interaction.application.agent_dispatch import (
     AgentCallDispatchResult,
     AgentDispatchStatus,
 )
+from app.platform.interaction.application.agent_execution import (
+    SynchronousAgentRuntimeExecutionStrategy,
+)
 from app.platform.interaction.application.candidate_retrieval import CapabilityCandidateRetrieval
 from app.platform.interaction.application.catalog import PlatformCapabilityCatalog
 from app.platform.interaction.application.chat_stream import InteractionChatStreamApplication
@@ -29,6 +32,12 @@ from app.platform.interaction.domain.capability import (
     ConfirmationPolicy,
     PlatformCapability,
 )
+from app.platform.interaction.ports.agent_execution import (
+    AgentExecutionCommand,
+    AgentExecutionOutcome,
+    AgentExecutionStatus,
+    AgentExecutionStrategyPort,
+)
 from app.platform.interaction.ports.agent_runtime import AgentRuntimePort
 
 __all__ = [
@@ -41,6 +50,11 @@ __all__ = [
     "AgentCallDispatchResult",
     "AgentDispatchStatus",
     "AgentRuntimePort",
+    "AgentExecutionCommand",
+    "AgentExecutionOutcome",
+    "AgentExecutionStatus",
+    "AgentExecutionStrategyPort",
+    "SynchronousAgentRuntimeExecutionStrategy",
     "AgentCallError",
     "AgentCallResult",
     "CapabilityPrincipal",

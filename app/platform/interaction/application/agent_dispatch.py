@@ -16,6 +16,9 @@ from app.platform.interaction.application.agent_call_policy import (
     AgentCallPolicyResult,
     AgentCallPolicyValidator,
 )
+from app.platform.interaction.application.agent_execution import (
+    SynchronousAgentRuntimeExecutionStrategy,
+)
 from app.platform.interaction.domain.agent_call import (
     AgentCallError,
     AgentCallResult,
@@ -23,12 +26,18 @@ from app.platform.interaction.domain.agent_call import (
 )
 from app.platform.interaction.domain.capability import PlatformCapability
 from app.platform.interaction.domain.confirmation import ApprovedCapabilityDispatch
+from app.platform.interaction.ports.agent_execution import (
+    AgentExecutionCommand,
+    AgentExecutionOutcome,
+    AgentExecutionStrategyPort,
+)
 from app.platform.interaction.ports.agent_runtime import AgentRuntimePort
 from app.platform.interaction.ports.capability_catalog import CapabilityCatalogPort
 from app.platform.security.domain.principal import RequestPrincipal
 
 AgentDispatchStatus = Literal[
     "completed",
+    "accepted",
     "confirmation_required",
     "rejected",
     "unavailable",
@@ -53,6 +62,7 @@ class AgentCallDispatchResult:
     call: StructuredAgentCall
     result: AgentCallResult | None = None
     error: AgentCallError | None = None
+    execution_reference: str | None = None
 
 
 class AgentCallDispatcher:
@@ -62,12 +72,19 @@ class AgentCallDispatcher:
         self,
         capability_catalog: CapabilityCatalogPort,
         policy_validator: AgentCallPolicyValidator,
-        agent_runtime: AgentRuntimePort,
+        agent_runtime: AgentRuntimePort | None = None,
         artifact_storage: AttachmentStoragePort | None = None,
+        execution_strategy: AgentExecutionStrategyPort | None = None,
     ) -> None:
         self._capability_catalog = capability_catalog
         self._policy_validator = policy_validator
-        self._agent_runtime = agent_runtime
+        if execution_strategy is not None and agent_runtime is not None:
+            raise ValueError("不能同时配置 Agent Runtime 和执行策略。")
+        if execution_strategy is None and agent_runtime is None:
+            raise ValueError("必须配置 Agent Runtime 或执行策略。")
+        self._execution_strategy = execution_strategy or SynchronousAgentRuntimeExecutionStrategy(
+            agent_runtime  # type: ignore[arg-type]
+        )
         self._artifact_storage = artifact_storage
 
     def dispatch(self, command: AgentCallDispatchCommand) -> AgentCallDispatchResult:
@@ -86,11 +103,12 @@ class AgentCallDispatcher:
             return capability
 
         try:
-            raw_output = self._agent_runtime.execute(
-                capability_code=command.call.capability_code,
-                dispatch_key=capability.dispatch_key,
-                inputs=dict(command.call.inputs),
-                permissions=command.principal.permission_tuple(),
+            outcome = self._execution_strategy.execute(
+                AgentExecutionCommand(
+                    call=command.call,
+                    capability=capability,
+                    principal=command.principal,
+                )
             )
         except LookupError:
             return _error_result(
@@ -113,9 +131,30 @@ class AgentCallDispatcher:
                 error_code="DISPATCH_EXECUTION_FAILED",
                 message="Agent 执行失败。",
             )
+        if not isinstance(outcome, AgentExecutionOutcome):
+            return _error_result(
+                command.call,
+                status="failed",
+                error_code="AGENT_EXECUTION_RESULT_INVALID",
+                message="Agent 执行策略返回了不受支持的结果。",
+            )
+        if outcome.status == "accepted":
+            return AgentCallDispatchResult(
+                status="accepted",
+                call=command.call.model_copy(deep=True),
+                execution_reference=outcome.execution_reference,
+            )
+        if outcome.status == "failed":
+            return _error_result(
+                command.call,
+                status="failed",
+                error_code=outcome.error_code or "DISPATCH_EXECUTION_FAILED",
+                message=outcome.message or "Agent 执行失败。",
+                retryable=outcome.retryable,
+            )
         try:
             output = _as_json_object(
-                raw_output,
+                outcome.output,
                 artifact_storage=self._artifact_storage,
                 access_context=AttachmentAccessContext(
                     subject=command.principal.subject,
@@ -329,6 +368,7 @@ def _error_result(
     status: AgentDispatchStatus,
     error_code: str,
     message: str,
+    retryable: bool = False,
 ) -> AgentCallDispatchResult:
     return AgentCallDispatchResult(
         status=status,
@@ -337,7 +377,7 @@ def _error_result(
             **_correlation_fields(call),
             error_code=error_code,
             message=message,
-            retryable=False,
+            retryable=retryable,
         ),
     )
 

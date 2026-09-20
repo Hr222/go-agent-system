@@ -244,8 +244,11 @@ Agent Management 是平台对 Agent 能力进行登记、发现、授权和运�
 
 - `Platform Capability Catalog`：统一记录可用能力的类型、输入契约、权限、确认策略和分发键。
 - `Agent Call Policy`：结合当前主体、目录条目、输入和批准信息判断是否允许调用。
-- `AgentCallDispatcher`：执行策略通过且仍与服务端目录一致的 Agent 调用。
+- `AgentCallDispatcher`：执行策略通过且仍与服务端目录一致的 Agent 调用，并将已授权调用交给 Composition Root 注入的执行策略。
+- `Agent Execution Strategy`：Agent 调用的协议无关执行插口；当前由同步策略适配现有 Runtime，未来异步 Task、SubAgent 或 Workflow 只能在该边界后扩展，不改变目录和授权流程。
 - `Agent Runtime`：根据目录中的固定分发绑定调用业务 Agent，不维护第二份注册表。
+
+执行策略是 Agent Management 内部边界，不是客户端可选参数。策略只能接收服务端重新读取的能力条目、固定 `dispatch_key`、标准化输入和可信主体上下文；当前同步策略只返回完成或受控失败，不创建 Task。延迟执行引用可以作为内部结果类型预留，但必须由后续独立 Change 定义其 Task 映射和外部投影。
 
 自然语言 Agent 调用链路如下：
 
@@ -258,6 +261,7 @@ sequenceDiagram
     participant Policy as 确认策略 / Agent Call Policy
     participant Invoke as DialogueAgentInvocation
     participant Dispatch as AgentCallDispatcher
+    participant Strategy as Agent Execution Strategy
     participant Runtime as Agent Runtime
     participant Agent as 业务 Agent
     participant Continue as DialogueAgentContinuation
@@ -274,7 +278,8 @@ sequenceDiagram
     Policy-->>Turn: 已批准的受控分发信息
     Turn->>Invoke: 在私有 worker 中创建已批准的 Agent 调用
     Invoke->>Dispatch: 受控分发
-    Dispatch->>Runtime: 校验目录并执行
+    Dispatch->>Strategy: 授权后交给注入策略
+    Strategy->>Runtime: 同步策略校验目录并执行
     Runtime->>Agent: 固定 dispatch_key
     Agent-->>Runtime: 结构化结果
     Runtime-->>Dispatch: 调用结果

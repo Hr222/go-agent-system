@@ -1,5 +1,11 @@
 """平台交互端口。"""
 
+from app.platform.interaction.ports.agent_execution import (
+    AgentExecutionCommand,
+    AgentExecutionOutcome,
+    AgentExecutionStatus,
+    AgentExecutionStrategyPort,
+)
 from app.platform.interaction.ports.agent_runtime import AgentRuntimePort
 from app.platform.interaction.ports.attachment_resolver import CapabilityAttachmentResolverPort
 from app.platform.interaction.ports.capability_catalog import (
@@ -20,6 +26,10 @@ __all__ = [
     "InteractionChatPreparationWorkerFactoryPort",
     "InteractionChatPreparationWorkerPort",
     "AgentRuntimePort",
+    "AgentExecutionCommand",
+    "AgentExecutionOutcome",
+    "AgentExecutionStatus",
+    "AgentExecutionStrategyPort",
     "CapabilityAttachmentResolverPort",
     "PendingProposalStorePort",
 ]

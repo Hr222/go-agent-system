@@ -12,6 +12,9 @@ from app.platform.interaction.application.agent_dispatch import (
     AgentCallDispatchResult,
     AgentDispatchStatus,
 )
+from app.platform.interaction.application.agent_execution import (
+    SynchronousAgentRuntimeExecutionStrategy,
+)
 from app.platform.interaction.application.attachment_resolution import (
     CapabilityAttachmentResolver,
 )
@@ -55,6 +58,7 @@ __all__ = [
     "AgentCallDispatcher",
     "AgentCallDispatchResult",
     "AgentDispatchStatus",
+    "SynchronousAgentRuntimeExecutionStrategy",
     "AgentRuntimePort",
     "CapabilityDispatchBinding",
     "CapabilityDispatchRegistry",

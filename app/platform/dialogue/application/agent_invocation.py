@@ -27,6 +27,7 @@ from app.platform.security.domain.principal import RequestPrincipal
 
 InvocationStatus = Literal[
     "completed",
+    "accepted",
     "confirmation_required",
     "cancelled",
     "rejected",
@@ -54,6 +55,7 @@ class DialogueAgentInvocationResult:
     call: StructuredAgentCall
     message: str
     output: dict[str, object] | None = None
+    execution_reference: str | None = None
     error_code: str | None = None
 
 
@@ -243,6 +245,15 @@ class DialogueAgentInvocationService:
                 call=call,
                 message="Agent 已完成执行。",
                 output=output,
+            )
+
+        if dispatched.status == "accepted":
+            return DialogueAgentInvocationResult(
+                status="accepted",
+                conversation_id=conversation_id,
+                call=call,
+                message="Agent 调用已接收，等待后续执行结果。",
+                execution_reference=dispatched.execution_reference,
             )
 
         error = dispatched.error
