@@ -17,6 +17,12 @@ from app.infrastructure.persistence.models.task import (
     TaskEventRecord,
     TaskRecord,
 )
+from app.infrastructure.persistence.models.workflow import (
+    WorkflowCommandReceiptRecord,
+    WorkflowEventRecord,
+    WorkflowNodeRunRecord,
+    WorkflowRunRecord,
+)
 
 __all__ = [
     "ConversationMessageRecord",
@@ -32,4 +38,8 @@ __all__ = [
     "TaskCommandReceiptRecord",
     "TaskEventRecord",
     "TaskRecord",
+    "WorkflowCommandReceiptRecord",
+    "WorkflowEventRecord",
+    "WorkflowNodeRunRecord",
+    "WorkflowRunRecord",
 ]
