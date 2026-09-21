@@ -29,6 +29,7 @@ Go Agent System 是一个面向 Agent 开发的平台型应用。它将 LLM、Kn
 - Interaction Gateway：自然语言能力识别、输入复核、权限校验、确认提议和受控分发。
 - Agent Management：平台能力目录、Agent 调用策略、固定分发和 Agent Runtime。
 - Attachment：上传、访问绑定、读取和存储；当前 Tender 外部 MCP 在请求内返回资源，Task 结果下载与任务工作台尚未实现。
+- Workflow 后端契约：已建立固定 Version、DAG 节点、Run/Node Run 状态、幂等、取消、失败/重试和 PostgreSQL 安全事件边界；当前仅有受信任入口和 Tender 能力绑定样本，没有公开 Workflow API 或完整编排器。
 
 ### Tender 与 Task 运行边界
 
@@ -41,7 +42,7 @@ Go Agent System 是一个面向 Agent 开发的平台型应用。它将 LLM、Kn
   ```
 
   Worker 固定运行恢复、重试和 Tender Executor 阶段；通过 `TASK_WORKER_ID`、`TASK_WORKER_POLL_INTERVAL_SECONDS` 与 `TASK_WORKER_BATCH_SIZE` 配置运行参数，不能从命令行选择任意执行器。
-- Task 终态回传 Conversation、Task 结果下载、Workflow 和多 Agent 编排不属于当前 Change。
+- Task 终态回传 Conversation、Task 结果下载、Workflow 编辑器、动态编排、SubAgent 和多 Agent 协同不属于当前 Change。
 
 ### 业务应用
 

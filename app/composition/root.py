@@ -87,6 +87,7 @@ from app.composition.task import (
     build_owned_task_application,
     build_trusted_task_submission_service,
 )
+from app.composition.workflow import build_workflow_application
 from app.infrastructure.filesystem.attachment_storage import FilesystemAttachmentStorage
 from app.infrastructure.filesystem.policy_file_service import PolicyFileService
 from app.infrastructure.filesystem.upload_service import PolicyUploadService
@@ -169,6 +170,7 @@ from app.platform.task.application import (
     OwnedTaskApplication,
     TrustedTaskSubmissionProfile,
 )
+from app.platform.workflow.application import WorkflowApplication
 from app.shared.config import settings
 
 
@@ -257,6 +259,7 @@ class ApplicationContainer:
             InteractionChatStreamApplication | None
         ) = None
         self._owned_task_application: OwnedTaskApplication | None = None
+        self._workflow_application: WorkflowApplication | None = None
         self._openai_client_factory = openai_client_factory
         self._persistence_gateway: PolicyPersistenceGateway | None = None
         self._write_repository: KnowledgeWriteRepository | None = None
@@ -494,6 +497,16 @@ class ApplicationContainer:
         if self._owned_task_application is None:
             self._owned_task_application = build_owned_task_application(self.session)
         return self._owned_task_application
+
+    def workflow_application(self) -> WorkflowApplication:
+        if self.session is None:
+            raise RuntimeError("Workflow 需要数据库 session，但容器未提供。")
+        if self._workflow_application is None:
+            self._workflow_application = build_workflow_application(
+                self.session,
+                self.platform_capability_catalog(),
+            )
+        return self._workflow_application
 
     def capability_candidate_retrieval(self) -> CapabilityCandidateRetrieval:
         if self._capability_candidate_retrieval is None:

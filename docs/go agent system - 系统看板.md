@@ -10,7 +10,7 @@
 
 ## 2. 当前状态
 
-当前项目已完成上下文管理和 Task Management 的 TM-07.4 Tender 异步 Consumer，并正在收口独立 Worker 与 Dialogue 已接收交接。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；外部 Tender MCP 保持同步，内部 Dialogue 使用异步 Task。
+当前项目已完成上下文管理和 TM-07 系列的 Tender/Task 边界，正在推进 `define-workflow-run-and-node-contracts`。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；外部 Tender MCP 保持同步，内部 Dialogue 使用异步 Task，Workflow 先建立后端运行契约。
 
 | 领域 | 状态 | 当前进度 |
 |---|---|---|
@@ -21,7 +21,7 @@
 | 附件与产物 | 已完成基础链路 | 支持上传、主体/会话访问绑定、Tender 输入解析和受控下载。 |
 | Conversation 与 Dialogue | 已完成当前交付 | 支持会话持久化、历史读取、列表管理、话题概括、主体隔离、轮次串行、Agent 异步接收状态、上下文管理和异步持久化；`accepted` 只返回安全 execution reference，不自动回灌终态消息。 |
 | Task Management | 当前阶段 | TM-01～TM-07.4 已完成并归档；当前 Change 增加独立 Tender Worker 入口和 Dialogue `accepted` 交接。外部 Tender MCP 仍同步返回 `EmbeddedResource`；Task 结果下载、任务前端和 E2E 尚未立项。 |
-| Workflow / Agent 平台 | 后续阶段 | 第三阶段，位于 Task Management 之后；当前前端仅有 Workflow mock，真实编排能力尚未实施。 |
+| Workflow / Agent 平台 | 当前 Change | `define-workflow-run-and-node-contracts` 已完成后端 Domain/Application/Repository 契约与 Tender 固定 Version 样本；编辑器、动态编排和多 Agent 协同仍未实现。 |
 | 真实身份认证与用户模块 | 待规划 | 不作为当前验收项，具体边界以 `ARCHITECTURE.md` 的当前边界为准。 |
 
 ## 3. 已完成 Change
@@ -58,6 +58,7 @@
 | `bridge-agent-calls-to-tasks` | `0be9951` | 已完成并归档；远程推送待网络恢复 |
 | `run-tender-agent-as-async-task` | `e06c81c` | 已完成并归档；外部 MCP 同步边界已由 `restore-tender-mcp-sync-boundary` 收口 |
 | `complete-internal-tender-task-handoff` | 当前工作区 | 实现独立 Tender Worker、Dialogue `accepted` 与安全 execution reference；不包含下载、Workflow 或终态会话回传 |
+| `define-workflow-run-and-node-contracts` | 当前工作区 | 建立固定 Workflow Version、Run/Node Run 状态机、受信任执行端口、PostgreSQL 安全事实和 Tender 能力绑定；不包含公开 Workflow API、编辑器、动态编排、多 Agent 或下载 |
 
 `persist-task-lifecycle` 已将 TM-01 的 Task、Attempt、Event 和命令回执持久化到 PostgreSQL；TM-04 已补充受信任 Worker 的原子领取、lease 续租、固定执行器和安全结果回写；TM-05 已补充过期 lease 恢复、协作取消、退避重入队和受策略约束的手动重试；TM-06 已补充主体隔离的 Task/事件查询、协作取消和手动重试 HTTP 契约，但不实现 Tender、前端或 E2E。TM-01“任务状态机与幂等”及其契约收紧均已完成并归档；同一时间只处理一个 Task Management Change。
 已完成 Change 的完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
@@ -66,7 +67,7 @@
 
 最近一组 Change 的后端验收结果：
 
-TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-05 完成后为 `750 passed`；TM-06 完成后为 `763 passed`；TM-07.2 完成后为 `769 passed`；TM-07.3 完成后为 `781 passed`；TM-07.4 完成后为 `793 passed`；当前 `complete-internal-tender-task-handoff` 完成后为 `803 passed`，另有 2 个既有弃用警告。聚焦测试为 `48 passed`；`ruff check app tests`、`python -m compileall -q app tests`、前端 `npm run build`、严格 OpenSpec 校验和 `git diff --check` 均通过。外部 LLM、Embedding、OCR、MCP 和浏览器链路仍需使用项目现有诊断脚本或人工验收记录，不能只凭单元测试宣称外部服务验收完成。
+TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-05 完成后为 `750 passed`；TM-06 完成后为 `763 passed`；TM-07.2 完成后为 `769 passed`；TM-07.3 完成后为 `781 passed`；TM-07.4 完成后为 `793 passed`；当前 Workflow 聚焦测试为 `12 passed`，Workflow/架构/lint/compile 已通过。数据库集成测试需本地 PostgreSQL 可用后再执行；外部 LLM、Embedding、OCR、MCP 和浏览器链路仍需使用项目现有诊断脚本或人工验收记录，不能只凭单元测试宣称外部服务验收完成。
 
 ## 6. 后续能力优先级
 
@@ -76,7 +77,7 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 |---|---|---|
 | 1 | 上下文管理 | 已完成；会话历史、上下文窗口和多轮上下文链路已交付。 |
 | 2 | Task Management | TM-01～TM-07.4 已完成；完成当前独立 Worker 与 Dialogue 交接后，再根据真实产品目标规划后续 Change。 |
-| 3 | Workflow / Agent 平台 | 后续阶段；依赖 Task Management，尚未实施真实编排引擎。 |
+| 3 | Workflow / Agent 平台 | 当前 Change：先交付固定 Version、Run/Node Run 后端契约；真实编排引擎、编辑器和多 Agent 协同后续另立 Change。 |
 | 4 | 真实认证与用户模块 | 待规划；尚未创建 Change。 |
 
 ### Task Management Change 顺序（占位）
@@ -105,8 +106,8 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 
 ## 7. 当前待办
 
-1. 完成 `complete-internal-tender-task-handoff` 的独立 Worker、Dialogue `accepted` 交接和全量验证；不要在此之前新增浏览器下载或 Workflow 能力。
-2. 根据实际代码和验证结果持续同步 OpenSpec 正式规格并归档已完成 Change。
+1. 完成 `define-workflow-run-and-node-contracts` 的数据库集成验证、全量测试和 OpenSpec 归档。
+2. 后续另立 Change 实现 Workflow 调度、公开入口、编辑器或多 Agent/SubAgent，不把这些内容提前塞入当前契约。
 3. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。
 
 ## 8. 相关文档
