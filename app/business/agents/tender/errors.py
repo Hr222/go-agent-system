@@ -20,3 +20,7 @@ class TenderAnalysisError(TenderError):
 class TenderRenderError(TenderError):
     """投标骨架文件生成失败。"""
 
+
+class TenderResultResourceStoreError(TenderError):
+    """Tender 结果资源无法可靠保存或校验。"""
+

@@ -6,7 +6,7 @@ from time import perf_counter
 from fastapi import FastAPI, Request
 
 from app.composition import tender_mcp_dispatch_scope
-from app.composition.runtime import inspect_knowledge_base_schema
+from app.composition.runtime import inspect_knowledge_base_schema, inspect_task_schema
 from app.interfaces.agent.tender_mcp import (
     TENDER_MCP_MOUNT_PATH,
     create_tender_mcp_server,
@@ -53,6 +53,18 @@ def create_app() -> FastAPI:
             )
         else:
             logger.info("知识库表结构检查通过。")
+        task_schema_status = inspect_task_schema()
+        task_missing_tables = task_schema_status.missing_tables
+        if task_missing_tables is None:
+            logger.warning("数据库不可用，已跳过 Task 表结构检查。")
+        elif task_missing_tables:
+            logger.warning(
+                "Task 表结构未就绪 missing_tables=%s。%s",
+                ",".join(task_missing_tables),
+                task_schema_status.setup_guide,
+            )
+        else:
+            logger.info("Task 表结构检查通过。")
         async with tender_mcp_session_manager.run():
             yield
         stateless_container = get_stateless_application_container()

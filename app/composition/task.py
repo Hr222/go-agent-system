@@ -18,6 +18,7 @@ from app.infrastructure.persistence.repositories.task_repository import Postgres
 from app.platform.attachment.ports.storage_port import AttachmentStoragePort
 from app.platform.task.application.lifecycle_service import TaskLifecycleService
 from app.platform.task.application.owned import OwnedTaskApplication
+from app.platform.task.application.result_resources import TaskResultResourceApplication
 from app.platform.task.application.recovery import (
     CancellationCoordinator,
     ManualRetryCoordinator,
@@ -93,7 +94,10 @@ def build_tender_task_worker(
         application=tender_application,
         input_reader=AttachmentTenderTaskInputReader(attachment_storage),
         result_store=result_store
-        or FilesystemTenderTaskResultStore(Path(settings.tender_task_result_workspace)),
+        or FilesystemTenderTaskResultStore(
+            Path(settings.tender_task_result_workspace),
+            attachment_storage=attachment_storage,
+        ),
         clock=clock,
     )
     return build_task_worker(
@@ -166,6 +170,13 @@ def build_owned_task_application(session: Session) -> OwnedTaskApplication:
         CancellationCoordinator(lifecycle),
         ManualRetryCoordinator(lifecycle),
     )
+
+
+def build_task_result_resource_application(
+    session: Session,
+    resource_reader,
+) -> TaskResultResourceApplication:  # noqa: ANN001
+    return TaskResultResourceApplication(build_task_repository(session), resource_reader)
 
 
 def _utc_now() -> datetime:

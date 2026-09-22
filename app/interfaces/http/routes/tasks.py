@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -11,11 +12,14 @@ from app.interfaces.http.assemblers.task import (
     task_response,
 )
 from app.interfaces.http.dependencies import get_owned_task_application
+from app.interfaces.http.dependencies import get_task_result_resource_application
 from app.interfaces.http.schemas.task import (
     TaskCommandRequest,
     TaskEventPageResponse,
     TaskPageResponse,
     TaskResponse,
+    TaskResultResourceListResponse,
+    TaskResultResourceResponse,
 )
 from app.interfaces.http.security import get_request_principal
 from app.interfaces.http.task_cursor import InvalidTaskCursor, decode_task_cursor
@@ -27,7 +31,9 @@ from app.platform.task.application import (
     OwnedTaskListQuery,
     OwnedTaskQuery,
 )
-from app.platform.task.errors import TaskAccessDeniedError, TaskUnavailableError
+from app.platform.task.application import TaskResultResourceApplication, TaskResultResourcesQuery
+from app.platform.task.errors import TaskAccessDeniedError, TaskResultResourceUnavailableError, TaskUnavailableError
+from app.shared.config import settings
 
 router = APIRouter()
 DEFAULT_TASK_PAGE_SIZE = 50
@@ -147,6 +153,37 @@ def get_task_events(
     except TaskUnavailableError as exc:
         raise _unavailable(exc) from exc
     return task_event_page_response(page)
+
+
+@router.get("/{task_id}/resources", response_model=TaskResultResourceListResponse)
+def get_task_result_resources(
+    task_id: UUID,
+    application: TaskResultResourceApplication = Depends(get_task_result_resource_application),
+    principal: RequestPrincipal = Depends(get_request_principal),
+) -> TaskResultResourceListResponse:
+    try:
+        result = application.list_owned(TaskResultResourcesQuery(principal=principal, task_id=task_id))
+    except TaskAccessDeniedError as exc:
+        raise _access_denied(exc) from exc
+    except TaskResultResourceUnavailableError as exc:
+        raise HTTPException(status_code=404, detail={"code": "TASK_RESOURCES_UNAVAILABLE", "message": "任务结果资源不可用。"}) from exc
+    return TaskResultResourceListResponse(
+        task_id=result.task_id,
+        resources=[
+            TaskResultResourceResponse(
+                resource_id=resource.resource_id,
+                file_name=resource.file_name,
+                media_type=resource.media_type,
+                size_bytes=resource.size_bytes,
+                sha256=resource.sha256,
+                download_url=(
+                    f"{settings.api_v1_prefix}/attachments/{quote(resource.resource_id, safe='')}/download"
+                    f"?conversation_id={quote(result.conversation_id, safe='')}"
+                ),
+            )
+            for resource in result.resources
+        ],
+    )
 
 
 @router.post("/{task_id}/cancel", response_model=TaskResponse)

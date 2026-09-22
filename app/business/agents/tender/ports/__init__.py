@@ -20,8 +20,10 @@ from app.business.agents.tender.ports.task_port import (
     TenderTaskInput,
     TenderTaskInputReaderPort,
     TenderTaskInputSnapshotPort,
+    TenderTaskResourceStorePort,
     TenderTaskResultStorePort,
 )
+from app.business.agents.tender.errors import TenderResultResourceStoreError
 
 __all__ = [
     "StructuredLlmPort",
@@ -39,5 +41,7 @@ __all__ = [
     "TenderTaskInput",
     "TenderTaskInputReaderPort",
     "TenderTaskInputSnapshotPort",
+    "TenderTaskResourceStorePort",
     "TenderTaskResultStorePort",
+    "TenderResultResourceStoreError",
 ]

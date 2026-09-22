@@ -35,6 +35,8 @@ import {
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { isTaskActive, useCancelTask, useRetryTask, useTask, useTaskEvents, useTaskList, useTaskResources } from "../../task-management/hooks/useTasks";
+import type { Task, TaskStatus } from "../../task-management/api/taskApi";
 import styles from "./MockWorkspacePage.module.css";
 
 export type MockPageKind =
@@ -53,13 +55,6 @@ const agentCards = [
   { name: "Tender Agent", key: "tender", description: "把招标文件转换为可执行的投标书章节骨架。", status: "运行中", tone: "green", icon: FileCheck2 },
   { name: "制度检索助手", key: "policy", description: "从已发布制度知识库中检索可追溯的企业事实。", status: "运行中", tone: "green", icon: Search },
   { name: "合同审查员", key: "contract", description: "识别合同中的风险条款并整理审核关注点。", status: "待配置", tone: "amber", icon: ShieldCheck },
-];
-
-const recentTasks = [
-  { id: "TDR-20260724-001", agent: "Tender Agent", title: "华东区域运维服务项目", status: "已完成", tone: "green", time: "今天 09:34", duration: "2m 18s" },
-  { id: "TDR-20260723-004", agent: "制度检索助手", title: "申请材料证明文件检索", status: "已完成", tone: "green", time: "昨天 16:20", duration: "1.8s" },
-  { id: "TDR-20260723-002", agent: "Tender Agent", title: "智慧园区建设项目", status: "处理中", tone: "blue", time: "昨天 14:06", duration: "进行中" },
-  { id: "TDR-20260722-008", agent: "合同审查员", title: "供应商服务协议初审", status: "待配置", tone: "amber", time: "2026/07/22", duration: "-" },
 ];
 
 const skeletonSections = [
@@ -117,7 +112,7 @@ function DashboardMockPage() {
     </div>
 
     <Panel title="最近任务动态" action={<button className={styles.textAction} type="button" onClick={() => navigate("/agents")}>查看全部 <ArrowRight size={13} /></button>}>
-      <TaskTable onOpen={(task) => navigate(task.agent === "Tender Agent" ? `/agents/tender/tasks/${task.id}` : "/chat")} />
+      <WorkspaceTaskTable onOpen={(task) => navigate(`/agents/tender/tasks/${task.id}`)} />
     </Panel>
 
     <div className={styles.quickStartGrid}>
@@ -133,11 +128,11 @@ function AgentsMockPage() {
   const [notice, setNotice] = useState<Notice>(null);
   return <PageShell eyebrow="AGENT WORKSPACE" title="智能体" description="管理可用的业务智能体，查看运行状态和最近任务。" actions={<button className={styles.buttonPrimary} type="button" onClick={() => setNotice({ tone: "info", text: "创建智能体表单将在后续版本接入。当前先使用 Tender Agent mock。" })}><Plus size={15} />创建智能体</button>} notice={notice}>
     <section className={styles.agentHero}>
-      <div className={styles.agentHeroCopy}><div className={styles.heroKicker}>RECOMMENDED AGENT <span>·</span> PHASE 3</div><h2>Tender Agent</h2><p>从招标文件开始，生成可审阅的投标书章节骨架，为后续人工编写保留清晰的结构入口。</p><div className={styles.heroActions}><button className={styles.buttonPrimary} type="button" onClick={() => navigate("/agents/tender")}><Play size={14} />开始一次任务</button><button className={styles.buttonGhost} type="button" onClick={() => navigate("/agents/tender/tasks/TDR-20260724-001/skeleton")}><FileText size={14} />查看示例结果</button></div></div><div className={styles.agentHeroVisual}><div className={styles.heroOrbit} /><div className={styles.heroCore}><FileCheck2 size={26} /></div><span className={`${styles.heroPill} ${styles.heroPillOne}`}>解析</span><span className={`${styles.heroPill} ${styles.heroPillTwo}`}>骨架</span><span className={`${styles.heroPill} ${styles.heroPillThree}`}>审阅</span></div>
+       <div className={styles.agentHeroCopy}><div className={styles.heroKicker}>RECOMMENDED AGENT <span>·</span> PHASE 3</div><h2>Tender Agent</h2><p>从招标文件开始，生成可审阅的投标书章节骨架，为后续人工编写保留清晰的结构入口。</p><div className={styles.heroActions}><button className={styles.buttonPrimary} type="button" onClick={() => navigate("/agents/tender")}><Play size={14} />开始一次任务</button><button className={styles.buttonGhost} type="button" onClick={() => setNotice({ tone: "info", text: "示例结果已移除，请从真实任务列表打开任务。" })}><FileText size={14} />查看任务结果</button></div></div><div className={styles.agentHeroVisual}><div className={styles.heroOrbit} /><div className={styles.heroCore}><FileCheck2 size={26} /></div><span className={`${styles.heroPill} ${styles.heroPillOne}`}>解析</span><span className={`${styles.heroPill} ${styles.heroPillTwo}`}>骨架</span><span className={`${styles.heroPill} ${styles.heroPillThree}`}>审阅</span></div>
     </section>
     <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>AVAILABLE AGENTS</span><h2>可用智能体</h2></div><span className={styles.mutedText}>3 个配置</span></div>
     <div className={styles.agentGrid}>{agentCards.map((agent) => <AgentCard key={agent.key} agent={agent} onOpen={() => agent.key === "tender" ? navigate("/agents/tender") : setNotice({ tone: "info", text: `${agent.name} 当前仅展示 UI mock。` })} />)}</div>
-    <Panel title="最近任务" action={<button className={styles.textAction} type="button" onClick={() => navigate("/agents/tender/tasks/TDR-20260724-001")}>查看详情 <ArrowRight size={13} /></button>}><TaskTable onOpen={(task) => navigate(task.agent === "Tender Agent" ? `/agents/tender/tasks/${task.id}` : "/chat")} /></Panel>
+     <Panel title="最近任务" action={<button className={styles.textAction} type="button" onClick={() => navigate("/agents")}>查看全部 <ArrowRight size={13} /></button>}><WorkspaceTaskTable onOpen={(task) => navigate(`/agents/tender/tasks/${task.id}`)} /></Panel>
   </PageShell>;
 }
 
@@ -145,28 +140,50 @@ function TenderMockPage() {
   const navigate = useNavigate();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
-  const mockTaskId = "TDR-20260724-NEW";
   return <PageShell eyebrow="AGENTS / TENDER" title="Tender Agent" description="上传招标文件，创建一次可追踪的投标书骨架任务。" actions={<button className={styles.buttonSecondary} type="button" onClick={() => navigate("/agents") }><ArrowLeft size={14} />返回智能体</button>} notice={notice}>
     <div className={styles.twoColumnGrid}>
       <div className={styles.stack}>
         <Panel title="输入文件" icon={<CloudUpload size={16} />}><label className={styles.dropzone}><input type="file" accept=".pdf,.doc,.docx" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} /><CloudUpload size={28} /><strong>{selectedFile ? selectedFile.name : "点击选择招标文件"}</strong><span>{selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(1)} MB · 已加入任务` : "支持 PDF、DOC、DOCX，单文件不超过 50 MB"}</span><em>浏览文件</em></label>{selectedFile && <div className={styles.fileRow}><div className={styles.fileIcon}><FileText size={16} /></div><div><strong>{selectedFile.name}</strong><small>待提交 · 原始文件</small></div><button type="button" className={styles.iconButton} title="移除文件" onClick={() => setSelectedFile(null)}><X size={15} /></button></div>}<div className={styles.noteBox}><AlertCircle size={15} /><span>当前 mock 只展示文件输入和任务创建流程，不会上传到后端。</span></div></Panel>
         <Panel title="任务准备检查" icon={<ListChecks size={16} />}><Checklist items={["已选择招标文件", "将生成章节骨架", "任务状态可在详情页追踪"]} /></Panel>
       </div>
-      <Panel title="创建任务" icon={<Zap size={16} />}><div className={styles.formStack}><label>任务名称<input defaultValue="华东区域运维服务项目 · 投标书骨架" /></label><label>输出模式<select defaultValue="skeleton"><option value="skeleton">投标书章节骨架</option><option value="outline">技术响应目录</option></select></label><label>备注<textarea defaultValue="请重点关注技术指标响应、项目实施计划和人员资质证明。" rows={5} /></label><div className={styles.formDivider} /><div className={styles.formSummary}><span>预计处理时间</span><strong>约 2 - 5 分钟</strong></div><button className={styles.buttonPrimaryWide} type="button" disabled={!selectedFile} onClick={() => navigate(`/agents/tender/tasks/${mockTaskId}`)}><Play size={15} />创建 Tender 任务</button>{!selectedFile && <small className={styles.formHint}>请先选择一个招标文件</small>}</div></Panel>
+      <Panel title="创建任务" icon={<Zap size={16} />}><div className={styles.formStack}><label>任务名称<input defaultValue="华东区域运维服务项目 · 投标书骨架" /></label><label>输出模式<select defaultValue="skeleton"><option value="skeleton">投标书章节骨架</option><option value="outline">技术响应目录</option></select></label><label>备注<textarea defaultValue="请重点关注技术指标响应、项目实施计划和人员资质证明。" rows={5} /></label><div className={styles.formDivider} /><div className={styles.formSummary}><span>预计处理时间</span><strong>约 2 - 5 分钟</strong></div><button className={styles.buttonPrimaryWide} type="button" disabled={!selectedFile} onClick={() => setNotice({ tone: "info", text: "任务创建由对话或受信任 Agent 入口完成，浏览器上传创建将在后续 Change 接入。" })}><Play size={15} />提交到受信任入口</button>{!selectedFile && <small className={styles.formHint}>请先选择一个招标文件</small>}</div></Panel>
     </div>
-    <Panel title="最近 Tender 任务" action={<button className={styles.textAction} type="button" onClick={() => navigate(`/agents/tender/tasks/${mockTaskId}`)}>打开示例任务 <ArrowRight size={13} /></button>}><TaskTable tenderOnly onOpen={(task) => navigate(`/agents/tender/tasks/${task.id}`)} /></Panel>
+    <Panel title="最近 Tender 任务" action={<button className={styles.textAction} type="button" onClick={() => navigate("/agents")}>查看全部 <ArrowRight size={13} /></button>}><WorkspaceTaskTable tenderOnly onOpen={(task) => navigate(`/agents/tender/tasks/${task.id}`)} /></Panel>
   </PageShell>;
 }
 
 function TenderTaskMockPage() {
   const navigate = useNavigate();
-  const { taskId = "TDR-20260724-001" } = useParams();
+  const { taskId } = useParams();
   const [notice, setNotice] = useState<Notice>(null);
-  return <PageShell eyebrow="AGENTS / TENDER / TASK" title="任务详情" description={`${taskId} · 华东区域运维服务项目`} actions={<><button className={styles.buttonSecondary} type="button" onClick={() => navigate("/agents/tender")}><ArrowLeft size={14} />返回 Tender Agent</button><button className={styles.buttonSecondary} type="button" onClick={() => setNotice({ tone: "info", text: "Mock 任务已重新排队，真实轮询接口待接入。" })}><RefreshCcw size={14} />重新执行</button></>} notice={notice}>
-    <div className={styles.taskMetaRow}><StatusPill label="已完成" tone="green" /><span>创建于今天 09:31</span><span>最后更新 今天 09:34</span><span className={styles.metaId}>任务 ID：{taskId}</span></div>
-    <Panel title="处理进度" icon={<Activity size={16} />}><div className={styles.progressHeader}><div><strong>已生成投标书章节骨架</strong><p>任务已完成，等待人工审阅结果结构。</p></div><strong className={styles.progressValue}>100%</strong></div><div className={styles.progressTrack}><span style={{ width: "100%" }} /></div><div className={styles.stageRow}>{["文件接收", "内容解析", "结构生成", "结果整理"].map((stage) => <div className={styles.stageDone} key={stage}><CheckCircle2 size={15} />{stage}</div>)}</div></Panel>
-    <div className={styles.twoColumnGrid}><Panel title="任务输入" icon={<FileText size={16} />}><div className={styles.detailList}><DetailRow label="源文件" value="华东区域运维服务项目.pdf" /><DetailRow label="文件大小" value="18.6 MB" /><DetailRow label="处理模式" value="章节骨架生成" /><DetailRow label="执行耗时" value="2m 18s" /></div></Panel><Panel title="结果摘要" icon={<FileCheck2 size={16} />}><div className={styles.resultSummary}><div className={styles.resultNumber}>18</div><div><strong>个章节节点</strong><p>包含 11 个必填章节、7 个补充章节，以及 24 个待填写占位符。</p></div></div><div className={styles.resultActions}><button className={styles.buttonPrimary} type="button" onClick={() => navigate(`/agents/tender/tasks/${taskId}/skeleton`)}><FileText size={14} />预览章节骨架</button><button className={styles.buttonSecondary} type="button" onClick={() => setNotice({ tone: "info", text: "Mock 文件已准备好，真实下载接口待接入。" })}><Download size={14} />下载骨架</button></div></Panel></div>
-    <Panel title="任务事件" icon={<Clock3 size={16} />}><div className={styles.timeline}><TimelineItem time="09:34" title="结果已生成" detail="章节骨架和占位符已整理完成。" done /><TimelineItem time="09:33" title="结构生成完成" detail="识别到 5 个一级章节和 18 个章节节点。" done /><TimelineItem time="09:32" title="招标文件解析完成" detail="解析 86 页文档，提取技术要求和商务条款。" done /><TimelineItem time="09:31" title="任务已创建" detail="等待处理流程启动。" done /></div></Panel>
+  const taskQuery = useTask(taskId);
+  const shouldPollEvents = taskQuery.data ? isTaskActive(taskQuery.data.status) : false;
+  const eventsQuery = useTaskEvents(taskId, shouldPollEvents);
+  const resourcesQuery = useTaskResources(taskId, taskQuery.data?.status === "succeeded");
+  const retryMutation = useRetryTask();
+  const cancelMutation = useCancelTask();
+  const task = taskQuery.data;
+  const commandBusy = retryMutation.isPending || cancelMutation.isPending;
+  const commandError = retryMutation.error ?? cancelMutation.error;
+  const retry = () => {
+    if (!taskId) return;
+    retryMutation.mutate({ taskId, commandId: crypto.randomUUID() });
+  };
+  const cancel = () => {
+    if (!taskId) return;
+    cancelMutation.mutate({ taskId, commandId: crypto.randomUUID() });
+  };
+  const errorMessage = (error: unknown) => error instanceof Error ? error.message : "任务请求失败，请稍后重试。";
+  if (taskQuery.isLoading) return <PageShell eyebrow="AGENTS / TENDER / TASK" title="任务详情" description="正在读取任务状态。"><WorkspaceState text="正在读取任务详情…" /></PageShell>;
+  if (taskQuery.isError || !task) return <PageShell eyebrow="AGENTS / TENDER / TASK" title="任务详情不可用" description="该任务不存在、无权访问，或任务服务暂时不可用。" actions={<button className={styles.buttonSecondary} type="button" onClick={() => navigate("/agents/tender")}><ArrowLeft size={14} />返回 Tender Agent</button>}><WorkspaceState text={taskQuery.error ? errorMessage(taskQuery.error) : "未找到任务。"} /></PageShell>;
+  const statusTone = taskStatusTone(task.status);
+  const progress = task.status === "succeeded" ? 100 : task.status === "failed" || task.status === "cancelled" ? 100 : task.status === "running" ? 55 : 20;
+  return <PageShell eyebrow="AGENTS / TENDER / TASK" title="任务详情" description={`${task.taskType} · ${task.id}`} actions={<><button className={styles.buttonSecondary} type="button" onClick={() => navigate("/agents/tender")}><ArrowLeft size={14} />返回 Tender Agent</button>{task.status === "failed" && <button className={styles.buttonSecondary} type="button" onClick={retry} disabled={commandBusy}><RefreshCcw size={14} />重试</button>}{["queued", "running", "retry_wait"].includes(task.status) && <button className={styles.buttonSecondary} type="button" onClick={cancel} disabled={commandBusy}><X size={14} />取消</button>}</>} notice={notice ?? (commandError ? { tone: "info", text: errorMessage(commandError) } : null)}>
+    <div className={styles.taskMetaRow}><StatusPill label={taskStatusLabel(task.status)} tone={statusTone} /><span>创建于 {formatDate(task.createdAt)}</span><span>最后更新 {formatDate(task.updatedAt)}</span><span className={styles.metaId}>任务 ID：{task.id}</span></div>
+    <Panel title="处理进度" icon={<Activity size={16} />}><div className={styles.progressHeader}><div><strong>{task.resultSummary ?? taskStatusLabel(task.status)}</strong><p>{task.failureCode ? `失败代码：${task.failureCode}` : "状态来自 Task Management 服务。"}</p></div><strong className={styles.progressValue}>{progress}%</strong></div><div className={styles.progressTrack}><span style={{ width: `${progress}%` }} /></div><div className={styles.stageRow}><div className={styles.stageDone}><CheckCircle2 size={15} />已创建</div><div className={styles.stageDone}><Activity size={15} />{taskStatusLabel(task.status)}</div><div className={styles.stageDone}><Clock3 size={15} />尝试 {task.attemptCount}/{task.maxAttempts}</div></div></Panel>
+    <div className={styles.twoColumnGrid}><Panel title="任务信息" icon={<FileText size={16} />}><div className={styles.detailList}><DetailRow label="任务类型" value={task.taskType} /><DetailRow label="主体" value={task.ownerSubject} /><DetailRow label="可执行时间" value={formatDate(task.availableAt)} /><DetailRow label="尝试次数" value={`${task.attemptCount} / ${task.maxAttempts}`} /></div></Panel><Panel title="结果摘要" icon={<FileCheck2 size={16} />}><div className={styles.resultSummary}><div className={styles.resultNumber}>{task.status === "succeeded" ? "完成" : "…"}</div><div><strong>{task.resultSummary ?? "暂无结果摘要"}</strong><p>{task.failureCode ? `失败代码：${task.failureCode}` : "结果资源由 Task 服务提供。"}</p></div></div></Panel></div>
+    {task.status === "succeeded" && <Panel title="结果资源" icon={<Download size={16} />}><TaskResources query={resourcesQuery} /></Panel>}
+    <Panel title="任务事件" icon={<Clock3 size={16} />}><TaskEvents query={eventsQuery} /></Panel>
   </PageShell>;
 }
 
@@ -221,9 +238,60 @@ function AgentCard({ agent, onOpen }: { agent: typeof agentCards[number]; onOpen
   return <article className={styles.agentCard}><div className={styles.agentCardTop}><div className={`${styles.agentCardIcon} ${styles[`tone${agent.tone}`]}`}><Icon size={19} /></div><StatusPill label={agent.status} tone={agent.tone === "green" ? "green" : "amber"} /></div><h3>{agent.name}</h3><p>{agent.description}</p><div className={styles.agentCardFooter}><span>最近运行 · 12 分钟前</span><button className={styles.textAction} type="button" onClick={onOpen}>打开 <ChevronRight size={13} /></button></div></article>;
 }
 
-function TaskTable({ onOpen, tenderOnly = false }: { onOpen: (task: typeof recentTasks[number]) => void; tenderOnly?: boolean }) {
-  const tasks = tenderOnly ? recentTasks.filter((task) => task.agent === "Tender Agent") : recentTasks;
-  return <div className={styles.taskTable}><div className={styles.taskTableHeader}><span>任务</span><span>智能体</span><span>状态</span><span>时间</span><span>耗时</span><span /></div>{tasks.map((task) => <button className={styles.taskRow} type="button" key={task.id} onClick={() => onOpen(task)}><div><strong>{task.title}</strong><small>{task.id}</small></div><span>{task.agent}</span><StatusPill label={task.status} tone={task.tone === "blue" ? "blue" : task.tone === "green" ? "green" : "amber"} /><span>{task.time}</span><span>{task.duration}</span><ChevronRight size={14} /></button>)}</div>;
+function WorkspaceTaskTable({ onOpen, tenderOnly = false }: { onOpen: (task: Task) => void; tenderOnly?: boolean }) {
+  const query = useTaskList();
+  if (query.isLoading) return <WorkspaceState text="正在读取任务…" />;
+  if (query.isError) return <WorkspaceState text="任务服务暂时不可用，请检查登录状态或稍后重试。" />;
+  const tasks = (query.data?.tasks ?? []).filter((task) => !tenderOnly || task.taskType.startsWith("tender."));
+  if (!tasks.length) return <WorkspaceState text="还没有可显示的任务。通过对话或 Tender Agent 创建后，任务会出现在这里。" />;
+  return <div className={styles.taskTable}><div className={styles.taskTableHeader}><span>任务</span><span>类型</span><span>状态</span><span>更新时间</span><span>尝试</span><span /></div>{tasks.map((task) => <button className={styles.taskRow} type="button" key={task.id} onClick={() => onOpen(task)}><div><strong>{task.taskType}</strong><small>{task.id}</small></div><span>{task.taskType.startsWith("tender.") ? "Tender Agent" : "Agent Task"}</span><StatusPill label={taskStatusLabel(task.status)} tone={taskStatusTone(task.status)} /><span>{formatDate(task.updatedAt)}</span><span>{task.attemptCount}/{task.maxAttempts}</span><ChevronRight size={14} /></button>)}</div>;
+}
+
+function WorkspaceState({ text }: { text: string }) {
+  return <div className={styles.workspaceState}>{text}</div>;
+}
+
+function TaskEvents({ query }: { query: ReturnType<typeof useTaskEvents> }) {
+  if (query.isLoading) return <WorkspaceState text="正在读取任务事件…" />;
+  if (query.isError) return <WorkspaceState text="任务事件暂时不可用。" />;
+  if (!query.data?.events.length) return <WorkspaceState text="暂无任务事件。" />;
+  return <div className={styles.timeline}>{query.data.events.slice().reverse().map((event) => <TimelineItem key={event.id} time={formatDate(event.createdAt)} title={event.eventType} detail={event.transitionId} done />)}</div>;
+}
+
+function TaskResources({ query }: { query: ReturnType<typeof useTaskResources> }) {
+  if (query.isLoading) return <WorkspaceState text="正在读取结果资源…" />;
+  if (query.isError) return <WorkspaceState text="结果资源不可用或已过期。" />;
+  if (!query.data?.length) return <WorkspaceState text="该任务没有可用结果资源。" />;
+  return <div className={styles.detailList}>{query.data.map((resource) => <div className={styles.detailRow} key={resource.resourceId}><span>{resource.fileName} · {resource.mediaType}</span><strong><a href={resource.downloadUrl} target="_blank" rel="noreferrer">下载 ({formatBytes(resource.sizeBytes)})</a></strong></div>)}</div>;
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function taskStatusLabel(status: TaskStatus): string {
+  return {
+    queued: "排队中",
+    running: "执行中",
+    retry_wait: "等待重试",
+    cancel_requested: "取消中",
+    succeeded: "已完成",
+    failed: "失败",
+    cancelled: "已取消",
+  }[status];
+}
+
+function taskStatusTone(status: TaskStatus): "green" | "blue" | "amber" | "gray" {
+  if (status === "succeeded") return "green";
+  if (["queued", "running", "retry_wait", "cancel_requested"].includes(status)) return "blue";
+  if (status === "failed") return "amber";
+  return "gray";
 }
 
 function StatusPill({ label, tone }: { label: string; tone: "green" | "blue" | "amber" | "gray" }) { return <span className={`${styles.statusPill} ${styles[`status${tone}`]}`}><i />{label}</span>; }

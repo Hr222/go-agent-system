@@ -584,6 +584,7 @@ def test_trusted_task_submission_does_not_add_public_protocol_or_business_bypass
         "",
         "/{task_id}",
         "/{task_id}/events",
+        "/{task_id}/resources",
         "/{task_id}/cancel",
         "/{task_id}/retry",
     }

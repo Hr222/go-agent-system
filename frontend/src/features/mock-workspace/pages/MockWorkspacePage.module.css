@@ -1,4 +1,4 @@
-.page { max-width: 1500px; margin: 0 auto; padding: 34px 42px 58px; color: #25334b; }
+.workspaceState { padding: 28px 14px; color: #96a2b2; text-align: center; font-size: 10px; line-height: 1.7; }.page { max-width: 1500px; margin: 0 auto; padding: 34px 42px 58px; color: #25334b; }
 .heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
 .eyebrow, .sectionEyebrow { color: #8190a5; font-size: 9px; font-weight: 800; letter-spacing: 1.55px; }
 .heading h1 { margin: 9px 0 7px; color: #1f2b42; font-size: 30px; letter-spacing: -.8px; }.heading p { margin: 0; color: #8290a5; font-size: 13px; line-height: 1.6; }.headingActions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

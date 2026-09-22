@@ -375,6 +375,7 @@ def test_missing_task_schema_has_actionable_error() -> None:
     try:
         session = harness.session_local()
         try:
+            session.execute(text(f'SET search_path TO "{harness.schema}"'))
             with pytest.raises(TaskSchemaUnavailableError, match="013_task_lifecycle"):
                 PostgresTaskRepository(session).get(uuid4())
             assert session.is_active

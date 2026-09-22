@@ -23,6 +23,7 @@ from app.platform.task.application.recovery import (
     SchedulingResult,
 )
 from app.platform.task.application.runner import ManagedWorkerStage, TaskWorkerRunner
+from app.platform.task.application.result_resources import TaskResultResourceApplication, TaskResultResourcesQuery, TaskResultResourcesView
 from app.platform.task.application.trusted_submission import (
     TrustedTaskSubmissionCommand,
     TrustedTaskSubmissionProfile,
@@ -62,6 +63,9 @@ __all__ = [
     "SchedulingResult",
     "ManagedWorkerStage",
     "TaskWorkerRunner",
+    "TaskResultResourceApplication",
+    "TaskResultResourcesQuery",
+    "TaskResultResourcesView",
     "TrustedTaskSubmissionCommand",
     "TrustedTaskSubmissionProfile",
     "TrustedTaskSubmissionService",

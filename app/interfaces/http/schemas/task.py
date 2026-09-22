@@ -42,6 +42,20 @@ class TaskEventPageResponse(BaseModel):
     next_after_sequence: int | None
 
 
+class TaskResultResourceResponse(BaseModel):
+    resource_id: str
+    file_name: str
+    media_type: str
+    size_bytes: int = Field(ge=1)
+    sha256: str
+    download_url: str
+
+
+class TaskResultResourceListResponse(BaseModel):
+    task_id: UUID
+    resources: list[TaskResultResourceResponse]
+
+
 class TaskCommandRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

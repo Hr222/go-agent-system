@@ -18,6 +18,7 @@ from app.business.agents.tender.ports.task_port import (
     AttachmentTenderTaskInputReader,
     InMemoryTenderTaskResultStore,
 )
+from app.business.agents.tender.errors import TenderResultResourceStoreError
 from app.platform.attachment.contracts import (
     AttachmentAccessContext,
     AttachmentReadResult,
@@ -72,6 +73,11 @@ class FakeTenderApplication:
         if self.error is not None:
             raise self.error
         return self.result
+
+
+class FailingResultStore:
+    def save(self, **kwargs):  # noqa: ANN003
+        raise TenderResultResourceStoreError("storage unavailable")
 
 
 def _reference(content: bytes = b"docx") -> AttachmentRef:
@@ -237,6 +243,22 @@ def test_executor_maps_upstream_failure_to_retryable_safe_result() -> None:
     assert outcome.failure_category is FailureCategory.TRANSIENT
     assert outcome.failure_code == "TENDER_UPSTREAM_FAILED"
     assert outcome.retry_at is not None
+
+
+def test_executor_maps_result_resource_failure_to_fixed_permanent_code() -> None:
+    content = b"docx"
+    reference = _reference(content)
+    executor = TenderTaskExecutor(
+        application=FakeTenderApplication(_result()),
+        input_reader=AttachmentTenderTaskInputReader(FakeAttachmentStorage(content, reference)),
+        result_store=FailingResultStore(),
+    )
+
+    outcome = executor.execute(_context(reference))
+
+    assert isinstance(outcome, TaskExecutionFailure)
+    assert outcome.failure_category is FailureCategory.PERMANENT
+    assert outcome.failure_code == "TENDER_RESULT_RESOURCE_STORE_FAILED"
 
 
 def test_executor_rejects_snapshot_read_for_different_owner() -> None:

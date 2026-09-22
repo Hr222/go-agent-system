@@ -145,6 +145,11 @@ def test_application_lifespan_releases_the_stateless_container(
         "inspect_knowledge_base_schema",
         lambda: SimpleNamespace(missing_tables=None),
     )
+    monkeypatch.setattr(
+        main,
+        "inspect_task_schema",
+        lambda: SimpleNamespace(missing_tables=None, setup_guide=""),
+    )
 
     with TestClient(main.create_app()):
         pass
