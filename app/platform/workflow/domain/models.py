@@ -59,6 +59,7 @@ class WorkflowEventType(StrEnum):
     NODE_STARTED = "NODE_STARTED"
     NODE_ACCEPTED = "NODE_ACCEPTED"
     NODE_SUCCEEDED = "NODE_SUCCEEDED"
+    NODE_INPUT_REJECTED = "NODE_INPUT_REJECTED"
     NODE_FAILED = "NODE_FAILED"
     NODE_RETRY_SCHEDULED = "NODE_RETRY_SCHEDULED"
     NODE_SKIPPED = "NODE_SKIPPED"
@@ -78,7 +79,10 @@ _EVENT_METADATA_FIELDS: dict[WorkflowEventType, frozenset[str]] = {
     WorkflowEventType.NODE_ACCEPTED: frozenset(
         {"node_id", "attempt_number", "execution_reference"}
     ),
-    WorkflowEventType.NODE_SUCCEEDED: frozenset({"node_id", "attempt_number"}),
+    WorkflowEventType.NODE_SUCCEEDED: frozenset(
+        {"node_id", "attempt_number", "output_references"}
+    ),
+    WorkflowEventType.NODE_INPUT_REJECTED: frozenset({"node_id", "error_code"}),
     WorkflowEventType.NODE_FAILED: frozenset({"node_id", "attempt_number", "error_code"}),
     WorkflowEventType.NODE_RETRY_SCHEDULED: frozenset({"node_id", "attempt_number", "error_code"}),
     WorkflowEventType.NODE_SKIPPED: frozenset({"node_id", "skip_reason"}),
@@ -220,6 +224,12 @@ class WorkflowVersion:
                 raise WorkflowValidationError("边引用了源节点未声明的输出字段。")
             if not set(edge.output_fields).issubset(target.input_fields):
                 raise WorkflowValidationError("边输出字段未被目标节点声明为输入字段。")
+        for node in self.nodes:
+            bound_fields: set[str] = set()
+            for edge in self.incoming_edges(node.node_id):
+                if bound_fields.intersection(edge.output_fields):
+                    raise WorkflowValidationError("Workflow 输入字段不能被多条边重复绑定。")
+                bound_fields.update(edge.output_fields)
         _assert_acyclic(node_ids, self.edges)
 
     @property
@@ -233,8 +243,11 @@ class WorkflowVersion:
         raise WorkflowValidationError("Workflow 节点不存在。")
 
     def predecessors(self, node_id: str) -> tuple[str, ...]:
+        return tuple(edge.source_node_id for edge in self.incoming_edges(node_id))
+
+    def incoming_edges(self, node_id: str) -> tuple[WorkflowEdgeDefinition, ...]:
         self.node(node_id)
-        return tuple(edge.source_node_id for edge in self.edges if edge.target_node_id == node_id)
+        return tuple(edge for edge in self.edges if edge.target_node_id == node_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,6 +290,15 @@ class WorkflowEvent:
             raise WorkflowValidationError("事件错误码无效。")
         if "execution_reference" in normalized:
             _opaque_reference(normalized["execution_reference"], "事件执行引用")
+        if "output_references" in normalized:
+            output_references = normalized["output_references"]
+            if not isinstance(output_references, Mapping):
+                raise WorkflowValidationError("事件输出引用必须是对象。")
+            for field_name, reference in output_references.items():
+                if not isinstance(field_name, str):
+                    raise WorkflowValidationError("事件输出字段名无效。")
+                _identifier(field_name, "事件输出字段名")
+                _opaque_reference(reference, "事件输出引用")
         if "cancel_mode" in normalized and normalized["cancel_mode"] not in {
             "queued",
             "confirmed",
@@ -380,6 +402,7 @@ class WorkflowNodeRun:
         *,
         result_summary: str,
         output_fingerprint: str | None,
+        output_references: Mapping[str, str],
         now: datetime,
         transition_id: str,
         run_id: UUID | None = None,
@@ -396,7 +419,10 @@ class WorkflowNodeRun:
                     WorkflowEventType.NODE_SUCCEEDED,
                     transition_id,
                     now,
-                    {"attempt_number": self.attempt_count},
+                    {
+                        "attempt_number": self.attempt_count,
+                        "output_references": dict(output_references),
+                    },
                     run_id=run_id,
                 )
             raise WorkflowStateError("只有运行中或已接收节点可以成功。")
@@ -410,7 +436,35 @@ class WorkflowNodeRun:
             WorkflowEventType.NODE_SUCCEEDED,
             transition_id,
             now,
-            {"attempt_number": self.attempt_count},
+            {
+                "attempt_number": self.attempt_count,
+                "output_references": dict(output_references),
+            },
+            run_id=run_id,
+        )
+
+    def reject_input(
+        self,
+        *,
+        error_code: str,
+        now: datetime,
+        transition_id: str,
+        run_id: UUID | None = None,
+    ) -> WorkflowEvent:
+        if self.status is not WorkflowNodeStatus.QUEUED:
+            raise WorkflowStateError("只有 queued 节点可以拒绝输入。")
+        code = _text(error_code, "错误码")
+        if _SAFE_ERROR.fullmatch(code) is None:
+            raise WorkflowValidationError("错误码格式无效。")
+        self.failure_code = code
+        self.status = WorkflowNodeStatus.FAILED
+        self.updated_at = _utc(now, "节点输入拒绝时间")
+        return _node_event(
+            self,
+            WorkflowEventType.NODE_INPUT_REJECTED,
+            transition_id,
+            now,
+            {"error_code": code},
             run_id=run_id,
         )
 
@@ -604,7 +658,20 @@ class WorkflowRun:
                 self.node(predecessor).status is WorkflowNodeStatus.SUCCEEDED
                 for predecessor in version.predecessors(node.node_id)
             )
+            and all(
+                set(edge.output_fields).issubset(
+                    self.output_references(edge.source_node_id)
+                )
+                for edge in version.incoming_edges(node.node_id)
+            )
         )
+
+    def output_references(self, node_id: str) -> dict[str, str]:
+        event = self._find_latest_node_event(node_id, WorkflowEventType.NODE_SUCCEEDED)
+        if event is None:
+            return {}
+        references = event.metadata.get("output_references", {})
+        return dict(references) if isinstance(references, Mapping) else {}
 
     def start_node(
         self, *, version: WorkflowVersion, node_id: str, now: datetime, command_id: str
@@ -672,28 +739,77 @@ class WorkflowRun:
         node_id: str,
         result_summary: str,
         output_fingerprint: str | None,
+        output_references: Mapping[str, str],
         now: datetime,
         command_id: str,
     ) -> WorkflowEvent:
         node = self.node(node_id)
+        definition = version.node(node_id)
+        if not isinstance(output_references, Mapping):
+            raise WorkflowValidationError("节点输出引用必须是对象。")
+        normalized_outputs = dict(output_references)
+        if set(normalized_outputs) != set(definition.output_fields):
+            raise WorkflowValidationError("节点成功结果未完整提供声明的输出引用。")
+        for field_name, reference in normalized_outputs.items():
+            if not isinstance(field_name, str):
+                raise WorkflowValidationError("节点输出字段名无效。")
+            _identifier(field_name, "节点输出字段名")
+            _opaque_reference(reference, "节点输出引用")
         if node.status is WorkflowNodeStatus.SUCCEEDED:
             if (
                 node.result_summary != result_summary
                 or node.output_fingerprint != output_fingerprint
             ):
                 raise WorkflowIdempotencyConflictError("同一节点成功提交使用了不同的结果。")
+            if self.output_references(node_id) != normalized_outputs:
+                raise WorkflowIdempotencyConflictError("同一节点成功提交使用了不同的输出引用。")
             existing = self._find_latest_node_event(node_id, WorkflowEventType.NODE_SUCCEEDED)
             if existing is not None:
                 return existing
         event = node.succeed(
             result_summary=result_summary,
             output_fingerprint=output_fingerprint,
+            output_references=normalized_outputs,
             now=now,
             transition_id=f"{command_id}:succeed",
             run_id=self.id,
         )
         self._append_existing(event)
         self._refresh_status(version, now, command_id)
+        return event
+
+    def reject_node_input(
+        self,
+        *,
+        node_id: str,
+        error_code: str,
+        now: datetime,
+        command_id: str,
+    ) -> WorkflowEvent:
+        if self.status in {
+            WorkflowRunStatus.CANCEL_REQUESTED,
+            WorkflowRunStatus.CANCELLED,
+            WorkflowRunStatus.FAILED,
+            WorkflowRunStatus.SUCCEEDED,
+        }:
+            raise WorkflowStateError("当前 Run 不能拒绝节点输入。")
+        node = self.node(node_id)
+        event = node.reject_input(
+            error_code=error_code,
+            now=now,
+            transition_id=f"{command_id}:reject-input",
+            run_id=self.id,
+        )
+        self._append_existing(event)
+        self.status = WorkflowRunStatus.FAILED
+        self.failure_code = node.failure_code
+        self._append_event(
+            f"{command_id}:run-failed",
+            WorkflowEventType.RUN_FAILED,
+            now,
+            {"node_id": node_id, "error_code": node.failure_code},
+        )
+        self.updated_at = _utc(now, "Run 输入失败时间")
         return event
 
     def fail_node(

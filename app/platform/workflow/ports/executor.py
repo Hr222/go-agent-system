@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Mapping, Protocol
 
 from app.platform.security.domain import RequestPrincipal
@@ -28,10 +28,32 @@ class WorkflowNodeExecutionCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkflowNodeCancellationCommand:
+    """执行器取消边界只携带可信主体和不透明执行引用。"""
+
+    principal: RequestPrincipal
+    version: WorkflowVersion
+    node: WorkflowNodeDefinition
+    execution_reference: str | None
+    command_id: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.principal, RequestPrincipal):
+            raise ValueError("Workflow 取消主体无效。")
+        if self.node.node_id not in {item.node_id for item in self.version.nodes}:
+            raise ValueError("取消节点不属于当前 Workflow Version。")
+        if self.execution_reference is not None and not self.execution_reference.strip():
+            raise ValueError("Workflow 取消引用无效。")
+        if not isinstance(self.command_id, str) or not self.command_id.strip():
+            raise ValueError("Workflow 取消命令无效。")
+
+
+@dataclass(frozen=True, slots=True)
 class WorkflowNodeExecutionOutcome:
     status: WorkflowNodeExecutionStatus
     result_summary: str | None = None
     output_fingerprint: str | None = None
+    output_references: Mapping[str, str] = field(default_factory=dict)
     execution_reference: str | None = None
     error_code: str | None = None
     message: str | None = None
@@ -46,6 +68,8 @@ class WorkflowNodeExecutionOutcome:
                 or self.message
             ):
                 raise ValueError("completed 结果必须只有安全结果摘要。")
+            if not isinstance(self.output_references, Mapping):
+                raise ValueError("completed 结果输出引用必须是对象。")
             return
         if self.status == "accepted":
             if (
@@ -53,6 +77,7 @@ class WorkflowNodeExecutionOutcome:
                 or self.result_summary
                 or self.error_code
                 or self.message
+                or self.output_references
             ):
                 raise ValueError("accepted 结果必须只有不透明执行引用。")
             return
@@ -62,17 +87,24 @@ class WorkflowNodeExecutionOutcome:
                 or self.execution_reference
                 or not self.error_code
                 or not self.message
+                or self.output_references
             ):
                 raise ValueError("failed 结果必须只有受控错误信息。")
             return
         raise ValueError("Workflow 节点执行结果状态无效。")
 
     @classmethod
-    def completed(cls, result_summary: str, output_fingerprint: str | None = None):
+    def completed(
+        cls,
+        result_summary: str,
+        output_fingerprint: str | None = None,
+        output_references: Mapping[str, str] | None = None,
+    ):
         return cls(
             status="completed",
             result_summary=result_summary.strip(),
             output_fingerprint=output_fingerprint,
+            output_references=output_references or {},
         )
 
     @classmethod
@@ -91,3 +123,5 @@ class WorkflowNodeExecutionOutcome:
 
 class WorkflowNodeExecutorPort(Protocol):
     def execute(self, command: WorkflowNodeExecutionCommand) -> WorkflowNodeExecutionOutcome: ...
+
+    def request_cancel(self, command: WorkflowNodeCancellationCommand) -> None: ...

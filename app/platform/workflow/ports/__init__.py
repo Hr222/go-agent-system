@@ -1,6 +1,7 @@
 """Workflow 的受控端口。"""
 
 from app.platform.workflow.ports.executor import (
+    WorkflowNodeCancellationCommand,
     WorkflowNodeExecutionCommand,
     WorkflowNodeExecutionOutcome,
     WorkflowNodeExecutorPort,
@@ -16,6 +17,7 @@ __all__ = [
     "WorkflowDefinitionRegistryPort",
     "WorkflowNodeExecutionCommand",
     "WorkflowNodeExecutionOutcome",
+    "WorkflowNodeCancellationCommand",
     "WorkflowNodeExecutorPort",
     "WorkflowRepositoryPort",
 ]

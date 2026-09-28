@@ -77,10 +77,14 @@ class Executor:
     def __init__(self, outcome):
         self.outcome = outcome
         self.commands: list[WorkflowNodeExecutionCommand] = []
+        self.cancellations = []
 
     def execute(self, command: WorkflowNodeExecutionCommand):
         self.commands.append(command)
         return self.outcome
+
+    def request_cancel(self, command):
+        self.cancellations.append(command)
 
 
 def _capability(
@@ -186,6 +190,7 @@ def test_execute_node_requires_permission_and_supports_accepted() -> None:
         node_id="generate",
         result_summary="已完成",
         output_fingerprint="sha256:artifact",
+        output_references={"artifact_id": "artifact:opaque"},
         command_id="complete-1",
     )
     replay = application.complete_node(
@@ -194,6 +199,7 @@ def test_execute_node_requires_permission_and_supports_accepted() -> None:
         node_id="generate",
         result_summary="已完成",
         output_fingerprint="sha256:artifact",
+        output_references={"artifact_id": "artifact:opaque"},
         command_id="complete-1",
     )
     assert completed.status.value == "succeeded"
@@ -245,6 +251,145 @@ def test_dependency_prevents_execution_until_predecessor_succeeds() -> None:
             run_id=run.id,
             node_id="second",
             inputs={"artifact_id": "x"},
-            executor=Executor(WorkflowNodeExecutionOutcome.completed("done")),
+            executor=Executor(
+                WorkflowNodeExecutionOutcome.completed(
+                    "done", output_references={"artifact_id": "artifact:opaque"}
+                )
+            ),
             command_id="execute-second",
         )
+
+
+def test_invalid_input_fails_without_attempt_and_replays() -> None:
+    application, repository, principal = _app()
+    run = application.create_run(
+        CreateWorkflowRunCommand(
+            principal,
+            "tender-flow",
+            "v1",
+            "invalid-input",
+            {"source_document": "attachment:opaque"},
+        )
+    )
+    executor = Executor(WorkflowNodeExecutionOutcome.completed("should-not-run"))
+
+    failed = application.execute_node(
+        principal=principal,
+        run_id=run.id,
+        node_id="generate",
+        inputs={},
+        executor=executor,
+        command_id="reject-input",
+    )
+    replay = application.execute_node(
+        principal=principal,
+        run_id=run.id,
+        node_id="generate",
+        inputs={},
+        executor=executor,
+        command_id="reject-input",
+    )
+
+    assert failed.status.value == "failed"
+    assert failed.nodes[0].status.value == "failed"
+    assert failed.nodes[0].attempt_count == 0
+    assert failed.failure_code == "INPUT_INVALID"
+    assert replay.id == failed.id
+    assert executor.commands == []
+    assert len(repository.runs[run.id].events) == 3
+
+
+def test_dependency_inputs_use_recorded_output_not_caller_value() -> None:
+    first_cap = _capability(required_fields=())
+    second_cap = _capability(code="tender.generate_followup", required_fields=("artifact_id",))
+    version = WorkflowVersion(
+        workflow_code="chain-inputs",
+        version="v1",
+        nodes=(
+            WorkflowNodeDefinition(
+                "first",
+                WorkflowNodeType.CAPABILITY,
+                first_cap.code,
+                output_fields=("artifact_id",),
+            ),
+            WorkflowNodeDefinition(
+                "second",
+                WorkflowNodeType.CAPABILITY,
+                second_cap.code,
+                input_fields=("artifact_id",),
+            ),
+        ),
+        edges=(WorkflowEdgeDefinition("first", "second", ("artifact_id",)),),
+    )
+    registry = WorkflowDefinitionRegistry(
+        (version,),
+        Catalog((first_cap, second_cap)),
+        validation_permissions=("agent:tender:execute",),
+    )
+    repository = Repository()
+    principal = RequestPrincipal(
+        subject="user-1", permissions=frozenset({"agent:tender:execute"}), authenticated=True
+    )
+    application = WorkflowApplication(repository, registry, clock=lambda: NOW)
+    run = application.create_run(
+        CreateWorkflowRunCommand(principal, "chain-inputs", "v1", "inputs-1", {})
+    )
+    first = Executor(
+        WorkflowNodeExecutionOutcome.completed(
+            "done", output_references={"artifact_id": "artifact:real"}
+        )
+    )
+    application.execute_node(
+        principal=principal,
+        run_id=run.id,
+        node_id="first",
+        inputs={},
+        executor=first,
+        command_id="execute-first",
+    )
+    second = Executor(WorkflowNodeExecutionOutcome.accepted("task:second"))
+    application.execute_node(
+        principal=principal,
+        run_id=run.id,
+        node_id="second",
+        inputs={"artifact_id": "artifact:forged"},
+        executor=second,
+        command_id="execute-second",
+    )
+
+    assert second.commands[0].inputs == {"artifact_id": "artifact:real"}
+
+
+def test_cancel_requests_executor_without_confirming_node() -> None:
+    application, repository, principal = _app()
+    run = application.create_run(
+        CreateWorkflowRunCommand(
+            principal,
+            "tender-flow",
+            "v1",
+            "cancel-application",
+            {"source_document": "attachment:opaque"},
+        )
+    )
+    executor = Executor(WorkflowNodeExecutionOutcome.accepted("task:cancel"))
+    application.execute_node(
+        principal=principal,
+        run_id=run.id,
+        node_id="generate",
+        inputs={"source_document": "attachment:opaque"},
+        executor=executor,
+        command_id="execute-cancel",
+    )
+
+    cancelled = application.cancel(
+        principal=principal,
+        run_id=run.id,
+        command_id="cancel-application",
+        executor=executor,
+    )
+
+    assert cancelled.status.value == "cancel_requested"
+    assert cancelled.nodes[0].status.value == "cancel_requested"
+    assert len(executor.cancellations) == 1
+    assert executor.cancellations[0].execution_reference == "task:cancel"
+    assert repository.runs[run.id].events[-1].event_type.value == "NODE_CANCEL_REQUESTED"

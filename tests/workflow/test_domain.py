@@ -108,6 +108,36 @@ def test_version_rejects_edge_output_not_declared_by_target() -> None:
             edges=(WorkflowEdgeDefinition("first", "second", ("artifact_id",)),),
         )
 
+    with pytest.raises(WorkflowValidationError, match="不能被多条边重复绑定"):
+        WorkflowVersion(
+            workflow_code="flow",
+            version="v1",
+            nodes=(
+                WorkflowNodeDefinition(
+                    "first",
+                    WorkflowNodeType.CAPABILITY,
+                    "capability.one",
+                    output_fields=("a",),
+                ),
+                WorkflowNodeDefinition(
+                    "other",
+                    WorkflowNodeType.CAPABILITY,
+                    "capability.two",
+                    output_fields=("a",),
+                ),
+                WorkflowNodeDefinition(
+                    "second",
+                    WorkflowNodeType.CAPABILITY,
+                    "capability.three",
+                    input_fields=("a",),
+                ),
+            ),
+            edges=(
+                WorkflowEdgeDefinition("first", "second", ("a",)),
+                WorkflowEdgeDefinition("other", "second", ("a",)),
+            ),
+        )
+
 
 def test_run_tracks_dependency_readiness_and_success() -> None:
     version = _version()
@@ -135,10 +165,12 @@ def test_run_tracks_dependency_readiness_and_success() -> None:
         node_id="prepare",
         result_summary="准备完成",
         output_fingerprint="sha256:output",
+        output_references={"document_id": "document:opaque"},
         now=NOW,
         command_id="succeed-prepare",
     )
     assert run.ready_nodes(version) == ("generate",)
+    assert run.output_references("prepare") == {"document_id": "document:opaque"}
 
     run.start_node(version=version, node_id="generate", now=NOW, command_id="start-generate")
     run.accept_node(
@@ -153,6 +185,7 @@ def test_run_tracks_dependency_readiness_and_success() -> None:
         node_id="generate",
         result_summary="生成完成",
         output_fingerprint="sha256:artifact",
+        output_references={"artifact_id": "artifact:opaque"},
         now=NOW,
         command_id="succeed-generate",
     )
@@ -164,6 +197,7 @@ def test_run_tracks_dependency_readiness_and_success() -> None:
         node_id="generate",
         result_summary="生成完成",
         output_fingerprint="sha256:artifact",
+        output_references={"artifact_id": "artifact:opaque"},
         now=NOW,
         command_id="succeed-generate",
     )
@@ -228,6 +262,32 @@ def test_cancel_running_run_waits_for_executor_confirmation_and_replays_idempote
     event_count = len(run.events)
     run.confirm_node_cancel(node_id="prepare", now=NOW, command_id="confirm")
     assert len(run.events) == event_count
+
+
+def test_missing_dependency_output_keeps_downstream_queued() -> None:
+    version = _version()
+    run = __import__("app.platform.workflow.domain", fromlist=["WorkflowRun"]).WorkflowRun.create(
+        version=version,
+        owner_subject="user-1",
+        idempotency_key="run-missing-output",
+        input_fingerprint="sha256:input",
+        now=NOW,
+    )
+    run.start_node(version=version, node_id="prepare", now=NOW, command_id="start")
+    run.succeed_node(
+        version=version,
+        node_id="prepare",
+        result_summary="准备完成",
+        output_fingerprint="sha256:output",
+        output_references={"document_id": "document:opaque"},
+        now=NOW,
+        command_id="succeed",
+    )
+
+    run.events[-1].metadata["output_references"] = {}
+
+    assert run.node("generate").status is WorkflowNodeStatus.QUEUED
+    assert run.ready_nodes(version) == ()
 
 
 def test_skipped_node_can_complete_run_without_execution_attempt() -> None:

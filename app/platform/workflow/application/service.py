@@ -19,6 +19,7 @@ from app.platform.workflow.domain import (
 from app.platform.workflow.ports import (
     WorkflowCommandReceipt,
     WorkflowDefinitionRegistryPort,
+    WorkflowNodeCancellationCommand,
     WorkflowNodeExecutionCommand,
     WorkflowNodeExecutionOutcome,
     WorkflowNodeExecutorPort,
@@ -160,7 +161,21 @@ class WorkflowApplication:
         if node_id not in run.ready_nodes(version):
             raise WorkflowStateError("节点前置依赖尚未满足。")
         node_definition = version.node(node_id)
-        normalized_inputs = self._validate_inputs(node_definition.input_fields, inputs)
+        try:
+            normalized_inputs = self._build_node_inputs(run, version, node_id, inputs)
+        except WorkflowValidationError:
+            # 输入错误不进入执行边界，保留零尝试失败事实供安全查询和重放使用。
+            run.reject_node_input(
+                node_id=node_id,
+                error_code="INPUT_INVALID",
+                now=self._clock(),
+                command_id=command_id,
+            )
+            self._repository.save(
+                run,
+                command_receipt=WorkflowCommandReceipt(run_id, "execute-node", command_id),
+            )
+            return WorkflowRunView.from_run(run)
         run.start_node(version=version, node_id=node_id, now=self._clock(), command_id=command_id)
         self._repository.save(run)
         try:
@@ -180,14 +195,25 @@ class WorkflowApplication:
             )
         now = self._clock()
         if outcome.status == "completed":
-            run.succeed_node(
-                version=version,
-                node_id=node_id,
-                result_summary=outcome.result_summary or "节点已完成。",
-                output_fingerprint=outcome.output_fingerprint,
-                now=now,
-                command_id=command_id,
-            )
+            try:
+                run.succeed_node(
+                    version=version,
+                    node_id=node_id,
+                    result_summary=outcome.result_summary or "节点已完成。",
+                    output_fingerprint=outcome.output_fingerprint,
+                    output_references=outcome.output_references,
+                    now=now,
+                    command_id=command_id,
+                )
+            except WorkflowValidationError:
+                run.fail_node(
+                    version=version,
+                    node_id=node_id,
+                    error_code="OUTPUT_INVALID",
+                    retryable=False,
+                    now=now,
+                    command_id=command_id,
+                )
         elif outcome.status == "accepted":
             run.accept_node(
                 node_id=node_id,
@@ -218,6 +244,7 @@ class WorkflowApplication:
         node_id: str,
         result_summary: str,
         output_fingerprint: str | None,
+        output_references: Mapping[str, str],
         command_id: str,
     ) -> WorkflowRunView:
         run, version = self._owned_run(principal, run_id)
@@ -230,6 +257,7 @@ class WorkflowApplication:
             node_id=node_id,
             result_summary=result_summary,
             output_fingerprint=output_fingerprint,
+            output_references=output_references,
             now=self._clock(),
             command_id=command_id,
         )
@@ -316,9 +344,15 @@ class WorkflowApplication:
         return WorkflowRunView.from_run(run)
 
     def cancel(
-        self, *, principal: RequestPrincipal, run_id: UUID, command_id: str
+        self,
+        *,
+        principal: RequestPrincipal,
+        run_id: UUID,
+        command_id: str,
+        executor: WorkflowNodeExecutorPort,
     ) -> WorkflowRunView:
-        subject = self._require_principal(principal).subject.strip()
+        trusted = self._require_principal(principal)
+        subject = trusted.subject.strip()
         run = self._repository.get_for_update(run_id)
         if run is None or run.owner_subject != subject:
             raise LookupError("Workflow 不可用。")
@@ -326,11 +360,32 @@ class WorkflowApplication:
             run_id=run_id, command_type="cancel", command_id=command_id
         ):
             return WorkflowRunView.from_run(run)
+        version = self._registry.get(run.workflow_code, run.workflow_version)
+        if version is None:
+            raise WorkflowValidationError("Workflow Version 不可用。")
+        active_nodes = [
+            node
+            for node in run.nodes
+            if node.status in {WorkflowNodeStatus.RUNNING, WorkflowNodeStatus.ACCEPTED}
+        ]
         run.request_cancel(now=self._clock(), command_id=command_id)
         self._repository.save(
             run,
             command_receipt=WorkflowCommandReceipt(run_id, "cancel", command_id),
         )
+        for node in active_nodes:
+            try:
+                executor.request_cancel(
+                    WorkflowNodeCancellationCommand(
+                        principal=trusted,
+                        version=version,
+                        node=version.node(node.node_id),
+                        execution_reference=node.execution_reference,
+                        command_id=command_id,
+                    )
+                )
+            except Exception:  # noqa: BLE001 - 取消失败不应伪造执行器确认
+                continue
         return WorkflowRunView.from_run(run)
 
     def _owned_run(self, principal: RequestPrincipal, run_id: UUID) -> tuple[WorkflowRun, object]:
@@ -369,6 +424,29 @@ class WorkflowApplication:
         except (TypeError, ValueError) as exc:
             raise WorkflowValidationError("Workflow 输入必须是有限的 JSON 对象。") from exc
         return normalized
+
+    @classmethod
+    def _build_node_inputs(
+        cls,
+        run: WorkflowRun,
+        version,
+        node_id: str,
+        inputs: Mapping[str, object],
+    ) -> dict[str, object]:
+        node = version.node(node_id)
+        incoming = version.incoming_edges(node_id)
+        bound_fields = {field for edge in incoming for field in edge.output_fields}
+        supplied = cls._validate_inputs(
+            tuple(field for field in node.input_fields if field not in bound_fields),
+            {key: value for key, value in dict(inputs).items() if key not in bound_fields}
+            if isinstance(inputs, Mapping)
+            else inputs,
+        )
+        merged = dict(supplied)
+        for edge in incoming:
+            references = run.output_references(edge.source_node_id)
+            merged.update({field: references[field] for field in edge.output_fields})
+        return cls._validate_inputs(node.input_fields, merged)
 
 
 def _fingerprint(value: Mapping[str, object]) -> str:
