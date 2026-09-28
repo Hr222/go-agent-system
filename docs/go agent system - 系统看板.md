@@ -10,7 +10,7 @@
 
 ## 2. 当前状态
 
-当前项目已完成上下文管理、TM-07 系列 Tender/Task 边界和 Workflow 后端运行契约修复。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；外部 Tender MCP 保持同步，内部 Dialogue 使用异步 Task，Workflow 编辑器与动态编排仍未立项。
+当前项目已完成上下文管理、Task Management 核心能力、Agent 工作区任务接入和 Workflow 后端运行契约修复。知识库、RAG、规则判断、LLM、统一交互、Tender Agent、附件和会话能力已经形成可运行链路；外部 Tender MCP 保持同步，内部 Dialogue 使用异步 Task。通用任务中心、浏览器直接创建任务、Workflow 编辑器与动态编排仍属于后续独立能力。
 
 | 领域 | 状态 | 当前进度 |
 |---|---|---|
@@ -20,7 +20,8 @@
 | Interaction 与 Agent | 已完成基础链路 | 支持能力目录、候选识别、确认、受控分发和 Tender Agent 调用。 |
 | 附件与产物 | 已完成基础链路 | 支持上传、主体/会话访问绑定、Tender 输入解析和受控下载。 |
 | Conversation 与 Dialogue | 已完成当前交付 | 支持会话持久化、历史读取、列表管理、话题概括、主体隔离、轮次串行、Agent 异步接收状态、上下文管理和异步持久化；`accepted` 只返回安全 execution reference，不自动回灌终态消息。 |
-| Task Management | 已完成当前交付 | TM-01～TM-07.4 已完成并归档；独立 Tender Worker 入口和 Dialogue `accepted` 交接已完成。外部 Tender MCP 仍同步返回 `EmbeddedResource`；Task 结果下载、任务前端和 E2E 尚未立项。 |
+| Task Management | 已完成当前交付 | TM-01～TM-07.4 已完成并归档；已交付 Task 生命周期、PostgreSQL 持久化、受信任提交、独立 Tender Worker、主体隔离 HTTP 查询与控制，以及 Dialogue `accepted` 交接。外部 Tender MCP 仍同步返回 `EmbeddedResource`。 |
+| Agent 工作区与任务产物 | 已完成当前接入 | Agent/Tender React 工作区已接入真实 Task 列表、详情、事件、活动状态轮询、取消/重试和成功结果资源下载；不提供通用任务创建入口。 |
 | Workflow / Agent 平台 | 已完成当前契约修复 | 已完成固定 Workflow Version、Run/Node Run 契约，以及输入失败终态、协作取消和安全输出依赖修复；编辑器、动态编排和多 Agent 协同仍未实现。 |
 | 真实身份认证与用户模块 | 待规划 | 不作为当前验收项，具体边界以 `ARCHITECTURE.md` 的当前边界为准。 |
 
@@ -35,6 +36,8 @@
 | Interaction 与 Agent | 意图候选召回、能力目录、结构化识别、确认策略、受控 Agent 分发、Tender MCP 和分块分析。 |
 | Conversation 与 Dialogue | 会话模型与存储、主体范围创建/列表/历史、流式持久化、Agent 续写、会话管理和附件输入。 |
 | 安全与附件 | RequestPrincipal、HTTP 主体绑定、会话 owner 隔离、附件访问绑定、Tender 附件适配和 Agent 产物下载。 |
+| Task Management | Task/Attempt/Event 状态机、PostgreSQL 生命周期持久化、受信任提交、Worker 租约、恢复/取消/重试、主体隔离 HTTP 和 Agent 到 Task 的受控桥接。 |
+| Agent 工作区与任务产物 | Agent/Tender 页面消费真实任务数据，展示任务事件和状态，提供取消/重试以及主体隔离的结果资源下载入口。 |
 | 架构文档 | `ARCHITECTURE.md` 作为当前系统架构唯一来源，阶段看板不再复制架构内容。 |
 
 ## 4. 最近完成的 Change
@@ -58,10 +61,14 @@
 | `bridge-agent-calls-to-tasks` | `0be9951` | 已完成并归档；远程推送待网络恢复 |
 | `run-tender-agent-as-async-task` | `e06c81c` | 已完成并归档；外部 MCP 同步边界已由 `restore-tender-mcp-sync-boundary` 收口 |
 | `complete-internal-tender-task-handoff` | `7c271f7` | 实现独立 Tender Worker、Dialogue `accepted` 与安全 execution reference；不包含下载、Workflow 或终态会话回传 |
+| `bridge-task-result-resources` | `7c271f7` | 已完成并归档；保存主体/会话绑定的结果资源并提供安全下载投影 |
+| `connect-task-management-workspace` | `7c271f7` | 已完成并归档；Agent/Tender 工作区接入真实任务列表、详情、事件、取消和重试 |
+| `fix-task-workspace-event-visibility` | `7c271f7` | 已完成并归档；修正任务工作区事件可见性边界 |
+| `harden-task-runtime-readiness` | `7c271f7` | 已完成并归档；补齐任务运行时和启动诊断约束 |
 | `define-workflow-run-and-node-contracts` | 已完成并归档 | 建立固定 Workflow Version、Run/Node Run 状态机、受信任执行端口、PostgreSQL 安全事实和 Tender 能力绑定；不包含公开 Workflow API、编辑器、动态编排、多 Agent 或下载 |
 | `fix-workflow-run-contract-gaps` | 已完成并归档 | 修复零尝试输入失败、Node Executor 协作取消和前置节点安全输出依赖；不包含调度器、公开入口或动态编排 |
 
-`persist-task-lifecycle` 已将 TM-01 的 Task、Attempt、Event 和命令回执持久化到 PostgreSQL；TM-04 已补充受信任 Worker 的原子领取、lease 续租、固定执行器和安全结果回写；TM-05 已补充过期 lease 恢复、协作取消、退避重入队和受策略约束的手动重试；TM-06 已补充主体隔离的 Task/事件查询、协作取消和手动重试 HTTP 契约，但不实现 Tender、前端或 E2E。TM-01“任务状态机与幂等”及其契约收紧均已完成并归档；同一时间只处理一个 Task Management Change。
+`persist-task-lifecycle` 已将 TM-01 的 Task、Attempt、Event 和命令回执持久化到 PostgreSQL；TM-04 已补充受信任 Worker 的原子领取、lease 续租、固定执行器和安全结果回写；TM-05 已补充过期 lease 恢复、协作取消、退避重入队和受策略约束的手动重试；TM-06 已补充主体隔离的 Task/事件查询、协作取消和手动重试 HTTP 契约；TM-07 已补充 Agent 调用到受控 Task 的桥接、Tender Worker 和 Dialogue `accepted` 交接。TM-01“任务状态机与幂等”及其契约收紧均已完成并归档；Task Management 核心 Change 已全部结束，后续任务中心、创建入口和更广泛的产品能力另立 Change。
 已完成 Change 的完整工件位于 [`openspec/changes/archive/`](../openspec/changes/archive/)。
 
 ## 5. 当前验证
@@ -77,13 +84,14 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 | 优先级 | 能力 | 状态 |
 |---|---|---|
 | 1 | 上下文管理 | 已完成；会话历史、上下文窗口和多轮上下文链路已交付。 |
-| 2 | Task Management | TM-01～TM-07.4 已完成；完成当前独立 Worker 与 Dialogue 交接后，再根据真实产品目标规划后续 Change。 |
-| 3 | Workflow / Agent 平台 | 固定 Version、Run/Node Run 后端契约已交付并完成本次边界修复；真实编排引擎、编辑器和多 Agent 协同后续另立 Change。 |
-| 4 | 真实认证与用户模块 | 待规划；尚未创建 Change。 |
+| 2 | Task Management | TM-01～TM-07.4 已完成并归档；核心生命周期和 Agent 受控交接已结束。 |
+| 3 | Agent 工作区与任务产物 | 当前 Agent/Tender 工作区接入已完成；通用任务中心、跨 Agent 聚合和更丰富筛选能力后续另立 Change。 |
+| 4 | Workflow / Agent 平台 | 固定 Version、Run/Node Run 后端契约已交付并完成边界修复；真实编排引擎、公开入口、编辑器和多 Agent 协同后续另立 Change。 |
+| 5 | 真实认证与用户模块 | 待规划；尚未创建 Change。 |
 
 ### Task Management Change 顺序（占位）
 
-以下只记录实施顺序、依赖和验收目标。TM-07 已拆成四个边界清晰的 Change，TM-07.1～TM-07.4 均已完成并归档；当前 Change 收口内部 Tender Worker 与 Dialogue 交接。后续能力必须先根据产品目标另行规划。
+以下只记录已完成的实施顺序、依赖和验收目标。TM-07 已拆成四个边界清晰的 Change，TM-07.1～TM-07.4 均已完成并归档；Task Management 当前没有 active Change。后续能力必须先根据产品目标另行规划，不在本序列中追加。
 
 | 顺序 | 占位 Change | 依赖 | 本阶段验收目标 | 状态 |
 |---|---|---|---|---|
@@ -107,8 +115,10 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 
 ## 7. 当前待办
 
-1. 后续另立 Change 实现 Workflow 调度、公开入口、编辑器或多 Agent/SubAgent，不把这些内容提前塞入当前契约。
-2. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。
+1. 后续另立 Change 规划通用任务中心、跨 Agent 任务聚合、分页筛选、浏览器直接创建任务和更丰富的结果工作流；这些不属于当前 Task Management 核心交付。
+2. 后续另立 Change 实现 Workflow 调度、公开入口、编辑器或多 Agent/SubAgent，不把这些内容提前塞入当前契约。
+3. 按项目需要补充跨模块 E2E 和外部服务人工验收，不将其表述为 Task Management 未完成项。
+4. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。
 
 ## 8. 相关文档
 
