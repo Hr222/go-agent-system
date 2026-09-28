@@ -299,8 +299,7 @@ Security 通过 `PrincipalResolverPort` 将服务端可信上下文解析为 `Re
 
 ### 4.10 Task Management
 
-Task Management 是平台级的任务生命周期能力。`app/platform/task` 提供 Task、Attempt、Event 的领域状态机、合法转换和命令幂等契约；合法领取以唯一 `TASK_CLAIMED` 事件同时形成执行开始事实。受信任服务端生产者通过固定提交档案和已认证主体创建 Task，不能覆盖 owner、task type、尝试策略或展示字段白名单；该能力保持为内部 Application 契约，不新增公开创建协议。`app/infrastructure/persistence` 中的 PostgreSQL Repository 负责聚合恢复、过期 active Attempt 与到期 `retry_wait` 候选的 `SKIP LOCKED` 锁定、行锁、事务内状态/Event/命令回执写入以及数据库关系约束；事件元数据仍只接受按事件类型白名单化的标准 JSON 安全数据。受信任 Worker 通过固定 task type 执行器绑定进行单次轮询、lease 续租和安全结果回写；当前 Tender Worker 的独立入口按恢复、重试、固定 Tender Executor 三个阶段轮询，每阶段关闭自己的 Session 与 Composition 资源，不嵌入 FastAPI lifespan，也不允许通过启动参数选择任意执行器。RecoveryCoordinator、RetryScheduler、CancellationCoordinator 和 ManualRetryCoordinator 通过 Application/Port 触发恢复、退避重入队、协作取消和手动重试，不强杀执行器或 Provider。TM-07.4 的 Tender Executor 只通过 Worker 上下文读取 owner、opaque Attachment 快照引用和取消/续租回调，调用既有 TenderApplication，并以安全结果摘要和指纹回写；原始文件、输入指纹、Prompt、lease 和 Provider 响应不进入公开投影或生命周期事件。主体隔离的 Task HTTP 位于 `app/interfaces/http`，只提供安全 Task/事件查询、协作取消和受策略约束的手动重试；它不提供创建、领取、续租、结果回写、恢复调度或 lease token。`TaskView` 是不含输入指纹和 lease 的安全投影，含 lease 的命令与结果只允许受信任执行器内部消费。内存验证替身位于 `tests/task/`，不属于运行时适配器。Domain、Application 和 Ports 不依赖 HTTP、ORM 或数据库。Task 结果下载、终态 Conversation 回传、前端任务工作台和 Workflow 必须以新的独立 Change 规划，不能反向把基础设施或业务规则放入 Domain。
-Task Management 是平台级的任务生命周期能力。`app/platform/task` 提供 Task、Attempt、Event 的领域状态机、合法转换和命令幂等契约；合法领取以唯一 `TASK_CLAIMED` 事件同时形成执行开始事实。受信任服务端生产者通过固定提交档案和已认证主体创建 Task，不能覆盖 owner、task type、尝试策略或展示字段白名单；该能力保持为内部 Application 契约，不新增公开创建协议。`app/infrastructure/persistence` 中的 PostgreSQL Repository 负责聚合恢复、过期 active Attempt 与到期 `retry_wait` 候选的 `SKIP LOCKED` 锁定、行锁、事务内状态/Event/命令回执写入以及数据库关系约束；事件元数据仍只接受按事件类型白名单化的标准 JSON 安全数据。受信任 Worker 通过固定 task type 执行器绑定进行单次轮询、lease 续租和安全结果回写；当前 Tender Worker 的独立入口按恢复、重试、固定 Tender Executor 三个阶段轮询，每阶段关闭自己的 Session 与 Composition 资源，不嵌入 FastAPI lifespan，也不允许通过启动参数选择任意执行器。RecoveryCoordinator、RetryScheduler、CancellationCoordinator 和 ManualRetryCoordinator 通过 Application/Port 触发恢复、退避重入队、协作取消和手动重试，不强杀执行器或 Provider。TM-07.4 的 Tender Executor 只通过 Worker 上下文读取 owner、opaque Attachment 快照引用和取消/续租回调，调用既有 TenderApplication，并以安全结果摘要和指纹回写；原始文件、输入指纹、Prompt、lease 和 Provider 响应不进入公开投影或生命周期事件。主体隔离的 Task HTTP 位于 `app/interfaces/http`，只提供安全 Task/事件查询、协作取消和受策略约束的手动重试；它不提供创建、领取、续租、结果回写、恢复调度或 lease token。`TaskView` 是不含输入指纹和 lease 的安全投影，含 lease 的命令与结果只允许受信任执行器内部消费。内存验证替身位于 `tests/task/`，不属于运行时适配器。Domain、Application 和 Ports 不依赖 HTTP、ORM 或数据库。Task 结果下载、终态 Conversation 回传和前端任务工作台仍未实现；Workflow 的后端契约在下一节定义。
+Task Management 是平台级的任务生命周期能力。`app/platform/task` 提供 Task、Attempt、Event 的领域状态机、合法转换和命令幂等契约；合法领取以唯一 `TASK_CLAIMED` 事件同时形成执行开始事实。受信任服务端生产者通过固定提交档案和已认证主体创建 Task，不能覆盖 owner、task type、尝试策略或展示字段白名单；该能力保持为内部 Application 契约，不新增公开创建协议。`app/infrastructure/persistence` 中的 PostgreSQL Repository 负责聚合恢复、过期 active Attempt 与到期 `retry_wait` 候选的 `SKIP LOCKED` 锁定、行锁、事务内状态/Event/命令回执写入以及数据库关系约束；事件元数据仍只接受按事件类型白名单化的标准 JSON 安全数据。受信任 Worker 通过固定 task type 执行器绑定进行单次轮询、lease 续租和安全结果回写；当前 Tender Worker 的独立入口按恢复、重试、固定 Tender Executor 三个阶段轮询，每阶段关闭自己的 Session 与 Composition 资源，不嵌入 FastAPI lifespan，也不允许通过启动参数选择任意执行器。RecoveryCoordinator、RetryScheduler、CancellationCoordinator 和 ManualRetryCoordinator 通过 Application/Port 触发恢复、退避重入队、协作取消和手动重试，不强杀执行器或 Provider。TM-07.4 的 Tender Executor 只通过 Worker 上下文读取 owner、opaque Attachment 快照引用和取消/续租回调，调用既有 TenderApplication，并以安全结果摘要和指纹回写；原始文件、输入指纹、Prompt、lease 和 Provider 响应不进入公开投影或生命周期事件。主体隔离的 Task HTTP 位于 `app/interfaces/http`，提供安全 Task/事件查询、结果资源查询、协作取消和受策略约束的手动重试；它不提供创建、领取、续租、结果回写、恢复调度或 lease token。Task 结果资源由 Tender Executor 保存到既有 Attachment 存储，并通过 owner 与 Conversation 绑定校验后返回安全元数据和服务端下载 URL。Agent/Tender React 工作区消费这些 owner-scoped 接口，展示任务列表、详情、事件、活动状态轮询、取消/重试和结果资源。浏览器仍不能直接创建通用 Task，Task 终态 Conversation 回传和通用任务中心属于后续独立 Change。`TaskView` 是不含输入指纹和 lease 的安全投影，含 lease 的命令与结果只允许受信任执行器内部消费。内存验证替身位于 `tests/task/`，不属于运行时适配器。Domain、Application 和 Ports 不依赖 HTTP、ORM 或数据库。
 
 ### 4.11 Workflow Run / Node 契约
 
@@ -308,7 +307,7 @@ Task Management 是平台级的任务生命周期能力。`app/platform/task` �
 
 `WorkflowRun`、`WorkflowNodeRun` 和 `WorkflowEvent` 通过受信任 Application/Port 创建和转换，使用主体 + Version + 幂等键及输入指纹保证重放幂等。节点状态覆盖 `queued`、`running`、`accepted`、`succeeded`、`failed`、`cancel_requested`、`cancelled`、`skipped`；前置节点未成功时不创建执行尝试。`accepted` 只保存 opaque execution reference；失败、重试和取消均通过 Application 命令，取消运行中的节点先进入 `cancel_requested`，由执行器安全确认后才进入 `cancelled`。
 
-Workflow Run、Node Run 和安全事件由 PostgreSQL Repository 在事务内持久化，保存状态、尝试次数、摘要、指纹、错误码和白名单事件元数据，不保存原始输入、文件字节、lease、Provider 原文或可执行地址。当前没有 Workflow HTTP/MCP/Function Calling 公开入口，也没有编辑器、动态 DAG 调度器、LangGraph、SubAgent、多 Agent 协同、Task 结果下载或 Task 终态 Conversation 回传；这些必须由后续独立 Change 定义。
+Workflow Run、Node Run 和安全事件由 PostgreSQL Repository 在事务内持久化，保存状态、尝试次数、摘要、指纹、错误码和白名单事件元数据，不保存原始输入、文件字节、lease、Provider 原文或可执行地址。当前没有 Workflow HTTP/MCP/Function Calling 公开入口，也没有编辑器、动态 DAG 调度器、LangGraph、SubAgent、多 Agent 协同或 Task 终态 Conversation 回传；这些必须由后续独立 Change 定义。
 
 ## 5. 业务应用
 
@@ -361,7 +360,7 @@ HTTP / MCP / Function Calling
 frontend/src/
 ├── app/                    # router、providers、应用配置
 ├── layouts/                # 工作台布局
-├── features/               # chat、knowledge-base、agent/tender 等业务界面
+├── features/               # chat、knowledge-base、agent/tender、task-management 等业务界面
 ├── services/http/          # Axios 客户端和 HTTP 类型
 ├── shared/                 # 通用组件、常量、类型和工具
 ├── styles/                 # 主题与全局样式

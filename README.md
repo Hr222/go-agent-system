@@ -28,7 +28,8 @@ Go Agent System 是一个面向 Agent 开发的平台型应用。它将 LLM、Kn
 - Conversation 与 Dialogue：会话创建、历史读写、事件记录、多轮上下文、流式回答和同步 Agent 结果续写；内部异步 Agent 会返回 `accepted` 与安全执行引用，不自动生成终态会话消息。
 - Interaction Gateway：自然语言能力识别、输入复核、权限校验、确认提议和受控分发。
 - Agent Management：平台能力目录、Agent 调用策略、固定分发和 Agent Runtime。
-- Attachment：上传、访问绑定、读取和存储；当前 Tender 外部 MCP 在请求内返回资源，Task 结果下载与任务工作台尚未实现。
+- Task Management：Task/Attempt/Event 生命周期、PostgreSQL 持久化、受信任提交、独立 Tender Worker、恢复/取消/重试、主体隔离查询和 Agent 到 Task 的受控桥接。
+- Agent 工作区与任务产物：Agent/Tender React 页面展示真实任务列表、详情、事件、活动状态、取消/重试和主体隔离的结果资源下载；外部 Tender MCP 仍在请求内同步返回 `EmbeddedResource`。
 - Workflow 后端契约：已建立固定 Version、DAG 节点、Run/Node Run 状态、幂等、取消、失败/重试和 PostgreSQL 安全事件边界；当前仅有受信任入口和 Tender 能力绑定样本，没有公开 Workflow API 或完整编排器。
 
 ### Tender 与 Task 运行边界
@@ -42,7 +43,7 @@ Go Agent System 是一个面向 Agent 开发的平台型应用。它将 LLM、Kn
   ```
 
   Worker 固定运行恢复、重试和 Tender Executor 阶段；通过 `TASK_WORKER_ID`、`TASK_WORKER_POLL_INTERVAL_SECONDS` 与 `TASK_WORKER_BATCH_SIZE` 配置运行参数，不能从命令行选择任意执行器。
-- Task 终态回传 Conversation、Task 结果下载、Workflow 编辑器、动态编排、SubAgent 和多 Agent 协同不属于当前 Change。
+- Task 终态回传 Conversation、通用任务中心、浏览器直接创建 Task、Workflow 编辑器、动态编排、SubAgent 和多 Agent 协同属于后续独立 Change。
 
 ### 业务应用
 
@@ -152,6 +153,7 @@ npm run dev
 | 统一交互 | `/api/v1/interaction/*` |
 | 会话 | `/api/v1/conversations/*` |
 | 附件 | `/api/v1/attachments/*` |
+| 任务管理 | `/api/v1/tasks`、`/api/v1/tasks/{task_id}`、`/api/v1/tasks/{task_id}/events`、`/api/v1/tasks/{task_id}/resources`、`/api/v1/tasks/{task_id}/cancel`、`/api/v1/tasks/{task_id}/retry` |
 
 Swagger UI 和 OpenAPI JSON 是 HTTP 参数、响应结构和接口状态的直接参考。统一对话流使用 SSE，反向代理需要关闭响应缓冲并保持长连接。
 
