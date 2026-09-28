@@ -20,7 +20,7 @@
 | Interaction 与 Agent | 已完成基础链路 | 支持能力目录、候选识别、确认、受控分发和 Tender Agent 调用。 |
 | 附件与产物 | 已完成基础链路 | 支持上传、主体/会话访问绑定、Tender 输入解析和受控下载。 |
 | Conversation 与 Dialogue | 已完成当前交付 | 支持会话持久化、历史读取、列表管理、话题概括、主体隔离、轮次串行、Agent 异步接收状态、上下文管理和异步持久化；`accepted` 只返回安全 execution reference，不自动回灌终态消息。 |
-| Task Management | 当前阶段 | TM-01～TM-07.4 已完成并归档；当前 Change 增加独立 Tender Worker 入口和 Dialogue `accepted` 交接。外部 Tender MCP 仍同步返回 `EmbeddedResource`；Task 结果下载、任务前端和 E2E 尚未立项。 |
+| Task Management | 已完成当前交付 | TM-01～TM-07.4 已完成并归档；独立 Tender Worker 入口和 Dialogue `accepted` 交接已完成。外部 Tender MCP 仍同步返回 `EmbeddedResource`；Task 结果下载、任务前端和 E2E 尚未立项。 |
 | Workflow / Agent 平台 | 已完成当前契约修复 | 已完成固定 Workflow Version、Run/Node Run 契约，以及输入失败终态、协作取消和安全输出依赖修复；编辑器、动态编排和多 Agent 协同仍未实现。 |
 | 真实身份认证与用户模块 | 待规划 | 不作为当前验收项，具体边界以 `ARCHITECTURE.md` 的当前边界为准。 |
 
@@ -57,7 +57,7 @@
 | `route-tender-mcp-through-agent-dispatch` | `d134d31` | 已完成并归档；远程推送待网络恢复 |
 | `bridge-agent-calls-to-tasks` | `0be9951` | 已完成并归档；远程推送待网络恢复 |
 | `run-tender-agent-as-async-task` | `e06c81c` | 已完成并归档；外部 MCP 同步边界已由 `restore-tender-mcp-sync-boundary` 收口 |
-| `complete-internal-tender-task-handoff` | 当前工作区 | 实现独立 Tender Worker、Dialogue `accepted` 与安全 execution reference；不包含下载、Workflow 或终态会话回传 |
+| `complete-internal-tender-task-handoff` | `7c271f7` | 实现独立 Tender Worker、Dialogue `accepted` 与安全 execution reference；不包含下载、Workflow 或终态会话回传 |
 | `define-workflow-run-and-node-contracts` | 已完成并归档 | 建立固定 Workflow Version、Run/Node Run 状态机、受信任执行端口、PostgreSQL 安全事实和 Tender 能力绑定；不包含公开 Workflow API、编辑器、动态编排、多 Agent 或下载 |
 | `fix-workflow-run-contract-gaps` | 已完成并归档 | 修复零尝试输入失败、Node Executor 协作取消和前置节点安全输出依赖；不包含调度器、公开入口或动态编排 |
 
@@ -68,7 +68,7 @@
 
 最近一组 Change 的后端验收结果：
 
-TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-05 完成后为 `750 passed`；TM-06 完成后为 `763 passed`；TM-07.2 完成后为 `769 passed`；TM-07.3 完成后为 `781 passed`；TM-07.4 完成后为 `793 passed`；当前 Workflow/架构聚焦测试为 `19 passed`，Workflow lint、compile 和严格 OpenSpec 校验已通过。全量测试本次在 `407 passed, 1 skipped` 后因本地 PostgreSQL `127.0.0.1:5432` 连接超时停止；数据库集成测试需本地 PostgreSQL 可用后再执行。外部 LLM、Embedding、OCR、MCP 和浏览器链路仍需使用项目现有诊断脚本或人工验收记录，不能只凭单元测试宣称外部服务验收完成。
+TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-05 完成后为 `750 passed`；TM-06 完成后为 `763 passed`；TM-07.2 完成后为 `769 passed`；TM-07.3 完成后为 `781 passed`；TM-07.4 完成后为 `793 passed`；当前 Workflow/架构聚焦测试为 `19 passed`，Workflow lint、compile 和严格 OpenSpec 校验已通过。PostgreSQL 已恢复可用，数据库集成测试通过（`tests/infrastructure/test_conversation_access_repository.py`：`1 passed`）；随后全量后端测试通过（`835 passed`，`2 warnings`）。外部 LLM、Embedding、OCR、MCP 和浏览器链路仍需使用项目现有诊断脚本或人工验收记录，不能只凭单元测试宣称外部服务验收完成。
 
 ## 6. 后续能力优先级
 
@@ -107,9 +107,8 @@ TM-04 相关测试与全量验证：`python -m pytest -q` 为 `738 passed`；TM-
 
 ## 7. 当前待办
 
-1. 在本地 PostgreSQL 可用后重跑 Workflow 相关数据库集成验证和全量测试。
-2. 后续另立 Change 实现 Workflow 调度、公开入口、编辑器或多 Agent/SubAgent，不把这些内容提前塞入当前契约。
-3. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。
+1. 后续另立 Change 实现 Workflow 调度、公开入口、编辑器或多 Agent/SubAgent，不把这些内容提前塞入当前契约。
+2. 系统架构发生实际变化时更新 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；看板只更新状态和验收记录，不新增架构副本。
 
 ## 8. 相关文档
 
